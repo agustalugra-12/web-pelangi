@@ -47,6 +47,17 @@ const svgPhoto = (_label, bg = "#0F4C5C", fg = "#F1C57C") => {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
+// Shared facility set — Standard & Cottage carry the exact same amenities.
+// The only difference between them is room size (18 m² vs 34 m²).
+const COMMON_FACILITIES = [
+  "Double Bed",
+  "Air Panas",
+  "Smart TV",
+  "WiFi",
+  "Teras Pribadi",
+  "Breakfast",
+];
+
 export const rooms = [
   {
     slug: "standard",
@@ -62,7 +73,7 @@ export const rooms = [
       "/assets/std-2.webp",
       "/assets/std-1.webp",
     ],
-    facilities: ["Double Bed", "Air Panas", "Smart TV", "WiFi", "Teras Pribadi", "Breakfast"],
+    facilities: COMMON_FACILITIES,
     description:
       "Kamar hangat dan efisien untuk berdua, dengan teras pribadi, kamar mandi bersih, dan sarapan hangat sudah termasuk.",
   },
@@ -80,9 +91,9 @@ export const rooms = [
       "/assets/cot-1.webp",
       "/assets/cot-5.webp",
     ],
-    facilities: ["King Bed", "Extra Bed", "Air Panas", "Smart TV", "WiFi", "Balkon Luas", "View Pegunungan", "Breakfast"],
+    facilities: COMMON_FACILITIES,
     description:
-      "Cottage kayu independen bergaya Bali dengan teras luas, ukiran headboard, dan sarapan sudah termasuk — paling favorit untuk keluarga kecil dan honeymoon.",
+      "Fasilitas identik dengan Standard Room, namun jauh lebih lapang — 34 m² dengan teras luas untuk keluarga kecil atau honeymoon yang butuh ruang bernapas lebih.",
   },
 ];
 
@@ -119,10 +130,11 @@ export const galleryItems = [
   { category: "Cottage", src: "/assets/cot-1.webp" },
   { category: "Bathroom", src: "/assets/std-1.webp" },
   { category: "Bathroom", src: "/assets/cot-5.webp" },
-  { category: "Restaurant", src: svgPhoto("Restaurant", "#C6852E", "#F7F3EA") },
-  { category: "Garden", src: svgPhoto("Garden", "#3F7F49", "#F1C57C") },
+  { category: "Restaurant", src: "/assets/restaurant.jpg" },
+  { category: "Garden", src: "/assets/garden.jpg" },
+  { category: "Lobby", src: "/assets/signage.jpg" },
+  { category: "Lobby", src: "/assets/facade.jpg" },
   { category: "View", src: svgPhoto("Mountain View", "#12564F", "#E9C46A") },
-  { category: "Lobby", src: svgPhoto("Lobby", "#0F4C5C", "#F1C57C") },
 ];
 
 // Icon mapping for facility pills (Font Awesome classnames)
