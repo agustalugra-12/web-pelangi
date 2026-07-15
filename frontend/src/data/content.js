@@ -53,33 +53,29 @@ export const rooms = [
     name: "Standard Room",
     capacity: "2 Tamu",
     size: "18 m²",
-    priceFrom: "IDR 350.000",
-    image: svgPhoto("Standard Room", "#1F6A6E"),
-    facilities: ["Double Bed", "Air Panas", "Smart TV", "WiFi", "Balkon Kecil"],
+    priceFrom: "IDR 175.000",
+    image: "/assets/std-5.webp",
+    gallery: [
+      "/assets/std-5.webp",
+      "/assets/std-4.webp",
+      "/assets/std-3.webp",
+      "/assets/std-2.webp",
+      "/assets/std-1.webp",
+    ],
+    facilities: ["Double Bed", "Air Panas", "Smart TV", "WiFi", "Teras Pribadi", "Breakfast"],
     description:
-      "Kamar hangat dan efisien untuk berdua, dengan udara segar Bedugul yang mengalir lewat balkon kecil.",
-  },
-  {
-    slug: "superior",
-    name: "Superior Room",
-    capacity: "2 – 3 Tamu",
-    size: "26 m²",
-    priceFrom: "IDR 550.000",
-    image: svgPhoto("Superior Room", "#0F4C5C"),
-    facilities: ["Queen Bed", "Air Panas", "Smart TV", "WiFi", "View Taman", "Breakfast"],
-    description:
-      "Lebih lapang dengan sudut baca menghadap taman, cocok untuk pasangan yang ingin kabur sejenak dari kota.",
+      "Kamar hangat dan efisien untuk berdua, dengan teras pribadi, kamar mandi bersih, dan sarapan hangat sudah termasuk.",
   },
   {
     slug: "cottage",
     name: "Cottage",
     capacity: "2 – 4 Tamu",
     size: "34 m²",
-    priceFrom: "IDR 850.000",
+    priceFrom: "IDR 225.000",
     image: svgPhoto("Cottage", "#083D38"),
     facilities: ["King Bed", "Extra Bed", "Air Panas", "Balkon Luas", "View Pegunungan", "Breakfast"],
     description:
-      "Cottage kayu independen dengan balkon menghadap gunung, paling favorit untuk keluarga kecil dan honeymoon.",
+      "Cottage kayu independen dengan balkon menghadap gunung, sarapan sudah termasuk — paling favorit untuk keluarga kecil dan honeymoon.",
   },
 ];
 
@@ -98,7 +94,7 @@ export const galleryCategories = [
   "Semua",
   "Standard Room",
   "Cottage",
-  "Superior",
+  "Bathroom",
   "Restaurant",
   "Garden",
   "View",
@@ -106,10 +102,11 @@ export const galleryCategories = [
 ];
 
 export const galleryItems = [
-  { category: "Standard Room", src: svgPhoto("Standard #1", "#1F6A6E") },
-  { category: "Standard Room", src: svgPhoto("Standard #2", "#12564F") },
-  { category: "Superior", src: svgPhoto("Superior #1", "#0F4C5C") },
-  { category: "Superior", src: svgPhoto("Superior #2", "#0B3A47") },
+  { category: "Standard Room", src: "/assets/std-5.webp" },
+  { category: "Standard Room", src: "/assets/std-4.webp" },
+  { category: "Standard Room", src: "/assets/std-3.webp" },
+  { category: "Standard Room", src: "/assets/std-2.webp" },
+  { category: "Bathroom", src: "/assets/std-1.webp" },
   { category: "Cottage", src: svgPhoto("Cottage #1", "#083D38") },
   { category: "Cottage", src: svgPhoto("Cottage #2", "#0A4A44") },
   { category: "Restaurant", src: svgPhoto("Restaurant", "#C6852E", "#F7F3EA") },

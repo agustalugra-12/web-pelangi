@@ -63,21 +63,13 @@ export default function Home() {
                 <path d="M0 40 C60 20 100 34 160 22 C220 10 260 30 320 20 C380 10 420 32 480 22 C540 12 580 30 640 22 C700 12 740 30 800 20 V40 Z" fill="#F7F3EA"/>
               </svg>
             </div>
-
-            {/* Sticker */}
-            <div className="absolute -bottom-6 -right-4 md:right-6 sticker">
-              <div className="bg-mustard text-teal-deep rounded-full w-24 h-24 md:w-28 md:h-28 flex flex-col items-center justify-center font-display font-bold shadow-paper text-center leading-none">
-                <span className="text-2xl md:text-3xl">20%</span>
-                <span className="text-[10px] md:text-xs uppercase tracking-widest mt-1">Early Bird</span>
-              </div>
-            </div>
           </div>
 
           {/* RIGHT: images */}
           <div className="lg:col-span-5 relative">
             <div className="relative">
               <div className="blob overflow-hidden shadow-paper w-full aspect-[4/5] max-w-sm mx-auto">
-                <img src={rooms[2].image} alt="Cottage Pelangi" className="w-full h-full object-cover" />
+                <img src={rooms[1].image} alt="Cottage Pelangi" className="w-full h-full object-cover" />
               </div>
               <div className="absolute -bottom-8 -left-6 w-40 h-40 rounded-full overflow-hidden shadow-paper border-4 border-cream hidden md:block">
                 <img src={attractions[0].image} alt="Pura Ulun Danu" className="w-full h-full object-cover" />
@@ -128,7 +120,7 @@ export default function Home() {
       <section className="bg-paper py-20">
         <div className="max-w-7xl mx-auto px-5 md:px-8">
           <SectionHeading eyebrow="Pilihan Kamar" title="Tempat" italicWord="beristirahat" subtitle="Tiga tipe akomodasi, masing-masing dengan karakternya sendiri." />
-          <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="mt-12 grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
             {rooms.map((r, i) => (
               <RoomCard key={r.slug} room={r} index={i} />
             ))}
@@ -157,8 +149,8 @@ export default function Home() {
         <div className="relative bg-mustard rounded-3xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-6 shadow-paper">
           <div className="flex-1">
             <p className="font-script text-3xl text-teal-deep">Special offer</p>
-            <h3 className="font-display text-3xl md:text-4xl text-teal-deep italic">Menginap 3 malam, gratis 1 malam.</h3>
-            <p className="mt-2 text-teal-deep/85">Berlaku untuk pemesanan langsung melalui website resmi hingga akhir bulan.</p>
+            <h3 className="font-display text-3xl md:text-4xl text-teal-deep italic">Menginap 10 malam, gratis 1 malam.</h3>
+            <p className="mt-2 text-teal-deep/85">Berlaku untuk pemesanan langsung melalui website resmi. Berlaku akumulatif — kumpulkan malam Anda.</p>
           </div>
           <a
             href={SITE.bookingUrl}
