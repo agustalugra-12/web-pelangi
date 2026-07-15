@@ -47,9 +47,9 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-cream">
       <header className="border-b border-ink/10 bg-paper">
         <div className="max-w-6xl mx-auto px-5 py-4 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <span className="inline-flex h-8 w-8 rounded-full bg-teal-deep text-mustard-soft items-center justify-center font-display italic">P</span>
-            <span className="font-display italic text-lg text-teal-deep">Pelangi Admin</span>
+          <Link to="/" className="flex items-center gap-3">
+            <img src="/assets/pelangi-logo.png" alt="Pelangi Homestay" className="h-10 w-auto object-contain" />
+            <span className="font-display italic text-lg text-teal-deep border-l-2 border-mustard pl-3">Admin</span>
           </Link>
           <div className="flex items-center gap-3">
             <span className="text-sm text-teal-deep/70 hidden sm:block">{user?.email}</span>

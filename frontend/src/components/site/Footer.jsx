@@ -16,11 +16,12 @@ export default function Footer() {
 
       <div className="max-w-7xl mx-auto px-6 pt-16 pb-10 grid gap-10 md:grid-cols-4">
         <div>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="inline-flex h-9 w-9 rounded-full bg-mustard-soft text-teal-deep items-center justify-center font-display italic text-xl">
-              P
-            </span>
-            <span className="font-display italic text-2xl">Pelangi Homestay</span>
+          <div className="inline-flex items-center justify-center bg-cream rounded-2xl p-3 mb-4 shadow-paper-sm">
+            <img
+              src="/assets/pelangi-logo.png"
+              alt="Pelangi Homestay"
+              className="h-16 w-auto object-contain"
+            />
           </div>
           <p className="text-cream/75 text-sm leading-relaxed max-w-xs">
             Rumah hangat di jantung Bedugul — kabut pagi, kopi lokal, dan pelayanan tulus.

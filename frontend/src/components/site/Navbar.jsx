@@ -21,14 +21,13 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 bg-cream/85 backdrop-blur-md border-b border-ink/5">
-      <div className="max-w-7xl mx-auto flex items-center justify-between px-5 md:px-8 py-3.5">
+      <div className="max-w-7xl mx-auto flex items-center justify-between px-5 md:px-8 py-2.5">
         <Link to="/" className="flex items-center gap-2 group" data-testid="nav-brand">
-          <span className="inline-flex h-9 w-9 rounded-full bg-teal text-mustard-soft items-center justify-center font-display italic text-xl leading-none">
-            P
-          </span>
-          <span className="font-display italic text-xl text-teal-deep tracking-tight group-hover:text-teal transition-colors">
-            Pelangi<span className="text-mustard-deep">.</span>
-          </span>
+          <img
+            src="/assets/pelangi-logo.png"
+            alt="Pelangi Homestay"
+            className="h-14 md:h-16 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+          />
         </Link>
 
         <nav className="hidden lg:flex items-center gap-6">
