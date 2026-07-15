@@ -73,24 +73,25 @@ export default function PostEditor() {
     }
   };
 
-  if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-teal-deep">Memuat…</div>;
+  if (loading) return <div className="min-h-[40vh] flex items-center justify-center text-teal-deep">Memuat…</div>;
 
   return (
-    <div className="min-h-screen bg-cream">
-      <header className="border-b border-ink/10 bg-paper">
-        <div className="max-w-4xl mx-auto px-5 py-4 flex items-center justify-between">
-          <Link to="/admin/dashboard" className="text-teal-deep font-semibold text-sm">← Dashboard</Link>
-          <span className="font-display italic text-teal-deep">{isNew ? "Artikel Baru" : "Edit Artikel"}</span>
+    <div className="max-w-3xl">
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <p className="font-script text-2xl text-mustard-deep">{isNew ? "Buat" : "Edit"}</p>
+          <h1 className="font-display text-3xl text-teal-deep italic">{isNew ? "Artikel Baru." : "Artikel."}</h1>
         </div>
-      </header>
+        <Link to="/admin/blog" className="text-teal-deep font-semibold text-sm">← Kembali</Link>
+      </div>
 
-      <form onSubmit={save} className="max-w-4xl mx-auto px-5 py-10 space-y-5">
+      <form onSubmit={save} className="bg-paper rounded-3xl border border-ink/10 shadow-paper-sm p-6 space-y-5">
         <label className="block">
           <span className="text-xs uppercase tracking-widest text-teal-deep/70 font-semibold">Judul</span>
           <input
             data-testid={ADMIN.postTitle}
             required value={form.title} onChange={change("title")}
-            className="mt-1 w-full rounded-xl border-2 border-ink/10 bg-paper px-4 py-3 outline-none focus:border-teal font-display text-lg"
+            className="mt-1 w-full rounded-xl border-2 border-ink/10 bg-cream px-4 py-3 outline-none focus:border-teal font-display text-lg"
           />
         </label>
 
@@ -157,7 +158,7 @@ export default function PostEditor() {
           >
             {saving ? "Menyimpan…" : "Simpan"}
           </button>
-          <Link to="/admin/dashboard" className="text-teal-deep font-semibold text-sm">Batal</Link>
+          <Link to="/admin/blog" className="text-teal-deep font-semibold text-sm">Batal</Link>
         </div>
       </form>
     </div>

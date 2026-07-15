@@ -1,5 +1,7 @@
+import { useContent } from "@/context/ContentContext";
 import SectionHeading from "@/components/site/SectionHeading";
-import { galleryByCategory } from "@/data/content";
+
+const byCat = (arr, c) => arr.find((g) => g.category === c) || arr[0];
 
 const values = [
   { icon: "fa-hand-holding-heart", title: "Tulus", desc: "Kami melayani seperti menerima keluarga sendiri." },
@@ -8,6 +10,7 @@ const values = [
 ];
 
 export default function About() {
+  const { gallery } = useContent();
   return (
     <div className="pt-14 pb-24">
       <section className="max-w-7xl mx-auto px-5 md:px-8">
@@ -16,22 +19,18 @@ export default function About() {
         <div className="mt-12 grid md:grid-cols-2 gap-10 items-center">
           <div className="grid grid-cols-2 gap-3">
             <div className="aspect-[3/4] rounded-3xl overflow-hidden shadow-paper-sm">
-              <img src={galleryByCategory("View").src} alt="View" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "View").src} alt="View" className="w-full h-full object-cover" />
             </div>
             <div className="aspect-[3/4] rounded-3xl overflow-hidden shadow-paper-sm mt-8">
-              <img src={galleryByCategory("Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" />
             </div>
           </div>
           <div>
             <p className="text-teal-deep/85 leading-relaxed">
-              Pelangi Homestay lahir dari cinta sederhana pada Bedugul — kabut pagi, suara jangkrik,
-              dan cangkir kopi yang mengepul. Kami adalah keluarga kecil yang ingin membagikan
-              ketenangan itu kepada tamu-tamu kami.
+              Pelangi Homestay lahir dari cinta sederhana pada Bedugul — kabut pagi, suara jangkrik, dan cangkir kopi yang mengepul. Kami adalah keluarga kecil yang ingin membagikan ketenangan itu kepada tamu-tamu kami.
             </p>
             <p className="mt-4 text-teal-deep/85 leading-relaxed">
-              Setiap kamar kami rawat dengan hati. Setiap breakfast kami masak dengan bahan lokal.
-              Kami tidak menjanjikan kemewahan, tetapi kami menjanjikan pengalaman menginap
-              yang membuat Anda ingin kembali.
+              Setiap kamar kami rawat dengan hati. Setiap breakfast kami masak dengan bahan lokal. Kami tidak menjanjikan kemewahan, tetapi kami menjanjikan pengalaman menginap yang membuat Anda ingin kembali.
             </p>
 
             <div className="mt-8 grid grid-cols-2 gap-4">

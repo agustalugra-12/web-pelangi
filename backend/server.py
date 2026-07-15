@@ -14,10 +14,14 @@ from typing import List, Optional, Annotated
 import bcrypt
 import jwt
 from bson import ObjectId
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, status, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import Response as StarletteResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, ConfigDict, BeforeValidator, EmailStr
+
+from storage import init_storage, put_object, get_object, MIME_TYPES
+from seed_content import SEED_CONTENT
 
 
 # ---------- MongoDB ----------
@@ -404,6 +408,136 @@ async def site_config():
     }
 
 
+# ---------- Routes: CMS Content ----------
+ALLOWED_CONTENT_TYPES = {"rooms", "menu", "gallery", "attractions", "faqs", "testimonials", "site"}
+
+
+@api_router.get("/content")
+async def get_all_content():
+    """Public endpoint that returns all site content (used by frontend to hydrate)."""
+    out = {}
+    async for doc in db.site_content.find({}):
+        out[doc["_id"]] = doc.get("data")
+    return out
+
+
+@api_router.get("/content/{type}")
+async def get_content_type(type: str):
+    if type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid content type")
+    doc = await db.site_content.find_one({"_id": type})
+    return doc.get("data") if doc else None
+
+
+@api_router.put("/admin/content/{type}")
+async def update_content_type(
+    type: str,
+    payload: dict,
+    _: dict = Depends(get_current_user),
+):
+    if type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid content type")
+    data = payload.get("data")
+    if data is None:
+        raise HTTPException(status_code=400, detail="Missing 'data' field")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.site_content.update_one(
+        {"_id": type},
+        {"$set": {"data": data, "updated_at": now}},
+        upsert=True,
+    )
+    return {"ok": True, "type": type, "updated_at": now}
+
+
+# ---------- Routes: Media Upload ----------
+APP_NAME = os.environ.get("APP_NAME", "pelangi-homestay")
+MAX_UPLOAD_BYTES = 6 * 1024 * 1024  # 6 MB
+
+
+@api_router.post("/admin/media")
+async def upload_media(
+    file: UploadFile = File(...),
+    current: dict = Depends(get_current_user),
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
+    if ext not in MIME_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: .{ext}")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 6 MB)")
+    file_id = uuid.uuid4().hex
+    storage_path = f"{APP_NAME}/media/{file_id}.{ext}"
+    content_type = MIME_TYPES.get(ext, file.content_type or "application/octet-stream")
+    try:
+        result = put_object(storage_path, data, content_type)
+    except Exception as e:
+        logger.exception("Storage upload failed")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.media_files.insert_one({
+        "file_id": file_id,
+        "storage_path": result.get("path", storage_path),
+        "original_filename": file.filename,
+        "content_type": content_type,
+        "size": len(data),
+        "uploader": current.get("email"),
+        "is_deleted": False,
+        "created_at": now,
+    })
+    return {
+        "id": file_id,
+        "url": f"/api/media/{file_id}",
+        "content_type": content_type,
+        "size": len(data),
+    }
+
+
+@api_router.get("/media/{file_id}")
+async def get_media(file_id: str):
+    record = await db.media_files.find_one({"file_id": file_id, "is_deleted": False})
+    if not record:
+        raise HTTPException(status_code=404, detail="Media not found")
+    try:
+        data, ct = get_object(record["storage_path"])
+    except Exception as e:
+        logger.exception("Storage fetch failed")
+        raise HTTPException(status_code=500, detail=f"Fetch failed: {e}")
+    return StarletteResponse(
+        content=data,
+        media_type=record.get("content_type", ct),
+        headers={"Cache-Control": "public, max-age=31536000"},
+    )
+
+
+@api_router.get("/admin/media")
+async def list_media(_: dict = Depends(get_current_user), limit: int = 100):
+    cursor = db.media_files.find({"is_deleted": False}).sort("created_at", -1).limit(limit)
+    out = []
+    async for r in cursor:
+        out.append({
+            "id": r["file_id"],
+            "url": f"/api/media/{r['file_id']}",
+            "original_filename": r.get("original_filename"),
+            "content_type": r.get("content_type"),
+            "size": r.get("size"),
+            "created_at": r.get("created_at"),
+        })
+    return out
+
+
+@api_router.delete("/admin/media/{file_id}")
+async def delete_media(file_id: str, _: dict = Depends(get_current_user)):
+    result = await db.media_files.update_one(
+        {"file_id": file_id},
+        {"$set": {"is_deleted": True}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Media not found")
+    return {"ok": True}
+
+
 # ---------- App wiring ----------
 app.include_router(api_router)
 
@@ -492,13 +626,33 @@ async def seed_blog_posts():
     logger.info(f"Seeded {len(posts)} blog posts")
 
 
+async def seed_site_content():
+    for type_key, data in SEED_CONTENT.items():
+        existing = await db.site_content.find_one({"_id": type_key})
+        if existing:
+            continue
+        now = datetime.now(timezone.utc).isoformat()
+        await db.site_content.insert_one({
+            "_id": type_key,
+            "data": data,
+            "updated_at": now,
+        })
+        logger.info(f"Seeded site_content type={type_key}")
+
+
 @app.on_event("startup")
 async def on_startup():
     await db.users.create_index("email", unique=True)
     await db.blog_posts.create_index("slug", unique=True)
     await db.blog_posts.create_index("category")
+    await db.media_files.create_index("file_id", unique=True)
     await seed_admin()
     await seed_blog_posts()
+    await seed_site_content()
+    try:
+        init_storage()
+    except Exception as e:
+        logger.warning(f"Storage init deferred: {e}")
 
 
 @app.on_event("shutdown")

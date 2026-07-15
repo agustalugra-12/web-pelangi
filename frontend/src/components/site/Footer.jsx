@@ -1,12 +1,12 @@
 import { Link } from "react-router-dom";
-import { SITE } from "@/data/content";
+import { useContent } from "@/context/ContentContext";
 import BrandLogo from "@/components/site/BrandLogo";
 import RainbowAccent from "@/components/site/RainbowAccent";
 
 export default function Footer() {
+  const { site } = useContent();
   return (
     <footer className="relative bg-teal-deep text-cream mt-24">
-      {/* Torn top edge */}
       <div className="absolute -top-10 left-0 right-0 h-10 pointer-events-none">
         <svg viewBox="0 0 1200 40" preserveAspectRatio="none" className="w-full h-full">
           <path
@@ -24,14 +24,12 @@ export default function Footer() {
               <span className="font-display italic text-2xl text-cream">
                 Pelangi <span className="text-mustard-soft">Homestay</span>
               </span>
-              <span className="mt-1 font-script text-mustard-soft text-sm">
-                Bedugul, Bali
-              </span>
+              <span className="mt-1 font-script text-mustard-soft text-sm">Bedugul, Bali</span>
             </span>
           </Link>
           <RainbowAccent width="w-24" className="mt-4" />
           <p className="text-cream/75 text-sm leading-relaxed max-w-xs mt-4">
-            Rumah hangat di jantung Bedugul — kabut pagi, kopi lokal, dan pelayanan tulus.
+            {site.tagline} — kabut pagi, kopi lokal, dan pelayanan tulus.
           </p>
         </div>
 
@@ -60,17 +58,17 @@ export default function Footer() {
         <div>
           <h4 className="font-display text-lg mb-3 text-mustard-soft">Hubungi</h4>
           <ul className="space-y-2 text-sm text-cream/85">
-            <li className="flex gap-2"><i className="fa-solid fa-location-dot mt-1 text-mustard-soft" aria-hidden="true"></i>{SITE.address}</li>
-            <li className="flex gap-2"><i className="fa-brands fa-whatsapp mt-1 text-mustard-soft" aria-hidden="true"></i>{SITE.whatsappDisplay}</li>
-            <li className="flex gap-2"><i className="fa-solid fa-envelope mt-1 text-mustard-soft" aria-hidden="true"></i>{SITE.email}</li>
-            <li className="flex gap-2"><i className="fa-regular fa-clock mt-1 text-mustard-soft" aria-hidden="true"></i>{SITE.hours}</li>
+            <li className="flex gap-2"><i className="fa-solid fa-location-dot mt-1 text-mustard-soft" aria-hidden="true"></i>{site.address}</li>
+            <li className="flex gap-2"><i className="fa-brands fa-whatsapp mt-1 text-mustard-soft" aria-hidden="true"></i>{site.whatsappDisplay}</li>
+            <li className="flex gap-2"><i className="fa-solid fa-envelope mt-1 text-mustard-soft" aria-hidden="true"></i>{site.email}</li>
+            <li className="flex gap-2"><i className="fa-regular fa-clock mt-1 text-mustard-soft" aria-hidden="true"></i>{site.hours}</li>
           </ul>
         </div>
       </div>
 
       <div className="border-t border-cream/10">
         <div className="max-w-7xl mx-auto px-6 py-5 text-xs text-cream/60 flex flex-col md:flex-row justify-between gap-2">
-          <span>© {new Date().getFullYear()} Pelangi Homestay. Semua hak dilindungi.</span>
+          <span>© {new Date().getFullYear()} {site.brand}. Semua hak dilindungi.</span>
           <span>Made with <span className="text-mustard-soft">♥</span> for Bedugul.</span>
         </div>
       </div>

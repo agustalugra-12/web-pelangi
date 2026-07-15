@@ -1,22 +1,25 @@
-import { restaurant, galleryByCategory } from "@/data/content";
+import { useContent } from "@/context/ContentContext";
 import SectionHeading from "@/components/site/SectionHeading";
 
+const byCat = (arr, c) => arr.find((g) => g.category === c) || arr[0];
+
 export default function Restaurant() {
+  const { site, gallery, menu } = useContent();
   return (
     <div className="pt-14 pb-24">
       <section className="max-w-7xl mx-auto px-5 md:px-8">
-        <SectionHeading eyebrow="Restaurant" title="Cerita rasa" italicWord="Bedugul" subtitle={restaurant.intro} />
+        <SectionHeading eyebrow="Restaurant" title="Cerita rasa" italicWord="Bedugul" subtitle={site.restaurantIntro} />
 
         <div className="mt-12 grid md:grid-cols-5 gap-6 items-start">
           <div className="md:col-span-3 grid grid-cols-2 gap-3">
             <div className="col-span-2 aspect-[16/9] rounded-3xl overflow-hidden shadow-paper-sm">
-              <img src={galleryByCategory("Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryByCategory("Garden").src} alt="Garden" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "Garden").src} alt="Garden" className="w-full h-full object-cover" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryByCategory("View").src} alt="View" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "View").src} alt="View" className="w-full h-full object-cover" />
             </div>
           </div>
 
@@ -24,8 +27,8 @@ export default function Restaurant() {
             <p className="font-script text-2xl text-mustard-deep">Menu</p>
             <h3 className="font-display text-2xl text-teal-deep italic">Favorit tamu</h3>
             <ul className="mt-4 divide-y divide-ink/10">
-              {restaurant.menu.map((m) => (
-                <li key={m.name} className="py-3">
+              {menu.map((m) => (
+                <li key={m.id || m.name} className="py-3">
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="font-semibold text-teal-deep">{m.name}</p>
                     <p className="font-display italic text-mustard-deep">{m.price}</p>
@@ -35,7 +38,7 @@ export default function Restaurant() {
               ))}
             </ul>
             <p className="mt-5 text-sm text-teal-deep/75">
-              Jam operasional <span className="font-semibold text-teal-deep">{restaurant.hours}</span>
+              Jam operasional <span className="font-semibold text-teal-deep">{site.restaurantHours}</span>
             </p>
           </div>
         </div>

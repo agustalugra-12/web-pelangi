@@ -1,7 +1,7 @@
 import { NavLink, Link } from "react-router-dom";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
-import { SITE } from "@/data/content";
+import { useContent } from "@/context/ContentContext";
 import { NAV, HOME } from "@/constants/testIds";
 import BrandLogo from "@/components/site/BrandLogo";
 
@@ -19,6 +19,7 @@ const links = [
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const { site } = useContent();
 
   return (
     <header className="sticky top-0 z-50 bg-cream/85 backdrop-blur-md border-b border-ink/5">
@@ -61,7 +62,7 @@ export default function Navbar() {
 
         <div className="hidden md:flex items-center gap-3">
           <a
-            href={SITE.bookingUrl}
+            href={site.bookingUrl}
             target="_blank"
             rel="noopener noreferrer"
             data-testid={HOME.navBookBtn}
@@ -105,7 +106,7 @@ export default function Navbar() {
               </NavLink>
             ))}
             <a
-              href={SITE.bookingUrl}
+              href={site.bookingUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-2 inline-flex items-center justify-center rounded-full bg-leaf text-white px-5 py-3 font-semibold"

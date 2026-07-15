@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
-import { galleryCategories, galleryItems } from "@/data/content";
+import { useContent } from "@/context/ContentContext";
+import { galleryCategoriesAll } from "@/data/content";
 import SectionHeading from "@/components/site/SectionHeading";
 
 export default function Gallery() {
+  const { gallery } = useContent();
   const [active, setActive] = useState("Semua");
   const filtered = useMemo(
-    () => (active === "Semua" ? galleryItems : galleryItems.filter((g) => g.category === active)),
-    [active]
+    () => (active === "Semua" ? gallery : gallery.filter((g) => g.category === active)),
+    [active, gallery]
   );
 
   return (
@@ -15,7 +17,7 @@ export default function Gallery() {
         <SectionHeading eyebrow="Gallery" title="Sudut" italicWord="Pelangi" subtitle="Sekilas suasana kamar, taman, restoran, dan pemandangan sekitarnya." />
 
         <div className="mt-10 flex gap-2 overflow-x-auto no-scrollbar pb-2">
-          {galleryCategories.map((c) => (
+          {galleryCategoriesAll.map((c) => (
             <button
               key={c}
               type="button"
@@ -34,7 +36,7 @@ export default function Gallery() {
 
         <div className="mt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {filtered.map((g, i) => (
-            <div key={`${g.category}-${i}`} className={`overflow-hidden rounded-2xl shadow-paper-sm ${i % 5 === 0 ? "aspect-[3/4]" : "aspect-square"}`}>
+            <div key={g.id || `${g.category}-${i}`} className={`overflow-hidden rounded-2xl shadow-paper-sm ${i % 5 === 0 ? "aspect-[3/4]" : "aspect-square"}`}>
               <img src={g.src} alt={g.category} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
             </div>
           ))}

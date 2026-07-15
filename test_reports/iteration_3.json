@@ -1,0 +1,55 @@
+{
+  "summary": "Iteration 3 — Full backend + frontend regression for the new CMS + Media Storage. All 34 backend pytest cases pass (16 legacy + 18 new content/media). Frontend admin CMS end-to-end verified: login, sidebar nav (9 items), all 7 CMS sections load with correct seeded counts, Rooms edit→save→public /rooms roundtrip works, Settings promoTitle edit→public / homepage roundtrip works, Media upload succeeds and thumbnail renders from /api/media/{id}, Blog list still shows 3 seeded posts. No regressions.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All public pages (console)", "issues": ["Two 401s from GET /api/auth/me still fire on public pages because AuthProvider mounts globally. Non-blocking; already noted in iteration 1/2."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_content_media.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "verification_results": {
+    "backend_pytest": "PASS — 34/34 tests, 6.49s. Includes new: /api/content GET (all + per-type), /api/admin/content PUT auth+validation+roundtrip for rooms & site.promoTitle, /api/admin/media upload (auth, PNG accepted, unsupported ext rejected), /api/media/{id} bytes roundtrip, DELETE /api/admin/media soft-delete.",
+    "public_content_get": "PASS — GET /api/content returns all 7 keys; /api/content/rooms returns Standard Room (IDR 175.000, 3×3 m) + Cottage (IDR 225.000, 5×3,5 m).",
+    "restaurant_page": "PASS — All 5 menu items render (Nasi Goreng, Mie Instan, Sosis Bakar, Kentang Goreng, Kopi Hitam); no 'Reservasi Meja' button present.",
+    "rooms_page": "PASS — Both rooms render with correct prices/sizes, facility pills with icons.",
+    "admin_login": "PASS — admin@pelangihomestay.com / pelangi2026 redirects to /admin/dashboard; httpOnly cookies set (verified in backend pytest).",
+    "admin_sidebar_nav": "PASS — All 9 nav items visible & clickable: admin-nav-blog / rooms / menu / gallery / attractions / faqs / testimonials / media / settings.",
+    "cms_rooms": "PASS — Loaded 2 rooms; expanded Standard Room; changed priceFrom IDR 175.000 → IDR 180.000; PUT returned ok; public /rooms displayed 'IDR 180.000'; then restored to IDR 175.000.",
+    "cms_menu_count": "PASS — 5 items loaded.",
+    "cms_gallery_count": "PASS — 17 items loaded.",
+    "cms_attractions_count": "PASS — 5 items loaded in correct default order (Pura Ulun Danu, Kebun Raya, Danau Beratan, Pasar Candikuning, Handara Gate).",
+    "cms_faqs_count": "PASS — 7 items loaded.",
+    "cms_testimonials_count": "PASS — 4 items loaded.",
+    "cms_settings_roundtrip": "PASS — Fields for brand/email/promoTitle/bookingUrl/seoTitle/restaurantHours all rendered. Changed promoTitle to 'Menginap 5 malam gratis 1 malam'; verified on homepage; restored.",
+    "cms_media_upload_ui": "PASS — Uploader-upload button visible; uploaded a 1×1 PNG via <input type=file>; new thumbnail rendered from /api/media/{id}; media-copy-{id} and media-delete-{id} controls present.",
+    "blog_regression": "PASS — /admin/blog lists 3 seeded posts with Edit/Hapus actions; full CRUD verified in backend_test.py."
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:497 GET /api/media/{id} is public with no cache tampering — good (public + 1yr cache header). Consider adding an ETag header for CDN edge caching later.",
+    "server.py:432 PUT /api/admin/content/{type} accepts an arbitrary dict payload. Payload is stored raw so a malformed admin edit could break public pages. Consider Pydantic schemas per content type (or at least type/shape validation) — but frontend has DEFAULT_CONTENT fallback in ContentContext so pages don't crash.",
+    "AuthContext still polls /api/auth/me on every public page load, producing 401 console noise for anonymous visitors. Cosmetic (repeat from iter 1).",
+    "CmsList.jsx has no explicit 'reorder-up-{id}'/'reorder-down-{id}' test-ids; move buttons only titled 'Naik/Turun'. Consider adding testids for reorder verification.",
+    "CmsMedia.jsx: ImageInput onChange fires with a URL after upload but the CmsMedia handler only reloads — after upload the empty URL input stays empty. Acceptable UX but slightly confusing (upload works, only grid refreshes).",
+    "CORS is locked to a single FRONTEND_URL env var — good. But note: cookies use samesite=none which only works over HTTPS (fine for k8s ingress but flag for local http:// dev)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_content_media.py (new — 18 tests for CMS content & media)"
+  ],
+  "success_rate": {"backend": "100% (34/34)", "frontend": "100% (all 15 checkpoints from review request)"},
+  "test_credentials": "admin@pelangihomestay.com / pelangi2026 (from /app/memory/test_credentials.md) — verified working.",
+  "seed_data_creation": "None. Tests self-cleanup: content roundtrip tests restore the original values; media upload test deletes the uploaded file; a leftover Playwright pytest_tiny.png + one older test.jpg were cleaned up post-test via the API.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression suite: `pytest /app/backend/tests/ -v` (2 files, 34 tests, ~6s, all pass). Full CMS is functional end-to-end: seeded 7 content types (rooms/menu/gallery/attractions/faqs/testimonials/site) at first boot, exposed via /api/content*, editable via /api/admin/content/{type} with cookie auth. Emergent object storage init OK on startup; images uploaded via /api/admin/media are served back at /api/media/{id} with correct content-type. No open issues.",
+  "rca of the issue": "Not applicable — no bugs found this iteration."
+}

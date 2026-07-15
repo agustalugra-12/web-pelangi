@@ -1,8 +1,9 @@
-import { SITE } from "@/data/content";
+import { useContent } from "@/context/ContentContext";
 import { HOME } from "@/constants/testIds";
 
 export default function WhatsAppButton() {
-  const href = `https://wa.me/${SITE.whatsapp}?text=${encodeURIComponent(
+  const { site } = useContent();
+  const href = `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(
     "Halo Pelangi Homestay, saya ingin bertanya tentang ketersediaan kamar."
   )}`;
   return (
