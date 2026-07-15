@@ -1,0 +1,98 @@
+{
+  "project_name": "Pelangi Homestay Marketing Website",
+  "theme": "light",
+  "design_philosophy": "A modern, playful editorial travel magazine aesthetic emphasizing a torn/ripped paper effect. The design blends dark teal with mustard yellow, using layered, organic image crops and 'scrapbook' style doodles to build trust, showcase the cozy mountain lake vibe of Bedugul, and drive direct bookings.",
+  "colors": {
+    "background": "#F9F8F6",
+    "foreground": "#083D38",
+    "primary": "#0F4C5C",
+    "primary_foreground": "#F9F8F6",
+    "secondary": "#F4A261",
+    "secondary_foreground": "#083D38",
+    "accent": "#E9C46A",
+    "cta": "#4CAF50",
+    "cta_foreground": "#FFFFFF",
+    "muted": "#D6D3D1",
+    "border_torn": "#E2E8F0"
+  },
+  "typography": {
+    "heading_font": "Playfair Display",
+    "body_font": "DM Sans",
+    "rules": [
+      "Headings (H1, H2, H3) must use Playfair Display.",
+      "CRITICAL: Inject <i> (italic) tags inside H1/H2 for specific descriptive words (e.g., <h1>Discover <i>Bedugul</i></h1>) to nail the editorial look.",
+      "Body text, navigation, and buttons use DM Sans.",
+      "Do NOT use Inter, Roboto, or generic sans for headings."
+    ]
+  },
+  "visual_enhancers": {
+    "torn_paper": "Create torn edges on section transitions using an SVG mask (e.g., jagged polygons) or a custom SVG background positioned absolutely at the top/bottom of sections.",
+    "image_crops": "Avoid standard rectangles. Use oval crops, arched crops (e.g., rounded-t-full), or soft blob shapes for photography.",
+    "doodles_stickers": "Incorporate circular 'stickers' (e.g., 'Best Price', 'Cozy!') rotated slightly. Use dashed SVG paths connecting elements.",
+    "textures": "Add a fixed pointer-events-none div over the app with a subtle SVG noise background (opacity 3-5%) to simulate paper texture.",
+    "shadows": "Use hard offset shadows (e.g., 4px 4px 0px rgba(0,0,0,0.15)) to emphasize the paper cut-out scrapbook aesthetic."
+  },
+  "components": {
+    "buttons": "Pill-shaped (rounded-full), generous padding (px-8 py-3). Primary 'Book Now' CTAs should use the cta green color to stand out, with a slight hover lift and hard drop-shadow.",
+    "room_cards": "Use an off-white or mustard background card, with a torn top edge SVG. Include room name, capacity, key facilities, starting price, and 'Book Now' CTA linking to pelangihomestay.com/book.",
+    "gallery": "Categorized grid. Use filter tabs (Standard, Cottage, Superior, Restaurant, Garden, View, Lobby) styled as pill buttons. Active tab in mustard yellow, inactive transparent with teal border.",
+    "whatsapp_button": "Fixed bottom-right corner, circular, green, pulsing animation, with a WhatsApp icon.",
+    "accordion_faq": "Clean layout, dark teal text, mustard active state, smooth expand/collapse. Torn paper subtle divider between items."
+  },
+  "layouts": {
+    "hero": "Asymmetrical layout. Left side: Large display text (mixed italic), rounded CTA. Right side: overlapping oval-cropped images of Bedugul lake and cozy cottage, with a dashed doodle connecting them.",
+    "grid_bento": "Use asymmetrical bento grids for the 'Explore Bedugul' and 'Facilities' sections to keep it playful.",
+    "spacing": "Generous spacing. Use py-20 to py-32 between sections. Add padding inside containers to prevent border collisions.",
+    "admin_dashboard": "Keep it functional. Standard Shadcn UI tables and forms for the Blog CMS. Ensure there's a rich text editor stand-in for blog post creation. Simple login page."
+  },
+  "testing_requirements": "All interactive and key informational elements MUST include a data-testid attribute (e.g., data-testid='book-now-button', data-testid='gallery-filter-tab').",
+  "image_urls": [
+    {
+      "url": "https://images.unsplash.com/photo-1544644181-1484b3fdfc62?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHxiYWxpJTIwYmVkdWd1bCUyMGxha2UlMjB0ZW1wbGV8ZW58MHx8fHwxNzg0MTA0NDMyfDA&ixlib=rb-4.1.0&q=85",
+      "category": "hero",
+      "description": "Pura Ulun Danu Bedugul lake temple - use for Hero or Explore section"
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1727706572437-4fcda0cbd66f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwxfHxjb3p5JTIwaG9tZXN0YXklMjBiZWRyb29tJTIwd29vZHxlbnwwfHx8fDE3ODQxMDQ0MzJ8MA&ixlib=rb-4.1.0&q=85",
+      "category": "rooms",
+      "description": "Cozy wood bedroom representing the homestay cottages"
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1750271329096-db52f2f2f6ca?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHw0fHxiZWF1dGlmdWwlMjB0cm9waWNhbCUyMGdhcmRlbiUyMGJyZWFrZmFzdHxlbnwwfHx8fDE3ODQxMDQ0MzJ8MA&ixlib=rb-4.1.0&q=85",
+      "category": "restaurant",
+      "description": "Breakfast spread in a tropical garden"
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1730660338791-8d63548efc75?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwxfHxiZWF1dGlmdWwlMjB0cm9waWNhbCUyMGdhcmRlbiUyMGJyZWFrZmFzdHxlbnwwfHx8fDE3ODQxMDQ0MzJ8MA&ixlib=rb-4.1.0&q=85",
+      "category": "gallery",
+      "description": "Tropical garden view"
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1557093793-e196ae071479?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTN8MHwxfHNlYXJjaHwyfHxwZW9wbGUlMjBlbmpveWluZyUyMG5hdHVyZSUyMGJhbGl8ZW58MHx8fHwxNzg0MTA0NDMyfDA&ixlib=rb-4.1.0&q=85",
+      "category": "explore",
+      "description": "Lush green mountain terraces representing Bedugul nature"
+    }
+  ],
+  "instructions_to_main_agent": {
+    "1": "Use React Router to handle pages (Home, Rooms, Facilities, Gallery, Explore Bedugul, Restaurant, About, Blog, Contact, FAQ, Admin Login, Admin Dashboard).",
+    "2": "For the torn paper effect, create a reusable React component (e.g., <TornEdge />) that renders an SVG with a torn/jagged path, matching the section's background color.",
+    "3": "All 'Book Now' buttons MUST be anchor tags or buttons that open https://pelangihomestay.com/book in a new tab.",
+    "4": "The Admin CMS is lightweight. Create a mock login. The dashboard should have a table listing posts and a form to add/edit posts (title, content, image URL, category).",
+    "5": "Implement the image crops and doodles exactly as specified in visual_enhancers. Overlay text with italicized key words in Playfair Display.",
+    "6": "Ensure contrast ratios are met. Dark teal text on off-white background, or off-white text on dark teal background.",
+    "7": "Do not use transparent headers if they overlap with text; use a solid off-white or glassmorphism effect.",
+    "8": "Use .js files (JSX syntax) for all React components. Do not use TypeScript (.tsx)."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition (e.g., transition: all).",
+    "You MUST NOT center align the app container (.App { text-align: center; }).",
+    "Always use modern button styles (pill-shaped) with interaction animations.",
+    "Every interaction needs micro-animations - hover states, transitions.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Include data-testid on all interactive elements.",
+    "Missing categories of images should be sourced carefully; NEVER use placeholder text for images."
+  ]
+}
