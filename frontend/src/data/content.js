@@ -134,7 +134,9 @@ export const galleryItems = [
   { category: "Garden", src: "/assets/garden.jpg" },
   { category: "Lobby", src: "/assets/signage.jpg" },
   { category: "Lobby", src: "/assets/facade.jpg" },
-  { category: "View", src: svgPhoto("Mountain View", "#12564F", "#E9C46A") },
+  { category: "View", src: "/assets/ulun-danu.webp" },
+  { category: "View", src: "/assets/danau-beratan.webp" },
+  { category: "View", src: "/assets/handara-gate.webp" },
 ];
 
 // Icon mapping for facility pills (Font Awesome classnames)
@@ -162,37 +164,31 @@ export const attractions = [
   {
     title: "Pura Ulun Danu Beratan",
     distance: "5 menit",
-    image: svgPhoto("Pura Ulun Danu", "#0F4C5C", "#F1C57C"),
+    image: "/assets/ulun-danu.webp",
     desc: "Ikon Bedugul — pura di atas danau yang tampak melayang saat air pasang.",
   },
   {
     title: "Kebun Raya Bali",
     distance: "8 menit",
-    image: svgPhoto("Kebun Raya", "#3F7F49", "#F1C57C"),
+    image: "/assets/kebun-raya.webp",
     desc: "Kebun raya luas dengan ribuan koleksi tanaman tropis dataran tinggi.",
   },
   {
     title: "Danau Beratan",
     distance: "5 menit",
-    image: svgPhoto("Danau Beratan", "#1F6A6E", "#F7F3EA"),
+    image: "/assets/danau-beratan.webp",
     desc: "Berperahu, memancing, atau sekadar menikmati sunrise berkabut.",
   },
   {
     title: "Pasar Candikuning",
     distance: "6 menit",
-    image: svgPhoto("Pasar Candikuning", "#C6852E", "#0B2E2A"),
+    image: "/assets/pasar-candikuning.webp",
     desc: "Strawberry segar, sayur mayur, dan oleh-oleh khas dataran tinggi.",
-  },
-  {
-    title: "Hidden Gems Munduk",
-    distance: "35 menit",
-    image: svgPhoto("Munduk", "#0B3A47", "#E9C46A"),
-    desc: "Air terjun, perkebunan kopi, dan jalur trekking untuk pecinta alam.",
   },
   {
     title: "Handara Gate",
     distance: "12 menit",
-    image: svgPhoto("Handara Gate", "#0F4C5C", "#F1C57C"),
+    image: "/assets/handara-gate.webp",
     desc: "Gerbang ikonik untuk foto klasik ala Bali dataran tinggi.",
   },
 ];
