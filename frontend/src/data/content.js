@@ -62,8 +62,8 @@ export const rooms = [
   {
     slug: "standard",
     name: "Standard Room",
-    capacity: "2 Tamu",
-    size: "18 m²",
+    capacity: "2 Dewasa + 1 Anak",
+    size: "3 × 3 m",
     priceFrom: "IDR 175.000",
     image: "/assets/std-5.webp",
     gallery: [
@@ -80,8 +80,8 @@ export const rooms = [
   {
     slug: "cottage",
     name: "Cottage",
-    capacity: "2 – 4 Tamu",
-    size: "34 m²",
+    capacity: "2 Dewasa + 1 Anak",
+    size: "5 × 3,5 m",
     priceFrom: "IDR 225.000",
     image: "/assets/cot-2.webp",
     gallery: [
@@ -93,7 +93,7 @@ export const rooms = [
     ],
     facilities: COMMON_FACILITIES,
     description:
-      "Fasilitas identik dengan Standard Room, namun jauh lebih lapang — 34 m² dengan teras luas untuk keluarga kecil atau honeymoon yang butuh ruang bernapas lebih.",
+      "Fasilitas identik dengan Standard Room, namun jauh lebih lapang — 5 × 3,5 m dengan teras luas untuk keluarga kecil atau honeymoon yang butuh ruang bernapas lebih.",
   },
 ];
 
