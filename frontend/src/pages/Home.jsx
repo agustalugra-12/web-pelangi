@@ -119,7 +119,7 @@ export default function Home() {
       {/* ROOMS */}
       <section className="bg-paper py-20">
         <div className="max-w-7xl mx-auto px-5 md:px-8">
-          <SectionHeading eyebrow="Pilihan Kamar" title="Tempat" italicWord="beristirahat" subtitle="Tiga tipe akomodasi, masing-masing dengan karakternya sendiri." />
+          <SectionHeading eyebrow="Pilihan Kamar" title="Tempat" italicWord="beristirahat" subtitle="Dua tipe akomodasi, masing-masing dengan karakternya sendiri." />
           <div className="mt-12 grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
             {rooms.map((r, i) => (
               <RoomCard key={r.slug} room={r} index={i} />

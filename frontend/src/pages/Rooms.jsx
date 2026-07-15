@@ -6,7 +6,7 @@ export default function Rooms() {
   return (
     <div className="pt-14 pb-24">
       <section className="max-w-7xl mx-auto px-5 md:px-8">
-        <SectionHeading eyebrow="Rooms" title="Pilih kamar" italicWord="Anda" subtitle="Tiga tipe akomodasi, semuanya dirawat dengan hati." />
+        <SectionHeading eyebrow="Rooms" title="Pilih kamar" italicWord="Anda" subtitle="Dua tipe akomodasi, semuanya dirawat dengan hati." />
         <div className="mt-12 grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
           {rooms.map((r, i) => (
             <RoomCard key={r.slug} room={r} index={i} />
