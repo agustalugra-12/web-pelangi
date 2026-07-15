@@ -228,12 +228,13 @@ export const faqs = [
 
 export const restaurant = {
   intro:
-    "Ruang makan hangat dengan panorama taman dan pegunungan. Menu kami memuliakan bahan lokal Bedugul — strawberry segar, kopi Munduk, dan sayur mayur dari kebun tetangga.",
+    "Ruang makan hangat dengan panorama taman dan pegunungan. Menu sederhana yang cocok untuk sarapan, camilan sore, atau teman ngobrol di malam sejuk Bedugul.",
   hours: "07:00 – 21:00 WITA",
   menu: [
-    { name: "Nasi Campur Pelangi", desc: "Nasi hangat, ayam bakar, sate lilit, sayur khas, sambal matah.", price: "IDR 65k" },
-    { name: "Bubur Injin Kelapa", desc: "Bubur beras hitam gula aren dengan santan segar.", price: "IDR 28k" },
-    { name: "Strawberry Pancake", desc: "Pancake tebal, strawberry Candikuning, madu lokal.", price: "IDR 45k" },
-    { name: "Kopi Susu Munduk", desc: "Kopi Munduk single origin, susu segar dataran tinggi.", price: "IDR 25k" },
+    { name: "Nasi Goreng", desc: "Nasi goreng khas rumahan, gurih dengan telur mata sapi dan kerupuk.", price: "IDR 30k" },
+    { name: "Mie Instan", desc: "Mie instan panas yang tidak pernah salah, sempurna untuk pagi berkabut.", price: "IDR 15k" },
+    { name: "Sosis Bakar", desc: "Sosis panggang saus khas, disajikan dengan saus sambal & mayo.", price: "IDR 20k" },
+    { name: "Kentang Goreng", desc: "Kentang goreng crispy dengan bumbu keju atau sambal manis.", price: "IDR 20k" },
+    { name: "Kopi Hitam", desc: "Kopi hitam single origin dari perkebunan sekitar Bedugul.", price: "IDR 10k" },
   ],
 };

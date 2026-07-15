@@ -1,4 +1,4 @@
-import { restaurant, galleryByCategory, SITE } from "@/data/content";
+import { restaurant, galleryByCategory } from "@/data/content";
 import SectionHeading from "@/components/site/SectionHeading";
 
 export default function Restaurant() {
@@ -37,14 +37,6 @@ export default function Restaurant() {
             <p className="mt-5 text-sm text-teal-deep/75">
               Jam operasional <span className="font-semibold text-teal-deep">{restaurant.hours}</span>
             </p>
-            <a
-              href={`https://wa.me/${SITE.whatsapp}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-lift inline-flex mt-4 rounded-full bg-leaf text-white px-5 py-2.5 text-sm font-semibold shadow-paper-sm"
-            >
-              Reservasi Meja
-            </a>
           </div>
         </div>
       </section>

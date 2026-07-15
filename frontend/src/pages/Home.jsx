@@ -69,13 +69,13 @@ export default function Home() {
           <div className="lg:col-span-5 relative">
             <div className="relative">
               <div className="blob overflow-hidden shadow-paper w-full aspect-[4/5] max-w-sm mx-auto">
-                <img src={rooms[1].image} alt="Cottage Pelangi" className="w-full h-full object-cover" />
+                <img src="/assets/signage.jpg" alt="Papan nama Pelangi Homestay di Jl. Kebun Raya Bedugul" className="w-full h-full object-cover" />
               </div>
               <div className="absolute -bottom-8 -left-6 w-40 h-40 rounded-full overflow-hidden shadow-paper border-4 border-cream hidden md:block">
-                <img src={attractions[0].image} alt="Pura Ulun Danu" className="w-full h-full object-cover" />
+                <img src={attractions[0].image} alt="Pura Ulun Danu Beratan" className="w-full h-full object-cover" />
               </div>
               <div className="absolute -top-6 -right-4 w-28 h-28 rounded-full overflow-hidden shadow-paper border-4 border-cream hidden md:block">
-                <img src={attractions[2].image} alt="Danau Beratan" className="w-full h-full object-cover" />
+                <img src={attractions[4].image} alt="Handara Gate" className="w-full h-full object-cover" />
               </div>
             </div>
           </div>
