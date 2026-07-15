@@ -1,0 +1,45 @@
+{
+  "summary": "First iteration full-stack testing for Pelangi Homestay. All 16 backend pytest tests PASSED (health, site/config, public blog, auth login/logout/me with httpOnly cookies, admin blog CRUD, contact submit + persistence, validation). All frontend Playwright flows PASSED via ingress URL: home load, Book Now hrefs (nav + hero -> https://pelangihomestay.com/book, target=_blank), WhatsApp floating button (wa.me/6285119459269, target=_blank), all 9 main routes, gallery filter tabs, blog listing (3 seeded), blog detail render, FAQ accordion, contact form submit + toast, admin protected route redirect for anon, login with admin@pelangihomestay.com / pelangi2026, create post -> appears in dashboard, edit loads existing data, delete, logout + subsequent redirect enforcement.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "CORS middleware", "issue": "app.add_middleware(CORSMiddleware, ...) is added AFTER app.include_router(api_router). In FastAPI/Starlette this still works because middleware is processed via a middleware stack rebuilt on startup, but the conventional order is to add middleware before mounting routers. Not a functional bug; cookies were set and CORS worked in tests."},
+      {"endpoint": "CORS allow_origins", "issue": "backend/.env has CORS_ORIGINS=\"*\" but code only reads FRONTEND_URL (single origin). This is fine since credentials require an explicit origin, but the CORS_ORIGINS env var is unused/misleading."},
+      {"endpoint": "@app.on_event", "issue": "Uses deprecated FastAPI @app.on_event('startup')/('shutdown'). Consider migrating to lifespan handlers (non-blocking for now)."},
+      {"endpoint": "POST /api/admin/blog", "issue": "Returns 200 on create; standard REST convention is 201 Created (cosmetic)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All pages (console)", "issues": ["AuthContext calls GET /api/auth/me on every mount for anonymous visitors, producing a 401 in browser console on every public page load. Functionally correct but noisy — consider suppressing by only calling /auth/me when the user is on an admin route, or check a lightweight endpoint first."]},
+      {"screen": "All pages (console)", "issues": ["A repeating 403 network error appears once per page (likely a Font Awesome kit / third-party asset). Not blocking; investigate origin to keep console clean."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: only invoke /auth/me on /admin/* routes to remove noisy 401s from public pages' consoles.",
+    "Optional: remove unused CORS_ORIGINS env var or wire it to allow_origins.",
+    "Optional: migrate on_event startup/shutdown to FastAPI lifespan API.",
+    "Optional: return 201 on POST /api/admin/blog to align with REST conventions."
+  ],
+  "critical_code_review_comments": [
+    "server.py is a single 500-line file mixing models, routes, auth, seeding — acceptable for MVP but should be split into modules (models/, routes/, auth.py, seed.py) if the CMS grows.",
+    "ObjectId is correctly excluded via post_to_out and manual pop in get_current_user — good.",
+    "Login endpoint has no brute-force lockout (auth playbook mentions 5-fail lockout). For a private admin-only CMS this is acceptable but noted."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (all critical flows)"},
+  "test_credentials": "admin@pelangihomestay.com / pelangi2026 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Backend startup auto-seeds admin user + 3 blog posts. Playwright test created and cleaned up a 'TEST Playwright Post' via admin flow. Multiple TEST_ contact_messages remain in MongoDB but are non-destructive.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend at REACT_APP_BACKEND_URL with /api prefix. Cookies use secure=true samesite=none — must test over the public ingress URL, not localhost. Admin creds in /app/memory/test_credentials.md. Playwright must accept confirm dialogs before delete: page.on('dialog', lambda d: asyncio.create_task(d.accept())). The 401 for /auth/me on anonymous public pages is expected (AuthProvider mounts globally). Public blog GET returns only published posts; unpublished posts are only visible via admin endpoints.",
+  "rca of the issue": "No issues found requiring RCA. All requested features from the review request are functioning end-to-end."
+}

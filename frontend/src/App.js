@@ -1,55 +1,90 @@
 import { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { Toaster } from "sonner";
+import { AuthProvider } from "@/context/AuthContext";
+import SiteLayout from "@/components/site/SiteLayout";
+import ProtectedRoute from "@/components/site/ProtectedRoute";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import Home from "@/pages/Home";
+import Rooms from "@/pages/Rooms";
+import Facilities from "@/pages/Facilities";
+import Gallery from "@/pages/Gallery";
+import ExploreBedugul from "@/pages/ExploreBedugul";
+import Restaurant from "@/pages/Restaurant";
+import About from "@/pages/About";
+import Contact from "@/pages/Contact";
+import FAQ from "@/pages/FAQ";
+import Blog from "@/pages/Blog";
+import BlogDetail from "@/pages/BlogDetail";
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
+import AdminLogin from "@/pages/admin/Login";
+import AdminDashboard from "@/pages/admin/Dashboard";
+import PostEditor from "@/pages/admin/PostEditor";
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
   useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [pathname]);
+  return null;
+}
 
 function App() {
   return (
-    <div className="App">
+    <AuthProvider>
       <BrowserRouter>
+        <ScrollToTop />
+        <Toaster
+          richColors
+          position="top-center"
+          toastOptions={{ style: { fontFamily: "DM Sans, sans-serif" } }}
+        />
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
+          {/* Site */}
+          <Route element={<SiteLayout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/rooms" element={<Rooms />} />
+            <Route path="/facilities" element={<Facilities />} />
+            <Route path="/gallery" element={<Gallery />} />
+            <Route path="/explore-bedugul" element={<ExploreBedugul />} />
+            <Route path="/restaurant" element={<Restaurant />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:slug" element={<BlogDetail />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/faq" element={<FAQ />} />
           </Route>
+
+          {/* Admin */}
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/posts/new"
+            element={
+              <ProtectedRoute>
+                <PostEditor />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/posts/:id"
+            element={
+              <ProtectedRoute>
+                <PostEditor />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </BrowserRouter>
-    </div>
+    </AuthProvider>
   );
 }
 

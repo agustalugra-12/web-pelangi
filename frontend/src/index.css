@@ -2,114 +2,164 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --background: 39 44% 96%;
+    --foreground: 176 60% 11%;
+    --card: 40 50% 98%;
+    --card-foreground: 176 60% 11%;
+    --popover: 40 50% 98%;
+    --popover-foreground: 176 60% 11%;
+    --primary: 191 71% 21%;
+    --primary-foreground: 40 50% 98%;
+    --secondary: 40 40% 92%;
+    --secondary-foreground: 176 60% 11%;
+    --muted: 40 20% 88%;
+    --muted-foreground: 176 20% 30%;
+    --accent: 34 79% 60%;
+    --accent-foreground: 176 60% 11%;
+    --destructive: 0 74% 42%;
+    --destructive-foreground: 40 50% 98%;
+    --border: 40 20% 85%;
+    --input: 40 20% 85%;
+    --ring: 191 71% 21%;
+    --radius: 0.75rem;
+  }
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
-    margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  background: #f7f3ea;
+  color: #0b2e2a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+/* Selection */
+::selection {
+  background: #e9a24b;
+  color: #0b2e2a;
 }
 
-@layer base {
-    :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
-    }
-    .dark {
-        --background: 0 0% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 0 0% 9%;
-        --secondary: 0 0% 14.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 0 0% 14.9%;
-        --muted-foreground: 0 0% 63.9%;
-        --accent: 0 0% 14.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 14.9%;
-        --input: 0 0% 14.9%;
-        --ring: 0 0% 83.1%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
-    }
+/* Grain texture overlay */
+.grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.9'/></svg>");
 }
 
-@layer base {
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply bg-background text-foreground;
-    }
+/* Torn paper edges — reusable via masks */
+.torn-bottom {
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 800' preserveAspectRatio='none'><path d='M0 0 H1200 V740 C1120 760 1080 720 1000 745 C920 770 860 725 780 745 C700 765 640 720 560 745 C480 770 420 725 340 745 C260 765 200 720 120 745 C60 760 30 730 0 745 Z' fill='black'/></svg>");
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 800' preserveAspectRatio='none'><path d='M0 0 H1200 V740 C1120 760 1080 720 1000 745 C920 770 860 725 780 745 C700 765 640 720 560 745 C480 770 420 725 340 745 C260 765 200 720 120 745 C60 760 30 730 0 745 Z' fill='black'/></svg>");
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
 
-@layer base {
-    [data-debug-wrapper="true"] {
-        display: contents !important;
-    }
-
-    [data-debug-wrapper="true"] > * {
-        margin-left: inherit;
-        margin-right: inherit;
-        margin-top: inherit;
-        margin-bottom: inherit;
-        padding-left: inherit;
-        padding-right: inherit;
-        padding-top: inherit;
-        padding-bottom: inherit;
-        column-gap: inherit;
-        row-gap: inherit;
-        gap: inherit;
-        border-left-width: inherit;
-        border-right-width: inherit;
-        border-top-width: inherit;
-        border-bottom-width: inherit;
-        border-left-style: inherit;
-        border-right-style: inherit;
-        border-top-style: inherit;
-        border-bottom-style: inherit;
-        border-left-color: inherit;
-        border-right-color: inherit;
-        border-top-color: inherit;
-        border-bottom-color: inherit;
-    }
+.torn-top {
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 800' preserveAspectRatio='none'><path d='M0 60 C80 45 140 80 220 55 C300 30 360 75 440 55 C520 35 580 80 660 55 C740 30 800 75 880 55 C960 35 1020 80 1100 55 C1150 45 1180 60 1200 55 V800 H0 Z' fill='black'/></svg>");
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 800' preserveAspectRatio='none'><path d='M0 60 C80 45 140 80 220 55 C300 30 360 75 440 55 C520 35 580 80 660 55 C740 30 800 75 880 55 C960 35 1020 80 1100 55 C1150 45 1180 60 1200 55 V800 H0 Z' fill='black'/></svg>");
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
+
+/* Ripped card corner */
+.ripped-card {
+  clip-path: polygon(
+    3% 4%, 12% 1%, 24% 5%, 36% 2%, 48% 5%, 60% 2%, 72% 6%, 84% 2%, 96% 5%, 99% 12%,
+    97% 24%, 100% 36%, 96% 48%, 100% 60%, 97% 72%, 100% 84%, 96% 95%, 88% 99%,
+    76% 96%, 64% 99%, 52% 96%, 40% 99%, 28% 96%, 16% 99%, 6% 96%, 2% 88%,
+    5% 76%, 1% 64%, 4% 52%, 1% 40%, 4% 28%, 1% 16%
+  );
+}
+
+.blob {
+  border-radius: 62% 38% 55% 45% / 45% 58% 42% 55%;
+}
+
+/* Dashed doodle stroke */
+.doodle-dash {
+  stroke-dasharray: 6 8;
+  stroke-linecap: round;
+}
+
+/* Pill button hover lift */
+.btn-lift {
+  transition-property: transform, box-shadow, background-color, color, border-color;
+  transition-duration: 220ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 4px 6px 0 rgba(11, 46, 42, 0.18);
+}
+
+/* Sticker rotation utility */
+.sticker {
+  transform: rotate(-6deg);
+}
+
+/* Prose defaults for blog content */
+.prose-pelangi p {
+  margin: 0 0 1.1rem 0;
+  line-height: 1.75;
+  color: #0b2e2a;
+}
+.prose-pelangi h2 {
+  font-family: "Fraunces", serif;
+  font-weight: 600;
+  font-size: 1.75rem;
+  margin: 2rem 0 0.75rem;
+  color: #0f4c5c;
+}
+.prose-pelangi h3 {
+  font-family: "Fraunces", serif;
+  font-weight: 600;
+  font-size: 1.35rem;
+  margin: 1.5rem 0 0.5rem;
+}
+.prose-pelangi a {
+  color: #0f4c5c;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* Utility to reveal on mount */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.reveal {
+  animation: fadeUp 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.reveal-delay-1 { animation-delay: 120ms; }
+.reveal-delay-2 { animation-delay: 240ms; }
+.reveal-delay-3 { animation-delay: 360ms; }
+
+/* Hide scrollbar for horizontal filter tabs */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
