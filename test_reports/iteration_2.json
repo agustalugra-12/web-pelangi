@@ -1,0 +1,47 @@
+{
+  "summary": "Frontend-only regression + content-fix verification for Pelangi Homestay iteration 2. All requested content bugs are fixed and rendering correctly in the browser via the public ingress URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All public pages (console)", "issues": ["Still 401 spam from GET /api/auth/me because AuthProvider mounts globally (already reported in iteration 1). Non-blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_1.json"
+  ],
+  "verification_results": {
+    "rooms_page_cottage_image": "PASS — <img src='/assets/cot-2.webp'> renders and image.complete && naturalWidth>0 = true",
+    "rooms_page_standard_image": "PASS — <img src='/assets/std-5.webp'> renders and loads",
+    "facility_pill_icons": "PASS — All 14 facility pills render <i class='fa-solid fa-...'> with computed font-family='Font Awesome 7 Free'. Verified mappings: Double Bed/King Bed→fa-bed, Extra Bed→fa-bed-pulse, WiFi→fa-wifi, Air Panas→fa-mug-hot, Smart TV→fa-tv, Breakfast→fa-utensils, Teras Pribadi/Balkon Luas→fa-chair, View Pegunungan→fa-mountain",
+    "rooms_kebijakan_extra_bed": "PASS — 'Extra bed Rp 50.000 / malam termasuk sarapan' present; 'Rp 150.000' NOT present on /rooms",
+    "faq_extra_bed_answer": "PASS — Expanded accordion shows 'Rp 50.000 per malam sudah termasuk sarapan tambahan.'; 'Rp 150.000' NOT present on /faq",
+    "home_no_early_bird": "PASS — '20% Early Bird' string not found on home page",
+    "home_promo_10_malam": "PASS — 'Menginap 10 malam, gratis 1 malam.' present in mid-page promo strip",
+    "contact_email": "PASS — Email card shows 'pelangihomestay9@gmail.com'; a[href^='mailto:'] resolves to 'mailto:pelangihomestay9@gmail.com'; old halo@pelangihomestay.com NOT present",
+    "footer_email": "PASS — Footer contact list contains 'pelangihomestay9@gmail.com' with envelope icon",
+    "gallery_cottage_filter": "PASS — Filter 'Cottage' displays exactly 4 photos (cot-2, cot-4, cot-3, cot-1 .webp)",
+    "gallery_bathroom_filter": "PASS — Filter 'Bathroom' displays exactly 2 photos (std-1.webp, cot-5.webp)",
+    "fontawesome_loaded": "PASS — @fortawesome/fontawesome-free CSS loaded from src/index.js. Computed font-family on <i.fa-solid> = 'Font Awesome 7 Free'; on <i.fa-brands.fa-whatsapp> = 'Font Awesome 7 Brands'; ::before content = '\\uf232' (whatsapp glyph). No console errors mentioning FA fonts. Broken kit reference removed from public/index.html.",
+    "whatsapp_float_btn": "PASS — data-testid='whatsapp-float-btn' visible and renders WhatsApp glyph via ::before pseudo-element",
+    "admin_login_regression": "PASS — Login with admin@pelangihomestay.com / pelangi2026 succeeds; redirected to /admin/dashboard; BrandLogo renders in login page (no import error); dashboard lists 3 seeded posts with functional Edit/Hapus buttons and 'Artikel Baru' CTA. Full CRUD was already validated in iteration 1; here we confirmed no regression from the BrandLogo import."
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "content.js: rooms[1].gallery references cot-2..cot-5 real webp images — good. rooms.description mentions '3 tipe akomodasi' in Rooms page copy but only 2 room types exist in data. Minor copy inconsistency (not a bug fix in scope of this iteration).",
+    "facilityIcons dict is well organized in content.js and RoomCard falls back gracefully when a facility label has no icon mapping (via `facilityIcons[f] && ...` guard).",
+    "The 401 /auth/me noise from public pages persists (previously reported in iteration 1) — still cosmetic."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "100% (13/13 verifications)"},
+  "test_credentials": "admin@pelangihomestay.com / pelangi2026 (from /app/memory/test_credentials.md) — verified working",
+  "seed_data_creation": "None. No test posts created this iteration (iteration_1 already verified full CRUD).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All content bug fixes for iteration 2 verified via computed styles + DOM assertions on the public ingress URL. Font Awesome 7 (npm @fortawesome/fontawesome-free) is now correctly loaded via src/index.js — visible via getComputedStyle font-family = 'Font Awesome 7 Free' / 'Font Awesome 7 Brands'. Cottage/Standard real photos in /app/frontend/public/assets/ (cot-1..5.webp, std-1..5.webp). Backend endpoints unchanged since iteration_1 — the pytest suite at /app/backend/tests/backend_test.py (16 tests, all passing) can be rerun for backend regression if needed.",
+  "rca of the issue": "Not applicable — no issues found. All 13 checkpoints from the review request passed."
+}

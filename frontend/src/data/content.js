@@ -7,7 +7,7 @@ export const SITE = {
   address: "Bedugul, Baturiti, Tabanan, Bali 82191",
   whatsapp: "6285119459269",
   whatsappDisplay: "0851-1945-9269",
-  email: "halo@pelangihomestay.com",
+  email: "pelangihomestay9@gmail.com",
   hours: "Reception 07:00 – 22:00 WITA",
   bookingUrl: "https://pelangihomestay.com/book",
   mapEmbed:
@@ -72,10 +72,17 @@ export const rooms = [
     capacity: "2 – 4 Tamu",
     size: "34 m²",
     priceFrom: "IDR 225.000",
-    image: svgPhoto("Cottage", "#083D38"),
-    facilities: ["King Bed", "Extra Bed", "Air Panas", "Balkon Luas", "View Pegunungan", "Breakfast"],
+    image: "/assets/cot-2.webp",
+    gallery: [
+      "/assets/cot-2.webp",
+      "/assets/cot-4.webp",
+      "/assets/cot-3.webp",
+      "/assets/cot-1.webp",
+      "/assets/cot-5.webp",
+    ],
+    facilities: ["King Bed", "Extra Bed", "Air Panas", "Smart TV", "WiFi", "Balkon Luas", "View Pegunungan", "Breakfast"],
     description:
-      "Cottage kayu independen dengan balkon menghadap gunung, sarapan sudah termasuk — paling favorit untuk keluarga kecil dan honeymoon.",
+      "Cottage kayu independen bergaya Bali dengan teras luas, ukiran headboard, dan sarapan sudah termasuk — paling favorit untuk keluarga kecil dan honeymoon.",
   },
 ];
 
@@ -106,16 +113,38 @@ export const galleryItems = [
   { category: "Standard Room", src: "/assets/std-4.webp" },
   { category: "Standard Room", src: "/assets/std-3.webp" },
   { category: "Standard Room", src: "/assets/std-2.webp" },
+  { category: "Cottage", src: "/assets/cot-2.webp" },
+  { category: "Cottage", src: "/assets/cot-4.webp" },
+  { category: "Cottage", src: "/assets/cot-3.webp" },
+  { category: "Cottage", src: "/assets/cot-1.webp" },
   { category: "Bathroom", src: "/assets/std-1.webp" },
-  { category: "Cottage", src: svgPhoto("Cottage #1", "#083D38") },
-  { category: "Cottage", src: svgPhoto("Cottage #2", "#0A4A44") },
+  { category: "Bathroom", src: "/assets/cot-5.webp" },
   { category: "Restaurant", src: svgPhoto("Restaurant", "#C6852E", "#F7F3EA") },
   { category: "Garden", src: svgPhoto("Garden", "#3F7F49", "#F1C57C") },
   { category: "View", src: svgPhoto("Mountain View", "#12564F", "#E9C46A") },
   { category: "Lobby", src: svgPhoto("Lobby", "#0F4C5C", "#F1C57C") },
-  { category: "View", src: svgPhoto("Danau Beratan", "#1F6A6E", "#F7F3EA") },
-  { category: "Garden", src: svgPhoto("Garden Corner", "#4C7A3A", "#F1C57C") },
 ];
+
+// Icon mapping for facility pills (Font Awesome classnames)
+export const facilityIcons = {
+  "WiFi": "fa-wifi",
+  "Air Panas": "fa-mug-hot",
+  "Smart TV": "fa-tv",
+  "Breakfast": "fa-utensils",
+  "Double Bed": "fa-bed",
+  "Queen Bed": "fa-bed",
+  "King Bed": "fa-bed",
+  "Extra Bed": "fa-bed-pulse",
+  "Teras Pribadi": "fa-chair",
+  "Balkon Kecil": "fa-chair",
+  "Balkon Luas": "fa-chair",
+  "View Taman": "fa-tree",
+  "View Pegunungan": "fa-mountain",
+};
+
+// Helper: get first gallery item in a category, with safe fallback
+export const galleryByCategory = (category) =>
+  galleryItems.find((g) => g.category === category) || galleryItems[0];
 
 export const attractions = [
   {
@@ -183,7 +212,7 @@ export const faqs = [
   { q: "Jam berapa Check-in dan Check-out?", a: "Check-in mulai pukul 14:00 WITA, Check-out paling lambat 12:00 WITA. Early check-in menyesuaikan ketersediaan kamar." },
   { q: "Apakah breakfast sudah termasuk?", a: "Ya, semua tipe Superior dan Cottage sudah termasuk breakfast lokal untuk 2 orang. Standard Room bisa menambahkan breakfast dengan biaya kecil." },
   { q: "Apakah anak-anak diperbolehkan?", a: "Tentu. Anak di bawah 6 tahun gratis (tanpa extra bed). Extra bed tersedia untuk anak 6–12 tahun dengan biaya tambahan." },
-  { q: "Berapa biaya Extra Bed?", a: "Rp 150.000 per malam sudah termasuk sarapan tambahan." },
+  { q: "Berapa biaya Extra Bed?", a: "Rp 50.000 per malam sudah termasuk sarapan tambahan." },
   { q: "Bagaimana kebijakan pembatalan?", a: "Pembatalan gratis hingga 3 hari sebelum tanggal check-in. Setelah itu berlaku ketentuan booking engine terkait." },
   { q: "Metode pembayaran apa saja?", a: "Semua kartu kredit utama, transfer bank Indonesia, QRIS, dan pembayaran on-site (tunai)." },
   { q: "Apakah tersedia parkir?", a: "Ya, parkir mobil dan motor tersedia gratis untuk tamu." },

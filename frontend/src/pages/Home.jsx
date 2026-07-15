@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { SITE, rooms, facilities, attractions, testimonials, faqs, galleryItems } from "@/data/content";
+import { SITE, rooms, facilities, attractions, testimonials, faqs, galleryItems, galleryByCategory } from "@/data/content";
 import RoomCard from "@/components/site/RoomCard";
 import SectionHeading from "@/components/site/SectionHeading";
 import { HOME } from "@/constants/testIds";
@@ -101,13 +101,13 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2 aspect-[4/3] rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryItems[6].src} alt="Garden" className="w-full h-full object-cover" />
+              <img src={galleryByCategory("Garden").src} alt="Garden" className="w-full h-full object-cover" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryItems[5].src} alt="Restaurant" className="w-full h-full object-cover" />
+              <img src={galleryByCategory("Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryItems[8].src} alt="View" className="w-full h-full object-cover" />
+              <img src={galleryByCategory("View").src} alt="View" className="w-full h-full object-cover" />
             </div>
             <div className="col-span-2 aspect-[4/3] rounded-2xl overflow-hidden shadow-paper-sm">
               <img src={rooms[0].image} alt="Room" className="w-full h-full object-cover" />

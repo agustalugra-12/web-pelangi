@@ -1,5 +1,5 @@
 import SectionHeading from "@/components/site/SectionHeading";
-import { galleryItems } from "@/data/content";
+import { galleryByCategory } from "@/data/content";
 
 const values = [
   { icon: "fa-hand-holding-heart", title: "Tulus", desc: "Kami melayani seperti menerima keluarga sendiri." },
@@ -16,10 +16,10 @@ export default function About() {
         <div className="mt-12 grid md:grid-cols-2 gap-10 items-center">
           <div className="grid grid-cols-2 gap-3">
             <div className="aspect-[3/4] rounded-3xl overflow-hidden shadow-paper-sm">
-              <img src={galleryItems[8].src} alt="View" className="w-full h-full object-cover" />
+              <img src={galleryByCategory("View").src} alt="View" className="w-full h-full object-cover" />
             </div>
             <div className="aspect-[3/4] rounded-3xl overflow-hidden shadow-paper-sm mt-8">
-              <img src={galleryItems[6].src} alt="Restaurant" className="w-full h-full object-cover" />
+              <img src={galleryByCategory("Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" />
             </div>
           </div>
           <div>

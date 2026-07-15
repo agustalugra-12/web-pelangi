@@ -1,4 +1,4 @@
-import { SITE } from "@/data/content";
+import { SITE, facilityIcons } from "@/data/content";
 import { HOME } from "@/constants/testIds";
 
 export default function RoomCard({ room, index = 0 }) {
@@ -28,9 +28,15 @@ export default function RoomCard({ room, index = 0 }) {
         <p className="mt-2 text-sm text-teal-deep/75 leading-relaxed">{room.description}</p>
 
         <ul className="mt-4 flex flex-wrap gap-2">
-          {room.facilities.slice(0, 5).map((f) => (
-            <li key={f} className="text-[11px] font-medium uppercase tracking-wide text-teal-soft bg-teal/5 border border-teal/15 rounded-full px-2.5 py-1">
-              {f}
+          {room.facilities.slice(0, 8).map((f) => (
+            <li
+              key={f}
+              className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-teal-soft bg-teal/5 border border-teal/15 rounded-full px-2.5 py-1"
+            >
+              {facilityIcons[f] && (
+                <i className={`fa-solid ${facilityIcons[f]} text-[10px] text-mustard-deep`} aria-hidden="true"></i>
+              )}
+              <span>{f}</span>
             </li>
           ))}
         </ul>

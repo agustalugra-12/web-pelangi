@@ -16,7 +16,7 @@ export default function Rooms() {
           <h3 className="font-display text-2xl text-teal-deep">Kebijakan Umum</h3>
           <ul className="mt-4 grid md:grid-cols-2 gap-3 text-sm text-teal-deep/85 list-disc pl-5">
             <li>Check-in mulai 14:00 WITA · Check-out 12:00 WITA</li>
-            <li>Extra bed Rp 150.000 / malam termasuk sarapan</li>
+            <li>Extra bed Rp 50.000 / malam termasuk sarapan</li>
             <li>Anak di bawah 6 tahun gratis tanpa extra bed</li>
             <li>Pembatalan gratis hingga 3 hari sebelum check-in</li>
           </ul>

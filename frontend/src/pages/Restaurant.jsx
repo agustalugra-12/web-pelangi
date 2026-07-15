@@ -1,4 +1,4 @@
-import { restaurant, galleryItems, SITE } from "@/data/content";
+import { restaurant, galleryByCategory, SITE } from "@/data/content";
 import SectionHeading from "@/components/site/SectionHeading";
 
 export default function Restaurant() {
@@ -10,13 +10,13 @@ export default function Restaurant() {
         <div className="mt-12 grid md:grid-cols-5 gap-6 items-start">
           <div className="md:col-span-3 grid grid-cols-2 gap-3">
             <div className="col-span-2 aspect-[16/9] rounded-3xl overflow-hidden shadow-paper-sm">
-              <img src={galleryItems[6].src} alt="Restaurant" className="w-full h-full object-cover" />
+              <img src={galleryByCategory("Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryItems[7].src} alt="Garden" className="w-full h-full object-cover" />
+              <img src={galleryByCategory("Garden").src} alt="Garden" className="w-full h-full object-cover" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryItems[11].src} alt="Corner" className="w-full h-full object-cover" />
+              <img src={galleryByCategory("View").src} alt="View" className="w-full h-full object-cover" />
             </div>
           </div>
 

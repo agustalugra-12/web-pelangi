@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { ADMIN } from "@/constants/testIds";
 import { toast } from "sonner";
+import BrandLogo from "@/components/site/BrandLogo";
 
 export default function AdminLogin() {
   const { login, user } = useAuth();
