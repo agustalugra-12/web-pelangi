@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import { SITE } from "@/data/content";
+import BrandLogo from "@/components/site/BrandLogo";
+import RainbowAccent from "@/components/site/RainbowAccent";
 
 export default function Footer() {
   return (
@@ -16,14 +18,19 @@ export default function Footer() {
 
       <div className="max-w-7xl mx-auto px-6 pt-16 pb-10 grid gap-10 md:grid-cols-4">
         <div>
-          <div className="inline-flex items-center justify-center bg-cream rounded-2xl p-3 mb-4 shadow-paper-sm">
-            <img
-              src="/assets/pelangi-logo.png"
-              alt="Pelangi Homestay"
-              className="h-16 w-auto object-contain"
-            />
-          </div>
-          <p className="text-cream/75 text-sm leading-relaxed max-w-xs">
+          <Link to="/" className="group inline-flex items-center gap-3">
+            <BrandLogo size={64} variant="light" hoverFlip />
+            <span className="flex flex-col leading-none">
+              <span className="font-display italic text-2xl text-cream">
+                Pelangi <span className="text-mustard-soft">Homestay</span>
+              </span>
+              <span className="mt-1 font-script text-mustard-soft text-sm">
+                Bedugul, Bali
+              </span>
+            </span>
+          </Link>
+          <RainbowAccent width="w-24" className="mt-4" />
+          <p className="text-cream/75 text-sm leading-relaxed max-w-xs mt-4">
             Rumah hangat di jantung Bedugul — kabut pagi, kopi lokal, dan pelayanan tulus.
           </p>
         </div>

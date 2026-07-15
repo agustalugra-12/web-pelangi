@@ -4,10 +4,17 @@ import { HOME } from "@/constants/testIds";
 export default function RoomCard({ room, index = 0 }) {
   return (
     <article
-      className="relative bg-paper rounded-3xl overflow-hidden shadow-paper-sm border border-ink/5 flex flex-col reveal"
+      className="relative bg-paper rounded-3xl overflow-hidden shadow-paper-sm border border-ink/5 flex flex-col reveal group"
       style={{ animationDelay: `${index * 100}ms` }}
       data-testid={`room-card-${room.slug}`}
     >
+      {/* Rainbow top bar (Pelangi brand identity) */}
+      <div className="flex" aria-hidden="true">
+        <span className="flex-1 h-1.5 bg-emerald-600"></span>
+        <span className="flex-1 h-1.5 bg-yellow-400"></span>
+        <span className="flex-1 h-1.5 bg-red-500"></span>
+      </div>
+
       <div className="relative">
         <img src={room.image} alt={room.name} className="w-full h-56 object-cover" />
         <span className="absolute top-4 left-4 bg-mustard text-teal-deep font-semibold text-xs px-3 py-1 rounded-full shadow-paper-sm">

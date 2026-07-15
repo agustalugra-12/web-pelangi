@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { SITE } from "@/data/content";
 import { NAV, HOME } from "@/constants/testIds";
+import BrandLogo from "@/components/site/BrandLogo";
 
 const links = [
   { to: "/", label: "Home", id: NAV.home },
@@ -22,12 +23,20 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-50 bg-cream/85 backdrop-blur-md border-b border-ink/5">
       <div className="max-w-7xl mx-auto flex items-center justify-between px-5 md:px-8 py-2.5">
-        <Link to="/" className="flex items-center gap-2 group" data-testid="nav-brand">
-          <img
-            src="/assets/pelangi-logo.png"
-            alt="Pelangi Homestay"
-            className="h-14 md:h-16 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
-          />
+        <Link
+          to="/"
+          className="flex items-center gap-3 group"
+          data-testid="nav-brand"
+        >
+          <BrandLogo size={56} hoverFlip className="shrink-0" />
+          <span className="hidden sm:flex flex-col leading-none">
+            <span className="font-display italic text-xl md:text-2xl text-teal-deep tracking-tight">
+              Pelangi <span className="text-mustard-deep">Homestay</span>
+            </span>
+            <span className="mt-1 font-script text-mustard-deep text-sm">
+              Bedugul, Bali
+            </span>
+          </span>
         </Link>
 
         <nav className="hidden lg:flex items-center gap-6">

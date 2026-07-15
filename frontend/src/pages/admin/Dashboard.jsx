@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ADMIN } from "@/constants/testIds";
 import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
+import BrandLogo from "@/components/site/BrandLogo";
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -47,9 +48,12 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-cream">
       <header className="border-b border-ink/10 bg-paper">
         <div className="max-w-6xl mx-auto px-5 py-4 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3">
-            <img src="/assets/pelangi-logo.png" alt="Pelangi Homestay" className="h-10 w-auto object-contain" />
-            <span className="font-display italic text-lg text-teal-deep border-l-2 border-mustard pl-3">Admin</span>
+          <Link to="/" className="flex items-center gap-3 group">
+            <BrandLogo size={44} hoverFlip />
+            <span className="flex flex-col leading-none">
+              <span className="font-display italic text-lg text-teal-deep">Pelangi Homestay</span>
+              <span className="text-[10px] uppercase tracking-widest text-mustard-deep mt-1">Admin</span>
+            </span>
           </Link>
           <div className="flex items-center gap-3">
             <span className="text-sm text-teal-deep/70 hidden sm:block">{user?.email}</span>

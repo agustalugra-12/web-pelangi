@@ -70,13 +70,13 @@ module.exports = {
         "paper-sm": "3px 3px 0 rgba(11,46,42,0.10)",
       },
       keyframes: {
-        "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
+        'accordion-down': {
+          from: { height: '0' },
+          to: { height: 'var(--radix-accordion-content-height)' }
         },
-        "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
+        'accordion-up': {
+          from: { height: 'var(--radix-accordion-content-height)' },
+          to: { height: '0' }
         },
         floaty: {
           "0%,100%": { transform: "translateY(0)" },
@@ -86,12 +86,24 @@ module.exports = {
           "0%": { transform: "scale(0.9)", opacity: "0.7" },
           "100%": { transform: "scale(1.6)", opacity: "0" },
         },
+        coinFlip: {
+          "0%": { transform: "rotateY(0deg)" },
+          "45%,55%": { transform: "rotateY(180deg)" },
+          "100%": { transform: "rotateY(360deg)" },
+        },
+        coinSpin: {
+          "0%": { transform: "rotateY(0deg)" },
+          "100%": { transform: "rotateY(360deg)" },
+        },
       },
       animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
-        floaty: "floaty 6s ease-in-out infinite",
-        pulseRing: "pulseRing 1.8s ease-out infinite",
+        'accordion-down': 'accordion-down 0.2s ease-out',
+        'accordion-up': 'accordion-up 0.2s ease-out',
+        floaty: 'floaty 6s ease-in-out infinite',
+        pulseRing: 'pulseRing 1.8s ease-out infinite',
+        coinFlip: 'coinFlip 1.6s cubic-bezier(0.6,0.05,0.28,0.91)',
+        coinFlipLoop: 'coinFlip 6s ease-in-out infinite',
+        coinSpin: 'coinSpin 1.2s ease-in-out',
       },
     },
   },

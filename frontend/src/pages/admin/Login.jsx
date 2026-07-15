@@ -33,9 +33,12 @@ export default function AdminLogin() {
   return (
     <div className="min-h-screen grain flex items-center justify-center px-5 py-10">
       <div className="w-full max-w-md bg-paper rounded-3xl shadow-paper border border-ink/10 p-8 md:p-10">
-        <div className="flex items-center gap-3 mb-6">
-          <img src="/assets/pelangi-logo.png" alt="Pelangi Homestay" className="h-12 w-auto object-contain" />
-          <span className="font-display italic text-lg text-teal-deep border-l-2 border-mustard pl-3">Admin</span>
+        <div className="flex items-center gap-3 mb-6 group">
+          <BrandLogo size={52} hoverFlip />
+          <span className="flex flex-col leading-none">
+            <span className="font-display italic text-lg text-teal-deep">Pelangi Homestay</span>
+            <span className="text-xs uppercase tracking-widest text-mustard-deep mt-1">Admin</span>
+          </span>
         </div>
         <p className="font-script text-2xl text-mustard-deep">Welcome back</p>
         <h1 className="font-display text-3xl text-teal-deep italic">Sign in.</h1>

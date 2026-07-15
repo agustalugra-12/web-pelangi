@@ -1,3 +1,5 @@
+import RainbowAccent from "@/components/site/RainbowAccent";
+
 export default function SectionHeading({ eyebrow, title, italicWord, subtitle, align = "center", light = false }) {
   const textColor = light ? "text-cream" : "text-teal-deep";
   const eyebrowColor = light ? "text-mustard-soft" : "text-mustard-deep";
@@ -11,6 +13,9 @@ export default function SectionHeading({ eyebrow, title, italicWord, subtitle, a
         {title}{" "}
         {italicWord && <span className="italic text-mustard-deep">{italicWord}</span>}
       </h2>
+      <div className={`mt-5 flex ${align === "center" ? "justify-center" : ""}`}>
+        <RainbowAccent width="w-20" />
+      </div>
       {subtitle && (
         <p className={`mt-4 ${subColor} text-base md:text-lg`}>{subtitle}</p>
       )}
