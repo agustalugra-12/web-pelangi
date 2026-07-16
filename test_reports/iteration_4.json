@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 4 — Frontend-only regression for Payment-Gateway (Tripay) PRD compliance. All 15 review checkpoints PASS. Verified: 6 new legal pages (/privacy-policy, /terms-and-conditions, /cancellation-policy, /refund-policy, /house-rules, /payment-information) each render correct H1, breadcrumb, Book Now CTA (https://pelangihomestay.com/book, target=_blank, rel=noopener noreferrer), supporting text, per-page SEO (title/desc/canonical/og/twitter), BreadcrumbList JSON-LD, and global LodgingBusiness JSON-LD from SiteLayout. About page shows H1 'Rumah Hangat di Jantung Bedugul sejak 2012.' + 2012 + 18 kamar + 10 Standard + 8 Cottage in bold + Visi/Misi/Kenapa memilih Pelangi + fact strip. Footer renders 4 columns (Jelajahi/Informasi/Legal/Hubungi) + brand column, all required links present, NO Admin link. /sitemap.xml served 200 application/xml with all 16 URLs (legal + main). /robots.txt served 200 with Disallow: /admin + Sitemap: entry. Regression: /rooms, /faq, and admin login (admin@pelangihomestay.com → /admin/dashboard) still work.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All public pages (console)", "issues": ["Existing pre-iteration noise: /api/auth/me returns 401 on public pages because AuthProvider mounts globally. Not new; documented in iterations 1-3."]}
+    ]
+  },
+  "verification_results": {
+    "lodging_schema_home": "PASS — @type=LodgingBusiness, name=Pelangi Homestay, numberOfRooms=18, telephone=+6285119459269, email=pelangihomestay9@gmail.com, priceRange='IDR 175.000 – IDR 225.000', address.addressLocality=Baturiti, addressRegion=Bali, postalCode=82191, geo.latitude=-8.276, geo.longitude=115.164, openingHours 07:00-22:00.",
+    "lodging_schema_on_every_legal_page": "PASS — LodgingBusiness JSON-LD found in <head> on all 6 legal pages (rendered by SiteLayout).",
+    "privacy_policy": "PASS — H1 'Kebijakan Privasi'; sections Pengumpulan Data, Cookies, Keamanan Data, Hak Pengguna verified; BreadcrumbList JSON-LD (len=2); canonical set; Book Now CTA opens https://pelangihomestay.com/book target=_blank; supporting text present.",
+    "terms_and_conditions": "PASS — H1 'Syarat & Ketentuan'; sections Reservasi, Pembayaran, Check-in, Check-out, Force Majeure all present; BreadcrumbList JSON-LD OK.",
+    "cancellation_policy": "PASS — H1 'Kebijakan Pembatalan'; Cara/Waktu/Biaya Pembatalan + No-Show sections found; BreadcrumbList JSON-LD OK.",
+    "refund_policy": "PASS — H1 'Kebijakan Refund'; Prinsip Refund, Metode, Estimasi, Cara Mengajukan sections found; visual confirmation via screenshot; links to /cancellation-policy inline.",
+    "house_rules": "PASS — H1 'Aturan Menginap'; Check-in/out, Visitor, Damage sections found. NOTE: 'Smoking', 'Noise', 'Pet' section labels use Indonesian wording (e.g., 'Merokok', 'Ketenangan/Jam Tenang', 'Hewan Peliharaan') — the equivalent semantics ARE present in the page; the English keywords in the test list simply do not match verbatim (per review request footnote screenshot verification is sufficient).",
+    "payment_information": "PASS — H1 'Informasi Pembayaran'; Transfer Bank, VA, QRIS, e-Wallet, Tripay, HTTPS mentions all found; alur reservasi sections + Refund Policy link render.",
+    "about_page": "PASS — H1 'Rumah Hangat di Jantung Bedugul sejak 2012.'; body contains 2012, 18, '10 Standard Room', '8 Cottage'; Visi + Misi cards render; 'Kenapa memilih Pelangi?' section with 6 items (WiFi/Sarapan/Parkir included); fact strip present. Minor: strict substring check for 'Berdiri' returned false because the label is uppercase 'BERDIRI' due to tracking-widest uppercase CSS — cosmetic only, section is visible.",
+    "footer_new_layout": "PASS (visual) — 4 columns visible: Jelajahi (Rooms, Facilities, Gallery, Restaurant, Explore Bedugul, Blog), Informasi (About Us, Payment Information, House Rules, FAQ, Contact), Legal (Privacy Policy, Terms & Conditions, Cancellation Policy, Refund Policy), Hubungi (address, WA 0851-1945-9269, email pelangihomestay9@gmail.com, Reception 07:00-22:00 WITA) + brand column. NO 'Admin' link anywhere in footer. NOTE: page.evaluate() queries against <footer> returned 0 anchors intermittently (SPA hydration timing), but full-page screenshot confirms all links render correctly.",
+    "per_page_seo_meta": "PASS — Each legal page updates: document.title (e.g., 'Kebijakan Privasi — Pelangi Homestay'), meta[name=description], link[rel=canonical] to full URL, og:title/og:description/og:image/og:type/og:url/og:site_name, twitter:card=summary_large_image + twitter:title/description/image, robots=index,follow.",
+    "breadcrumb_jsonld_per_page": "PASS — Every legal page renders a BreadcrumbList JSON-LD with itemListElement.length=2 (Home + current page).",
+    "sitemap_xml": "PASS — /sitemap.xml → 200, Content-Type application/xml, contains all 6 legal URLs + / /rooms /facilities /gallery /restaurant /explore-bedugul /about /blog /contact /faq (16 total).",
+    "robots_txt": "PASS — /robots.txt → 200 with 'Disallow: /admin', 'Disallow: /admin/', and 'Sitemap: https://pelangihomestay.com/sitemap.xml' present. (Cloudflare Managed content signals block is prepended by CDN — non-blocking.)",
+    "regression_rooms": "PASS — /rooms renders Standard + Cottage + IDR 175 (from CMS content).",
+    "regression_faq": "PASS — /faq renders.",
+    "regression_admin_login": "PASS — admin@pelangihomestay.com / pelangi2026 → /admin/dashboard."
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py (from iter 3 — not re-run this iteration per instruction)"],
+  "critical_code_review_comments": [
+    "robots.txt is served with Content-Type: text/plain (not application/xml, which is correct for robots). Content is preceded by Cloudflare's Managed Content Signals block, then the custom rules — this is fine and standard.",
+    "SEO Seo.jsx uses a single <script id='page-jsonld'> element and REMOVES it on every navigation before adding a new one. That means only ONE JSON-LD block from Seo.jsx (BreadcrumbList) is present per page. The LodgingBusiness schema is rendered separately by <LodgingSchema /> in SiteLayout as an inline dangerouslySetInnerHTML <script> — so both coexist correctly (verified via document.querySelectorAll test).",
+    "LegalLayout.jsx: BreadcrumbList JSON-LD is constructed with items only when b.to is set. Since Legal pages pass `breadcrumb=[{label:'...'}]` (no 'to'), the current page's `item` URL is intentionally omitted — Schema.org still accepts this. Consider always emitting the current page's URL for stricter validation.",
+    "Rooms and several existing pages do not render an <h1> element in the DOM (result h1=null from evaluate). Not new to this iteration but flags an accessibility/SEO weakness for future clean-up.",
+    "About.jsx renders a duplicate visual pattern: 'Values' cards (Tulus/Lestari/Hangat) sit below the 'Kenapa memilih Pelangi?' 6-card grid — both use identical styling. Consider merging or differentiating visually for polish.",
+    "sitemap.xml uses hardcoded https://pelangihomestay.com/* — correct for production canonical URL. Good, but note the preview domain will return a canonical mismatch (canonical points to preview origin via Seo.jsx dynamic origin, sitemap points to prod). This is expected behavior."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per instruction)", "frontend": "100% (15/15 checkpoints)"},
+  "test_credentials": "admin@pelangihomestay.com / pelangi2026 — verified working (from /app/memory/test_credentials.md).",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "PRD-compliance (Payment Gateway) content is fully live and SEO-ready. Six legal pages share LegalLayout.jsx wrapper (SEO + Breadcrumb + BreadcrumbList JSON-LD + Book Now CTA). Global LodgingBusiness schema is emitted once in SiteLayout.jsx. Static /sitemap.xml + /robots.txt live in /app/frontend/public/. Footer.jsx uses lg:grid-cols-5 (brand col-span-2 + 4 nav columns). No Admin link. Backend not touched this iteration — iter-3 backend regression (34/34 pytest) remains authoritative.",
+  "rca of the issue": "Not applicable — no bugs found."
+}

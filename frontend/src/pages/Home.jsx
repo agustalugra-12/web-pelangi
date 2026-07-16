@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 import { useContent } from "@/context/ContentContext";
-import { facilities as staticFacilities } from "@/data/content";
+import { useLang } from "@/context/LanguageContext";
 import RoomCard from "@/components/site/RoomCard";
 import SectionHeading from "@/components/site/SectionHeading";
+import { DICTIONARY } from "@/i18n/dictionary";
 import { HOME } from "@/constants/testIds";
 import {
   Accordion,
@@ -15,6 +16,9 @@ const galleryByCategory = (arr, cat) => arr.find((g) => g.category === cat) || a
 
 export default function Home() {
   const { site, rooms, gallery, attractions, testimonials, faqs } = useContent();
+  const { t, lang, pick } = useLang();
+  const facs = DICTIONARY[lang]?.facilityData || DICTIONARY.id.facilityData;
+
   return (
     <div>
       <section data-testid={HOME.hero} className="relative overflow-hidden pt-8 pb-24 md:pb-32">
@@ -26,24 +30,24 @@ export default function Home() {
                 <path d="M380 20 L400 30 L378 42 L385 30 Z" fill="currentColor" />
               </svg>
 
-              <p className="font-script text-3xl md:text-4xl text-mustard-soft mb-1">{site.heroEyebrow}</p>
+              <p className="font-script text-3xl md:text-4xl text-mustard-soft mb-1">{pick(site, "heroEyebrow")}</p>
               <h1 className="font-display font-semibold text-5xl md:text-6xl lg:text-7xl leading-[0.95]">
-                {site.heroTitle}<span className="text-mustard-soft">.</span>
+                {pick(site, "heroTitle")}<span className="text-mustard-soft">.</span>
                 <br />
-                <span className="italic font-light">{site.heroSubtitle}</span>
+                <span className="italic font-light">{pick(site, "heroSubtitle")}</span>
               </h1>
               <p className="mt-5 max-w-md text-cream/85 text-base md:text-lg leading-relaxed">
-                {site.heroBody}
+                {pick(site, "heroBody")}
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <a href={site.bookingUrl} target="_blank" rel="noopener noreferrer" data-testid={HOME.bookNowBtn}
                   className="btn-lift inline-flex items-center gap-2 rounded-full bg-leaf text-white px-7 py-3.5 font-semibold shadow-paper-sm">
-                  Book Now
+                  {t("common.bookNow")}
                   <i className="fa-solid fa-arrow-right text-xs" aria-hidden="true"></i>
                 </a>
                 <Link to="/rooms" className="btn-lift inline-flex items-center gap-2 rounded-full border-2 border-mustard-soft text-mustard-soft px-6 py-3 font-semibold hover:bg-mustard-soft hover:text-teal-deep">
-                  Lihat Kamar
+                  {t("common.viewRooms")}
                 </Link>
               </div>
 
@@ -56,16 +60,16 @@ export default function Home() {
           <div className="lg:col-span-5 relative">
             <div className="relative">
               <div className="blob overflow-hidden shadow-paper w-full aspect-[4/5] max-w-sm mx-auto">
-                <img src="/assets/signage.jpg" alt="Papan nama Pelangi Homestay di Jl. Kebun Raya Bedugul" className="w-full h-full object-cover" />
+                <img src="/assets/signage.jpg" alt="Pelangi Homestay signage" className="w-full h-full object-cover" />
               </div>
               {attractions[0] && (
                 <div className="absolute -bottom-8 -left-6 w-40 h-40 rounded-full overflow-hidden shadow-paper border-4 border-cream hidden md:block">
-                  <img src={attractions[0].image} alt={attractions[0].title} className="w-full h-full object-cover" />
+                  <img src={attractions[0].image} alt={pick(attractions[0], "title")} className="w-full h-full object-cover" />
                 </div>
               )}
               {attractions[attractions.length - 1] && (
                 <div className="absolute -top-6 -right-4 w-28 h-28 rounded-full overflow-hidden shadow-paper border-4 border-cream hidden md:block">
-                  <img src={attractions[attractions.length - 1].image} alt={attractions[attractions.length - 1].title} className="w-full h-full object-cover" />
+                  <img src={attractions[attractions.length - 1].image} alt={pick(attractions[attractions.length - 1], "title")} className="w-full h-full object-cover" />
                 </div>
               )}
             </div>
@@ -76,15 +80,15 @@ export default function Home() {
       <section className="max-w-7xl mx-auto px-5 md:px-8 pb-24">
         <div className="grid md:grid-cols-2 gap-10 items-center">
           <div>
-            <p className="font-script text-3xl text-mustard-deep">Tentang kami</p>
+            <p className="font-script text-3xl text-mustard-deep">{t("home.aboutEyebrow")}</p>
             <h2 className="font-display text-4xl md:text-5xl text-teal-deep leading-tight mt-1">
-              Rumah <span className="italic text-mustard-deep">hangat</span> untuk perjalanan tenang.
+              {t("home.aboutTitle")} <span className="italic text-mustard-deep">{t("home.aboutTitleItalic")}</span> {t("home.aboutTitleSuffix")}
             </h2>
             <p className="mt-4 text-teal-deep/80 leading-relaxed">
-              {site.brand} adalah keluarga kecil di Bedugul. Kami percaya liburan terbaik bukan tentang kemewahan, melainkan tentang kopi yang mengepul, percakapan yang tulus, dan pagi yang tak terburu-buru.
+              {site.brand} {t("home.aboutBody")}
             </p>
             <Link to="/about" className="btn-lift inline-flex mt-6 items-center gap-2 rounded-full border-2 border-teal text-teal-deep px-5 py-2.5 font-semibold hover:bg-teal-deep hover:text-cream">
-              Cerita Kami
+              {t("common.ourStory")}
             </Link>
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -106,7 +110,7 @@ export default function Home() {
 
       <section className="bg-paper py-20">
         <div className="max-w-7xl mx-auto px-5 md:px-8">
-          <SectionHeading eyebrow="Pilihan Kamar" title="Tempat" italicWord="beristirahat" subtitle="Dua tipe akomodasi, masing-masing dengan karakternya sendiri." />
+          <SectionHeading eyebrow={t("home.roomsEyebrow")} title={t("home.roomsTitle")} italicWord={t("home.roomsItalic")} subtitle={t("home.roomsSub")} />
           <div className="mt-12 grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
             {rooms.map((r, i) => <RoomCard key={r.id || r.slug} room={r} index={i} />)}
           </div>
@@ -114,9 +118,9 @@ export default function Home() {
       </section>
 
       <section className="max-w-7xl mx-auto px-5 md:px-8 py-24">
-        <SectionHeading eyebrow="Fasilitas" title="Kenyamanan yang" italicWord="menemani" />
+        <SectionHeading eyebrow={t("home.facilitiesEyebrow")} title={t("home.facilitiesTitle")} italicWord={t("home.facilitiesItalic")} />
         <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4">
-          {staticFacilities.map((f, i) => (
+          {facs.map((f, i) => (
             <div key={f.title} className="bg-paper rounded-2xl p-6 border border-ink/5 shadow-paper-sm text-center reveal" style={{ animationDelay: `${i * 60}ms` }}>
               <div className="mx-auto h-12 w-12 rounded-full bg-teal-deep text-mustard-soft flex items-center justify-center mb-3">
                 <i className={`fa-solid ${f.icon} text-lg`} aria-hidden="true"></i>
@@ -131,13 +135,13 @@ export default function Home() {
       <section className="max-w-7xl mx-auto px-5 md:px-8 pb-24">
         <div className="relative bg-mustard rounded-3xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-6 shadow-paper">
           <div className="flex-1">
-            <p className="font-script text-3xl text-teal-deep">{site.promoEyebrow}</p>
-            <h3 className="font-display text-3xl md:text-4xl text-teal-deep italic">{site.promoTitle}</h3>
-            <p className="mt-2 text-teal-deep/85">{site.promoBody}</p>
+            <p className="font-script text-3xl text-teal-deep">{pick(site, "promoEyebrow")}</p>
+            <h3 className="font-display text-3xl md:text-4xl text-teal-deep italic">{pick(site, "promoTitle")}</h3>
+            <p className="mt-2 text-teal-deep/85">{pick(site, "promoBody")}</p>
           </div>
           <a href={site.bookingUrl} target="_blank" rel="noopener noreferrer"
             className="btn-lift inline-flex items-center gap-2 rounded-full bg-teal-deep text-cream px-6 py-3 font-semibold shadow-paper-sm">
-            Book Now
+            {t("common.bookNow")}
             <i className="fa-solid fa-arrow-right text-xs" aria-hidden="true"></i>
           </a>
         </div>
@@ -145,7 +149,7 @@ export default function Home() {
 
       <section className="bg-teal-deep text-cream py-24 relative">
         <div className="max-w-7xl mx-auto px-5 md:px-8">
-          <SectionHeading light eyebrow="Galeri" title="Sudut" italicWord="favorit" subtitle="Sekilas suasana Pelangi Homestay dan Bedugul di sekitarnya." />
+          <SectionHeading light eyebrow={t("home.galleryEyebrow")} title={t("home.galleryTitle")} italicWord={t("home.galleryItalic")} subtitle={t("home.gallerySub")} />
           <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-3">
             {gallery.slice(0, 8).map((g, i) => (
               <div key={g.id || i} className={`overflow-hidden rounded-2xl shadow-paper-sm ${i % 3 === 0 ? "aspect-[3/4]" : "aspect-square"}`}>
@@ -155,23 +159,23 @@ export default function Home() {
           </div>
           <div className="mt-10 text-center">
             <Link to="/gallery" className="btn-lift inline-flex rounded-full bg-mustard text-teal-deep px-6 py-3 font-semibold shadow-paper-sm">
-              Lihat Semua
+              {t("common.viewAll")}
             </Link>
           </div>
         </div>
       </section>
 
       <section className="max-w-7xl mx-auto px-5 md:px-8 py-24">
-        <SectionHeading eyebrow="Explore" title="Jelajahi" italicWord="Bedugul" subtitle="Tempat-tempat favorit yang bisa dicapai dalam hitungan menit dari kamar Anda." />
+        <SectionHeading eyebrow={t("home.exploreEyebrow")} title={t("home.exploreTitle")} italicWord={t("home.exploreItalic")} subtitle={t("home.exploreSub")} />
         <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {attractions.slice(0, 6).map((a, i) => (
             <article key={a.id || a.title} className="group relative rounded-3xl overflow-hidden shadow-paper-sm reveal" style={{ animationDelay: `${i * 80}ms` }}>
-              <img src={a.image} alt={a.title} className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-500" />
+              <img src={a.image} alt={pick(a, "title")} className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-500" />
               <div className="absolute inset-0 bg-gradient-to-t from-teal-deep/90 via-teal-deep/20 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-5 text-cream">
-                <span className="inline-block text-[11px] font-semibold uppercase tracking-widest bg-mustard text-teal-deep rounded-full px-2.5 py-1">{a.distance}</span>
-                <h3 className="font-display text-2xl mt-2">{a.title}</h3>
-                <p className="text-sm text-cream/85 mt-1 line-clamp-2">{a.desc}</p>
+                <span className="inline-block text-[11px] font-semibold uppercase tracking-widest bg-mustard text-teal-deep rounded-full px-2.5 py-1">{pick(a, "distance")}</span>
+                <h3 className="font-display text-2xl mt-2">{pick(a, "title")}</h3>
+                <p className="text-sm text-cream/85 mt-1 line-clamp-2">{pick(a, "desc")}</p>
               </div>
             </article>
           ))}
@@ -180,15 +184,15 @@ export default function Home() {
 
       <section className="bg-paper py-24">
         <div className="max-w-7xl mx-auto px-5 md:px-8">
-          <SectionHeading eyebrow="Kata Tamu" title="Cerita" italicWord="mereka" />
+          <SectionHeading eyebrow={t("home.testimonialsEyebrow")} title={t("home.testimonialsTitle")} italicWord={t("home.testimonialsItalic")} />
           <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {testimonials.map((t, i) => (
-              <blockquote key={t.id || i} className="bg-cream rounded-2xl p-6 border border-ink/5 shadow-paper-sm relative reveal" style={{ animationDelay: `${i * 90}ms` }} data-testid={`testimonial-${i}`}>
+            {testimonials.map((tm, i) => (
+              <blockquote key={tm.id || i} className="bg-cream rounded-2xl p-6 border border-ink/5 shadow-paper-sm relative reveal" style={{ animationDelay: `${i * 90}ms` }} data-testid={`testimonial-${i}`}>
                 <i className="fa-solid fa-quote-left text-mustard-deep text-2xl" aria-hidden="true"></i>
-                <p className="mt-3 text-teal-deep/90 leading-relaxed text-sm">{t.text}</p>
+                <p className="mt-3 text-teal-deep/90 leading-relaxed text-sm">{pick(tm, "text")}</p>
                 <footer className="mt-4">
-                  <p className="font-display text-teal-deep italic">{t.name}</p>
-                  <p className="text-xs text-teal-deep/60">{t.origin}</p>
+                  <p className="font-display text-teal-deep italic">{tm.name}</p>
+                  <p className="text-xs text-teal-deep/60">{pick(tm, "origin")}</p>
                 </footer>
               </blockquote>
             ))}
@@ -198,13 +202,11 @@ export default function Home() {
 
       <section className="max-w-7xl mx-auto px-5 md:px-8 py-24 grid md:grid-cols-2 gap-10 items-center">
         <div>
-          <p className="font-script text-3xl text-mustard-deep">Temukan kami</p>
-          <h2 className="font-display text-4xl md:text-5xl text-teal-deep italic">Di jantung Bedugul.</h2>
-          <p className="mt-4 text-teal-deep/80 leading-relaxed">
-            5 menit dari Pura Ulun Danu Beratan, 8 menit ke Kebun Raya Bali. Akses mudah lewat jalur utama Denpasar–Singaraja.
-          </p>
+          <p className="font-script text-3xl text-mustard-deep">{t("home.findEyebrow")}</p>
+          <h2 className="font-display text-4xl md:text-5xl text-teal-deep italic">{t("home.findTitle")}</h2>
+          <p className="mt-4 text-teal-deep/80 leading-relaxed">{t("home.findBody")}</p>
           <ul className="mt-5 space-y-2 text-teal-deep/85 text-sm">
-            <li><i className="fa-solid fa-location-dot text-mustard-deep mr-2" aria-hidden="true"></i>{site.address}</li>
+            <li><i className="fa-solid fa-location-dot text-mustard-deep mr-2" aria-hidden="true"></i>{pick(site, "address")}</li>
             <li><i className="fa-brands fa-whatsapp text-mustard-deep mr-2" aria-hidden="true"></i>{site.whatsappDisplay}</li>
             <li><i className="fa-solid fa-envelope text-mustard-deep mr-2" aria-hidden="true"></i>{site.email}</li>
           </ul>
@@ -216,22 +218,22 @@ export default function Home() {
 
       <section className="bg-teal-deep text-cream py-24">
         <div className="max-w-4xl mx-auto px-5 md:px-8">
-          <SectionHeading light eyebrow="FAQ" title="Pertanyaan" italicWord="sering ditanya" />
+          <SectionHeading light eyebrow={t("home.faqEyebrow")} title={t("home.faqTitle")} italicWord={t("home.faqItalic")} />
           <Accordion type="single" collapsible className="mt-10">
             {faqs.slice(0, 5).map((f, i) => (
               <AccordionItem key={f.id || i} value={`item-${i}`} className="border-cream/15" data-testid={`faq-item-${i}`}>
                 <AccordionTrigger className="text-left text-cream hover:text-mustard-soft font-display text-lg">
-                  {f.q}
+                  {pick(f, "q")}
                 </AccordionTrigger>
                 <AccordionContent className="text-cream/80 leading-relaxed">
-                  {f.a}
+                  {pick(f, "a")}
                 </AccordionContent>
               </AccordionItem>
             ))}
           </Accordion>
           <div className="text-center mt-10">
             <Link to="/faq" className="btn-lift inline-flex rounded-full bg-mustard text-teal-deep px-6 py-3 font-semibold shadow-paper-sm">
-              Semua Pertanyaan
+              {t("common.allQuestions")}
             </Link>
           </div>
         </div>

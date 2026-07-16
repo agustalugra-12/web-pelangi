@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import { ContentProvider } from "@/context/ContentContext";
+import { LanguageProvider } from "@/context/LanguageContext";
 import SiteLayout from "@/components/site/SiteLayout";
 import ProtectedRoute from "@/components/site/ProtectedRoute";
 
@@ -18,6 +19,12 @@ import Contact from "@/pages/Contact";
 import FAQ from "@/pages/FAQ";
 import Blog from "@/pages/Blog";
 import BlogDetail from "@/pages/BlogDetail";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import TermsAndConditions from "@/pages/TermsAndConditions";
+import CancellationPolicy from "@/pages/CancellationPolicy";
+import RefundPolicy from "@/pages/RefundPolicy";
+import HouseRules from "@/pages/HouseRules";
+import PaymentInformation from "@/pages/PaymentInformation";
 
 import AdminLogin from "@/pages/admin/Login";
 import AdminLayout from "@/pages/admin/AdminLayout";
@@ -39,6 +46,7 @@ function App() {
   return (
     <AuthProvider>
       <ContentProvider>
+        <LanguageProvider>
         <BrowserRouter>
           <ScrollToTop />
           <Toaster
@@ -60,6 +68,12 @@ function App() {
               <Route path="/blog/:slug" element={<BlogDetail />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/faq" element={<FAQ />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+              <Route path="/cancellation-policy" element={<CancellationPolicy />} />
+              <Route path="/refund-policy" element={<RefundPolicy />} />
+              <Route path="/house-rules" element={<HouseRules />} />
+              <Route path="/payment-information" element={<PaymentInformation />} />
             </Route>
 
             {/* Admin */}
@@ -87,6 +101,7 @@ function App() {
             </Route>
           </Routes>
         </BrowserRouter>
+        </LanguageProvider>
       </ContentProvider>
     </AuthProvider>
   );
