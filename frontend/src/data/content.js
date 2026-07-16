@@ -48,7 +48,7 @@ export const DEFAULT_CONTENT = {
     whatsapp: "6285119459269",
     email: "pelangihomestay9@gmail.com",
     hours: "Reception 07:00 – 22:00 WITA",
-    bookingUrl: "https://pelangihomestay.com/book",
+    bookingUrl: "https://book.pelangihomestay.com",
     mapEmbed: "https://www.google.com/maps?q=Bedugul,%20Bali&t=&z=13&ie=UTF8&iwloc=&output=embed",
     restaurantIntro: "Ruang makan hangat dengan panorama taman dan pegunungan. Menu sederhana yang cocok untuk sarapan, camilan sore, atau teman ngobrol di malam sejuk Bedugul.",
     restaurantHours: "07:00 – 21:00 WITA",

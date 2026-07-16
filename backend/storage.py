@@ -1,10 +1,9 @@
-"""Emergent object storage helper for image uploads."""
+"""Cloudinary storage helper for image uploads."""
 import os
 import logging
 import requests
-
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-_storage_key = None
+import cloudinary
+import cloudinary.uploader
 
 logger = logging.getLogger(__name__)
 
@@ -13,43 +12,51 @@ MIME_TYPES = {
     "gif": "image/gif", "webp": "image/webp",
 }
 
+UPLOAD_FOLDER = os.environ.get("CLOUDINARY_UPLOAD_FOLDER", "pelangi/blog")
+_configured = False
 
-def init_storage() -> str:
-    global _storage_key
-    if _storage_key:
-        return _storage_key
-    emergent_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not emergent_key:
-        raise RuntimeError("EMERGENT_LLM_KEY not configured")
-    resp = requests.post(
-        f"{STORAGE_URL}/init",
-        json={"emergent_key": emergent_key},
-        timeout=30,
+
+def init_storage():
+    global _configured
+    if _configured:
+        return
+    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME")
+    api_key = os.environ.get("CLOUDINARY_API_KEY")
+    api_secret = os.environ.get("CLOUDINARY_API_SECRET")
+    if not all([cloud_name, api_key, api_secret]):
+        raise RuntimeError(
+            "CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET not configured"
+        )
+    cloudinary.config(
+        cloud_name=cloud_name,
+        api_key=api_key,
+        api_secret=api_secret,
+        secure=True,
     )
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
-    logger.info("Object storage initialized")
-    return _storage_key
+    _configured = True
+    logger.info("Cloudinary storage initialized")
+
+
+def _public_id(path: str) -> str:
+    return f"{UPLOAD_FOLDER}/{path}".rsplit(".", 1)[0]
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data,
-        timeout=120,
+    init_storage()
+    result = cloudinary.uploader.upload(
+        data,
+        public_id=_public_id(path),
+        resource_type="image",
+        overwrite=True,
     )
-    resp.raise_for_status()
-    return resp.json()
+    return {"path": path, "url": result.get("secure_url")}
 
 
 def get_object(path: str):
-    key = init_storage()
-    resp = requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key},
-        timeout=60,
-    )
+    init_storage()
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else "jpg"
+    url = cloudinary.CloudinaryImage(_public_id(path)).build_url(format=ext, secure=True)
+    resp = requests.get(url, timeout=60)
     resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    content_type = MIME_TYPES.get(ext, resp.headers.get("Content-Type", "application/octet-stream"))
+    return resp.content, content_type
