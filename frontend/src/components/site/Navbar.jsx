@@ -31,6 +31,7 @@ export default function Navbar() {
           to="/"
           className="flex items-center gap-3 group"
           data-testid="nav-brand"
+          aria-label="Pelangi Homestay — Beranda"
         >
           <BrandLogo size={56} hoverFlip className="shrink-0" />
           <span className="hidden sm:flex flex-col leading-none">

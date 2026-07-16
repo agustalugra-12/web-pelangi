@@ -64,7 +64,7 @@ export default function CmsMedia() {
           {items.map((m) => (
             <div key={m.id} className="bg-paper rounded-2xl overflow-hidden border border-ink/10 shadow-paper-sm">
               <div className="aspect-square bg-cream overflow-hidden">
-                <img src={m.url} alt={m.original_filename} className="w-full h-full object-cover" />
+                <img src={m.url} alt={m.original_filename} className="w-full h-full object-cover" loading="lazy" />
               </div>
               <div className="p-3 space-y-1">
                 <p className="text-xs text-teal-deep truncate" title={m.original_filename}>{m.original_filename}</p>

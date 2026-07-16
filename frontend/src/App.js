@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
@@ -8,31 +8,34 @@ import { LanguageProvider } from "@/context/LanguageContext";
 import SiteLayout from "@/components/site/SiteLayout";
 import ProtectedRoute from "@/components/site/ProtectedRoute";
 
+// Home is kept as a static import: it's the most common landing page,
+// so loading it eagerly avoids a Suspense flash for the majority of visits.
 import Home from "@/pages/Home";
-import Rooms from "@/pages/Rooms";
-import Facilities from "@/pages/Facilities";
-import Gallery from "@/pages/Gallery";
-import ExploreBedugul from "@/pages/ExploreBedugul";
-import Restaurant from "@/pages/Restaurant";
-import About from "@/pages/About";
-import Contact from "@/pages/Contact";
-import FAQ from "@/pages/FAQ";
-import Blog from "@/pages/Blog";
-import BlogDetail from "@/pages/BlogDetail";
-import PrivacyPolicy from "@/pages/PrivacyPolicy";
-import TermsAndConditions from "@/pages/TermsAndConditions";
-import CancellationPolicy from "@/pages/CancellationPolicy";
-import RefundPolicy from "@/pages/RefundPolicy";
-import HouseRules from "@/pages/HouseRules";
-import PaymentInformation from "@/pages/PaymentInformation";
 
-import AdminLogin from "@/pages/admin/Login";
-import AdminLayout from "@/pages/admin/AdminLayout";
-import CmsBlog from "@/pages/admin/CmsBlog";
-import PostEditor from "@/pages/admin/PostEditor";
-import CmsList from "@/pages/admin/CmsList";
-import CmsSettings from "@/pages/admin/CmsSettings";
-import CmsMedia from "@/pages/admin/CmsMedia";
+const Rooms = lazy(() => import("@/pages/Rooms"));
+const Facilities = lazy(() => import("@/pages/Facilities"));
+const Gallery = lazy(() => import("@/pages/Gallery"));
+const ExploreBedugul = lazy(() => import("@/pages/ExploreBedugul"));
+const Restaurant = lazy(() => import("@/pages/Restaurant"));
+const About = lazy(() => import("@/pages/About"));
+const Contact = lazy(() => import("@/pages/Contact"));
+const FAQ = lazy(() => import("@/pages/FAQ"));
+const Blog = lazy(() => import("@/pages/Blog"));
+const BlogDetail = lazy(() => import("@/pages/BlogDetail"));
+const PrivacyPolicy = lazy(() => import("@/pages/PrivacyPolicy"));
+const TermsAndConditions = lazy(() => import("@/pages/TermsAndConditions"));
+const CancellationPolicy = lazy(() => import("@/pages/CancellationPolicy"));
+const RefundPolicy = lazy(() => import("@/pages/RefundPolicy"));
+const HouseRules = lazy(() => import("@/pages/HouseRules"));
+const PaymentInformation = lazy(() => import("@/pages/PaymentInformation"));
+
+const AdminLogin = lazy(() => import("@/pages/admin/Login"));
+const AdminLayout = lazy(() => import("@/pages/admin/AdminLayout"));
+const CmsBlog = lazy(() => import("@/pages/admin/CmsBlog"));
+const PostEditor = lazy(() => import("@/pages/admin/PostEditor"));
+const CmsList = lazy(() => import("@/pages/admin/CmsList"));
+const CmsSettings = lazy(() => import("@/pages/admin/CmsSettings"));
+const CmsMedia = lazy(() => import("@/pages/admin/CmsMedia"));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -54,6 +57,7 @@ function App() {
             position="top-center"
             toastOptions={{ style: { fontFamily: "DM Sans, sans-serif" } }}
           />
+          <Suspense fallback={null}>
           <Routes>
             {/* Site */}
             <Route element={<SiteLayout />}>
@@ -100,6 +104,7 @@ function App() {
               <Route path="/admin/media" element={<CmsMedia />} />
             </Route>
           </Routes>
+          </Suspense>
         </BrowserRouter>
         </LanguageProvider>
       </ContentProvider>

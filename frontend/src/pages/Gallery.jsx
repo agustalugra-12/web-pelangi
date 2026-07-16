@@ -45,7 +45,7 @@ export default function Gallery() {
         <div className="mt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {filtered.map((g, i) => (
             <div key={g.id || `${g.category}-${i}`} className={`overflow-hidden rounded-2xl shadow-paper-sm ${i % 5 === 0 ? "aspect-[3/4]" : "aspect-square"}`}>
-              <img src={g.src} alt={label(g.category)} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+              <img src={g.src} alt={label(g.category)} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" loading="lazy" />
             </div>
           ))}
         </div>

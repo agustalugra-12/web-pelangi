@@ -20,13 +20,13 @@ export default function Restaurant() {
         <div className="mt-12 grid md:grid-cols-5 gap-6 items-start">
           <div className="md:col-span-3 grid grid-cols-2 gap-3">
             <div className="col-span-2 aspect-[16/9] rounded-3xl overflow-hidden shadow-paper-sm">
-              <img src={byCat(gallery, "Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" loading="lazy" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={byCat(gallery, "Garden").src} alt="Garden" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "Garden").src} alt="Garden" className="w-full h-full object-cover" loading="lazy" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={byCat(gallery, "View").src} alt="View" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "View").src} alt="View" className="w-full h-full object-cover" loading="lazy" />
             </div>
           </div>
 

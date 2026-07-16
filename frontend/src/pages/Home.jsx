@@ -60,16 +60,16 @@ export default function Home() {
           <div className="lg:col-span-5 relative">
             <div className="relative">
               <div className="blob overflow-hidden shadow-paper w-full aspect-[4/5] max-w-sm mx-auto">
-                <img src="/assets/signage.jpg" alt="Pelangi Homestay signage" className="w-full h-full object-cover" />
+                <img src="/assets/signage.jpg" alt="Pelangi Homestay signage" className="w-full h-full object-cover" loading="eager" fetchpriority="high" />
               </div>
               {attractions[0] && (
                 <div className="absolute -bottom-8 -left-6 w-40 h-40 rounded-full overflow-hidden shadow-paper border-4 border-cream hidden md:block">
-                  <img src={attractions[0].image} alt={pick(attractions[0], "title")} className="w-full h-full object-cover" />
+                  <img src={attractions[0].image} alt={pick(attractions[0], "title")} className="w-full h-full object-cover" loading="lazy" />
                 </div>
               )}
               {attractions[attractions.length - 1] && (
                 <div className="absolute -top-6 -right-4 w-28 h-28 rounded-full overflow-hidden shadow-paper border-4 border-cream hidden md:block">
-                  <img src={attractions[attractions.length - 1].image} alt={pick(attractions[attractions.length - 1], "title")} className="w-full h-full object-cover" />
+                  <img src={attractions[attractions.length - 1].image} alt={pick(attractions[attractions.length - 1], "title")} className="w-full h-full object-cover" loading="lazy" />
                 </div>
               )}
             </div>
@@ -93,16 +93,16 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2 aspect-[4/3] rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryByCategory(gallery, "Garden").src} alt="Garden" className="w-full h-full object-cover" />
+              <img src={galleryByCategory(gallery, "Garden").src} alt="Garden" className="w-full h-full object-cover" loading="lazy" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryByCategory(gallery, "Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" />
+              <img src={galleryByCategory(gallery, "Restaurant").src} alt="Restaurant" className="w-full h-full object-cover" loading="lazy" />
             </div>
             <div className="aspect-square rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={galleryByCategory(gallery, "View").src} alt="View" className="w-full h-full object-cover" />
+              <img src={galleryByCategory(gallery, "View").src} alt="View" className="w-full h-full object-cover" loading="lazy" />
             </div>
             <div className="col-span-2 aspect-[4/3] rounded-2xl overflow-hidden shadow-paper-sm">
-              <img src={rooms[0]?.image} alt="Room" className="w-full h-full object-cover" />
+              <img src={rooms[0]?.image} alt="Room" className="w-full h-full object-cover" loading="lazy" />
             </div>
           </div>
         </div>
@@ -153,7 +153,7 @@ export default function Home() {
           <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-3">
             {gallery.slice(0, 8).map((g, i) => (
               <div key={g.id || i} className={`overflow-hidden rounded-2xl shadow-paper-sm ${i % 3 === 0 ? "aspect-[3/4]" : "aspect-square"}`}>
-                <img src={g.src} alt={g.category} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+                <img src={g.src} alt={g.category} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" loading="lazy" />
               </div>
             ))}
           </div>
@@ -170,7 +170,7 @@ export default function Home() {
         <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {attractions.slice(0, 6).map((a, i) => (
             <article key={a.id || a.title} className="group relative rounded-3xl overflow-hidden shadow-paper-sm reveal" style={{ animationDelay: `${i * 80}ms` }}>
-              <img src={a.image} alt={pick(a, "title")} className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-500" />
+              <img src={a.image} alt={pick(a, "title")} className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
               <div className="absolute inset-0 bg-gradient-to-t from-teal-deep/90 via-teal-deep/20 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-5 text-cream">
                 <span className="inline-block text-[11px] font-semibold uppercase tracking-widest bg-mustard text-teal-deep rounded-full px-2.5 py-1">{pick(a, "distance")}</span>

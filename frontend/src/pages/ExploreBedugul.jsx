@@ -19,7 +19,7 @@ export default function ExploreBedugul() {
           {attractions.map((a, i) => (
             <article key={a.id || a.title} className="group rounded-3xl overflow-hidden bg-paper shadow-paper-sm border border-ink/5 reveal" style={{ animationDelay: `${i * 90}ms` }} data-testid={`attraction-${i}`}>
               <div className="relative overflow-hidden">
-                <img src={a.image} alt={pick(a, "title")} className="w-full h-56 object-cover group-hover:scale-105 transition-transform duration-500" />
+                <img src={a.image} alt={pick(a, "title")} className="w-full h-56 object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
                 <span className="absolute top-4 left-4 bg-mustard text-teal-deep text-xs font-semibold rounded-full px-2.5 py-1">{pick(a, "distance")}</span>
               </div>
               <div className="p-5">

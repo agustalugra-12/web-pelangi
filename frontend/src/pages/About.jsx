@@ -36,10 +36,10 @@ export default function About() {
         <div className="mt-14 grid md:grid-cols-2 gap-10 items-center">
           <div className="grid grid-cols-2 gap-3">
             <div className="aspect-[3/4] rounded-3xl overflow-hidden shadow-paper-sm">
-              <img src={byCat(gallery, "Lobby").src} alt="Pelangi Homestay" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "Lobby").src} alt="Pelangi Homestay" className="w-full h-full object-cover" loading="lazy" />
             </div>
             <div className="aspect-[3/4] rounded-3xl overflow-hidden shadow-paper-sm mt-8">
-              <img src={byCat(gallery, "Restaurant").src} alt="Pelangi Homestay Restaurant" className="w-full h-full object-cover" />
+              <img src={byCat(gallery, "Restaurant").src} alt="Pelangi Homestay Restaurant" className="w-full h-full object-cover" loading="lazy" />
             </div>
           </div>
           <div className="prose-pelangi">

@@ -22,7 +22,7 @@ export default function RoomCard({ room, index = 0 }) {
       </div>
 
       <div className="relative">
-        <img src={room.image} alt={name} className="w-full h-56 object-cover" />
+        <img src={room.image} alt={name} className="w-full h-56 object-cover" loading="lazy" />
         <span className="absolute top-4 left-4 bg-mustard text-teal-deep font-semibold text-xs px-3 py-1 rounded-full shadow-paper-sm">
           {capacity} · {room.size}
         </span>
