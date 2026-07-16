@@ -12,6 +12,7 @@
  */
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 const { PurgeCSS } = require("purgecss");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -27,6 +28,13 @@ const WEBFONTS_SRC = path.join(
 );
 const WEBFONTS_OUT = path.join(OUT_DIR, "webfonts");
 const NEEDED_FONTS = ["fa-solid-900.woff2", "fa-regular-400.woff2", "fa-brands-400.woff2"];
+
+// Which style each non-solid icon uses (checked against src/**/*.{js,jsx}
+// via `fa-regular fa-xxx` / `fa-brands fa-xxx` pairs in className strings).
+// Everything not listed here is assumed fa-solid. Update this if a new
+// fa-regular/fa-brands icon is added anywhere in the app.
+const REGULAR_ICONS = ["fa-clock"];
+const BRANDS_ICONS = ["fa-whatsapp"];
 
 async function main() {
   const result = await new PurgeCSS().purge({
@@ -65,9 +73,51 @@ async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(OUT_CSS, css, "utf8");
 
+  // The CSS subset above only trims *selectors* — the @font-face src still
+  // points at the full webfont, which contains every glyph in that style
+  // (~1500+ for solid, ~500+ for brands) even though we use ~30 total. Pull
+  // the exact codepoints this subset actually references out of the CSS and
+  // use fonttools (pyftsubset) to cut real glyph-level font files.
+  const codepoints = [...css.matchAll(/--fa:\s*"\\([0-9a-fA-F]+)"/g)].map((m) => `0x${m[1]}`);
+  // fa-plus's glyph is the literal "+" character, not a private-use codepoint.
+  if (css.includes(".fa-plus")) codepoints.push("0x2B");
+
+  const iconOf = (line) => (line.match(/\.(fa-[a-z0-9-]+)\s*\{/) || [])[1];
+  const byFamily = { regular: [], brands: [], solid: [] };
+  for (const block of css.split("}")) {
+    const icon = iconOf(block);
+    const cp = block.match(/--fa:\s*"\\([0-9a-fA-F]+)"/);
+    if (!icon || !cp) continue;
+    const family = REGULAR_ICONS.includes(icon)
+      ? "regular"
+      : BRANDS_ICONS.includes(icon)
+        ? "brands"
+        : "solid";
+    byFamily[family].push(`0x${cp[1]}`);
+  }
+  if (css.includes(".fa-plus")) byFamily.solid.push("0x2B");
+
   fs.mkdirSync(WEBFONTS_OUT, { recursive: true });
-  for (const font of NEEDED_FONTS) {
-    fs.copyFileSync(path.join(WEBFONTS_SRC, font), path.join(WEBFONTS_OUT, font));
+  const FONT_FAMILY_FILE = {
+    solid: "fa-solid-900.woff2",
+    regular: "fa-regular-400.woff2",
+    brands: "fa-brands-400.woff2",
+  };
+  for (const [family, file] of Object.entries(FONT_FAMILY_FILE)) {
+    const src = path.join(WEBFONTS_SRC, file);
+    const dest = path.join(WEBFONTS_OUT, file);
+    const unicodes = byFamily[family];
+    if (unicodes.length === 0) {
+      fs.copyFileSync(src, dest);
+      continue;
+    }
+    execFileSync("pyftsubset", [
+      src,
+      `--output-file=${dest}`,
+      `--unicodes=${unicodes.join(",")}`,
+      "--flavor=woff2",
+      "--no-layout-closure",
+    ]);
   }
 
   const before = fs.statSync(SRC_CSS).size;
@@ -75,6 +125,11 @@ async function main() {
   console.log(
     `fontawesome-subset.css: ${(before / 1024).toFixed(1)}KB -> ${(after / 1024).toFixed(1)}KB`
   );
+  for (const file of NEEDED_FONTS) {
+    const b = fs.statSync(path.join(WEBFONTS_SRC, file)).size;
+    const a = fs.statSync(path.join(WEBFONTS_OUT, file)).size;
+    console.log(`${file}: ${(b / 1024).toFixed(1)}KB -> ${(a / 1024).toFixed(1)}KB`);
+  }
 }
 
 main().catch((err) => {
