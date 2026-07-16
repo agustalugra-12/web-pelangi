@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://pelangihomestay.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url><loc>https://pelangihomestay.com/rooms</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://pelangihomestay.com/facilities</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://pelangihomestay.com/gallery</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://pelangihomestay.com/restaurant</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://pelangihomestay.com/explore-bedugul</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://pelangihomestay.com/about</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://pelangihomestay.com/blog</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pelangihomestay.com/contact</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://pelangihomestay.com/faq</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pelangihomestay.com/privacy-policy</loc><changefreq>yearly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://pelangihomestay.com/terms-and-conditions</loc><changefreq>yearly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://pelangihomestay.com/cancellation-policy</loc><changefreq>yearly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://pelangihomestay.com/refund-policy</loc><changefreq>yearly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://pelangihomestay.com/house-rules</loc><changefreq>yearly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://pelangihomestay.com/payment-information</loc><changefreq>yearly</changefreq><priority>0.6</priority></url>
+</urlset>

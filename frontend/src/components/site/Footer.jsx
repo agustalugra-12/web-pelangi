@@ -16,8 +16,8 @@ export default function Footer() {
         </svg>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 pt-16 pb-10 grid gap-10 md:grid-cols-4">
-        <div>
+      <div className="max-w-7xl mx-auto px-6 pt-16 pb-10 grid gap-10 md:grid-cols-2 lg:grid-cols-5">
+        <div className="lg:col-span-2">
           <Link to="/" className="group inline-flex items-center gap-3">
             <BrandLogo size={64} variant="light" hoverFlip />
             <span className="flex flex-col leading-none">
@@ -29,8 +29,9 @@ export default function Footer() {
           </Link>
           <RainbowAccent width="w-24" className="mt-4" />
           <p className="text-cream/75 text-sm leading-relaxed max-w-xs mt-4">
-            {site.tagline} — kabut pagi, kopi lokal, dan pelayanan tulus.
+            {site.tagline} — kabut pagi, kopi lokal, dan pelayanan tulus sejak 2012.
           </p>
+          <p className="text-cream/60 text-xs mt-4">18 Kamar aktif · 10 Standard Room · 8 Cottage.</p>
         </div>
 
         <div>
@@ -39,24 +40,33 @@ export default function Footer() {
             <li><Link to="/rooms" className="hover:text-mustard-soft">Rooms</Link></li>
             <li><Link to="/facilities" className="hover:text-mustard-soft">Facilities</Link></li>
             <li><Link to="/gallery" className="hover:text-mustard-soft">Gallery</Link></li>
-            <li><Link to="/explore-bedugul" className="hover:text-mustard-soft">Explore Bedugul</Link></li>
             <li><Link to="/restaurant" className="hover:text-mustard-soft">Restaurant</Link></li>
+            <li><Link to="/explore-bedugul" className="hover:text-mustard-soft">Explore Bedugul</Link></li>
+            <li><Link to="/blog" className="hover:text-mustard-soft">Blog</Link></li>
           </ul>
         </div>
 
         <div>
-          <h4 className="font-display text-lg mb-3 text-mustard-soft">Info</h4>
+          <h4 className="font-display text-lg mb-3 text-mustard-soft">Informasi</h4>
           <ul className="space-y-2 text-sm text-cream/85">
-            <li><Link to="/about" className="hover:text-mustard-soft">About</Link></li>
-            <li><Link to="/blog" className="hover:text-mustard-soft">Blog</Link></li>
+            <li><Link to="/about" className="hover:text-mustard-soft">About Us</Link></li>
+            <li><Link to="/payment-information" className="hover:text-mustard-soft">Payment Information</Link></li>
+            <li><Link to="/house-rules" className="hover:text-mustard-soft">House Rules</Link></li>
             <li><Link to="/faq" className="hover:text-mustard-soft">FAQ</Link></li>
             <li><Link to="/contact" className="hover:text-mustard-soft">Contact</Link></li>
-            <li><Link to="/admin/login" className="hover:text-mustard-soft text-cream/50">Admin</Link></li>
           </ul>
         </div>
 
         <div>
-          <h4 className="font-display text-lg mb-3 text-mustard-soft">Hubungi</h4>
+          <h4 className="font-display text-lg mb-3 text-mustard-soft">Legal</h4>
+          <ul className="space-y-2 text-sm text-cream/85">
+            <li><Link to="/privacy-policy" className="hover:text-mustard-soft">Privacy Policy</Link></li>
+            <li><Link to="/terms-and-conditions" className="hover:text-mustard-soft">Terms &amp; Conditions</Link></li>
+            <li><Link to="/cancellation-policy" className="hover:text-mustard-soft">Cancellation Policy</Link></li>
+            <li><Link to="/refund-policy" className="hover:text-mustard-soft">Refund Policy</Link></li>
+          </ul>
+
+          <h4 className="font-display text-lg mt-6 mb-3 text-mustard-soft">Hubungi</h4>
           <ul className="space-y-2 text-sm text-cream/85">
             <li className="flex gap-2"><i className="fa-solid fa-location-dot mt-1 text-mustard-soft" aria-hidden="true"></i>{site.address}</li>
             <li className="flex gap-2"><i className="fa-brands fa-whatsapp mt-1 text-mustard-soft" aria-hidden="true"></i>{site.whatsappDisplay}</li>
