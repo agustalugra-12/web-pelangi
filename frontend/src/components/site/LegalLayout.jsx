@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useContent } from "@/context/ContentContext";
+import { useLang } from "@/context/LanguageContext";
 import Seo from "@/components/site/Seo";
 import Breadcrumb from "@/components/site/Breadcrumb";
 import RainbowAccent from "@/components/site/RainbowAccent";
@@ -11,13 +12,14 @@ import RainbowAccent from "@/components/site/RainbowAccent";
 //  - Book Now CTA + supporting text at the bottom
 export default function LegalLayout({
   title,
-  eyebrow = "Legal",
+  eyebrow,
   hero,
   description,
   breadcrumb = [],
   children,
 }) {
   const { site } = useContent();
+  const { t } = useLang();
   const bcJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -37,7 +39,7 @@ export default function LegalLayout({
       <Seo title={title} description={description} jsonLd={bcJsonLd} />
       <section className="max-w-4xl mx-auto px-5 md:px-8">
         <Breadcrumb items={breadcrumb} />
-        <p className="font-script text-2xl text-mustard-deep">{eyebrow}</p>
+        <p className="font-script text-2xl text-mustard-deep">{eyebrow || t("legal.eyebrow")}</p>
         <h1 className="font-display font-semibold text-teal-deep text-4xl md:text-5xl lg:text-6xl leading-tight">
           {title}
         </h1>
@@ -50,19 +52,17 @@ export default function LegalLayout({
 
         {/* CTA */}
         <div className="mt-12 bg-teal-deep text-cream rounded-3xl p-8 md:p-10">
-          <p className="font-script text-2xl text-mustard-soft">Siap menginap?</p>
-          <h3 className="font-display italic text-3xl md:text-4xl mt-1">Reservasi lewat kanal resmi.</h3>
-          <p className="mt-3 text-cream/85 max-w-2xl">
-            Reservasi dilakukan melalui Booking Engine resmi {site.brand} untuk memastikan ketersediaan kamar dan keamanan transaksi.
-          </p>
+          <p className="font-script text-2xl text-mustard-soft">{t("legal.ctaScript")}</p>
+          <h3 className="font-display italic text-3xl md:text-4xl mt-1">{t("legal.ctaTitle")}</h3>
+          <p className="mt-3 text-cream/85 max-w-2xl">{t("legal.ctaBody")}</p>
           <div className="mt-6 flex flex-wrap gap-3">
             <a href={site.bookingUrl} target="_blank" rel="noopener noreferrer"
               className="btn-lift inline-flex items-center gap-2 rounded-full bg-leaf text-white px-6 py-3 font-semibold shadow-paper-sm">
-              Book Now
+              {t("common.bookNow")}
               <i className="fa-solid fa-arrow-right text-xs" aria-hidden="true"></i>
             </a>
             <Link to="/contact" className="btn-lift inline-flex items-center gap-2 rounded-full border-2 border-mustard-soft text-mustard-soft px-6 py-3 font-semibold hover:bg-mustard-soft hover:text-teal-deep">
-              Hubungi Kami
+              {t("common.contactUs")}
             </Link>
           </div>
         </div>

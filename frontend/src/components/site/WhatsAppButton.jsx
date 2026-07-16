@@ -1,11 +1,11 @@
 import { useContent } from "@/context/ContentContext";
+import { useLang } from "@/context/LanguageContext";
 import { HOME } from "@/constants/testIds";
 
 export default function WhatsAppButton() {
   const { site } = useContent();
-  const href = `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(
-    "Halo Pelangi Homestay, saya ingin bertanya tentang ketersediaan kamar."
-  )}`;
+  const { t } = useLang();
+  const href = `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(t("whatsapp.prefill"))}`;
   return (
     <a
       href={href}
@@ -13,7 +13,7 @@ export default function WhatsAppButton() {
       rel="noopener noreferrer"
       data-testid={HOME.whatsappBtn}
       className="fixed bottom-6 right-6 z-40 group"
-      aria-label="Chat WhatsApp"
+      aria-label={t("whatsapp.label")}
     >
       <span className="absolute inset-0 rounded-full bg-leaf/60 animate-pulseRing" aria-hidden="true"></span>
       <span className="relative inline-flex h-14 w-14 items-center justify-center rounded-full bg-leaf text-white shadow-paper hover:scale-105 transition-transform">

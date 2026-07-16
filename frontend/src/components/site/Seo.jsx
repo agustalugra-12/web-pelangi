@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useContent } from "@/context/ContentContext";
+import { useLang } from "@/context/LanguageContext";
 
 function upsertMeta(selector, attrs) {
   let el = document.head.querySelector(selector);
@@ -29,15 +30,22 @@ function upsertLink(rel, href) {
 export default function Seo({ title, description, image, jsonLd }) {
   const location = useLocation();
   const { site } = useContent();
+  const { lang, pick } = useLang();
 
   useEffect(() => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const url = origin + location.pathname;
-    const t = title ? `${title} — ${site.brand}` : site.seoTitle || site.brand;
-    const d = description || site.seoDescription || "";
+    const brand = site.brand;
+    const siteSeoTitle = pick(site, "seoTitle") || brand;
+    const siteSeoDesc = pick(site, "seoDescription") || "";
+    const t = title ? `${title} — ${brand}` : siteSeoTitle;
+    const d = description || siteSeoDesc;
     const img = image || `${origin}/assets/pelangi-logo.png`;
 
     document.title = t;
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("lang", lang);
+    }
     upsertMeta('meta[name="description"]', { name: "description", content: d });
     upsertMeta('meta[property="og:title"]', { property: "og:title", content: t });
     upsertMeta('meta[property="og:description"]', { property: "og:description", content: d });
@@ -63,7 +71,7 @@ export default function Seo({ title, description, image, jsonLd }) {
       script.textContent = JSON.stringify(jsonLd);
       document.head.appendChild(script);
     }
-  }, [title, description, image, jsonLd, location.pathname, site]);
+  }, [title, description, image, jsonLd, location.pathname, site, lang, pick]);
 
   return null;
 }

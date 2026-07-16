@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import { ContentProvider } from "@/context/ContentContext";
+import { LanguageProvider } from "@/context/LanguageContext";
 import SiteLayout from "@/components/site/SiteLayout";
 import ProtectedRoute from "@/components/site/ProtectedRoute";
 
@@ -45,6 +46,7 @@ function App() {
   return (
     <AuthProvider>
       <ContentProvider>
+        <LanguageProvider>
         <BrowserRouter>
           <ScrollToTop />
           <Toaster
@@ -99,6 +101,7 @@ function App() {
             </Route>
           </Routes>
         </BrowserRouter>
+        </LanguageProvider>
       </ContentProvider>
     </AuthProvider>
   );

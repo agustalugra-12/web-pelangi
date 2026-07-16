@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import SectionHeading from "@/components/site/SectionHeading";
+import { useLang } from "@/context/LanguageContext";
 import api from "@/lib/api";
 
 export default function Blog() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { t, lang, pick } = useLang();
 
   useEffect(() => {
     api.get("/blog").then(({ data }) => {
@@ -14,15 +16,22 @@ export default function Blog() {
     }).catch(() => setLoading(false));
   }, []);
 
+  const locale = lang === "en" ? "en-GB" : "id-ID";
+
   return (
     <div className="pt-14 pb-24">
       <section className="max-w-7xl mx-auto px-5 md:px-8">
-        <SectionHeading eyebrow="Blog" title="Cerita &" italicWord="tips" subtitle="Panduan wisata, itinerary, dan cerita dari Bedugul." />
+        <SectionHeading
+          eyebrow={t("blog.eyebrow")}
+          title={t("blog.title")}
+          italicWord={t("blog.italic")}
+          subtitle={t("blog.subtitle")}
+        />
 
         {loading ? (
-          <p className="mt-12 text-center text-teal-deep/70">Memuat…</p>
+          <p className="mt-12 text-center text-teal-deep/70">{t("common.loading")}</p>
         ) : posts.length === 0 ? (
-          <p className="mt-12 text-center text-teal-deep/70">Belum ada artikel.</p>
+          <p className="mt-12 text-center text-teal-deep/70">{t("common.noArticles")}</p>
         ) : (
           <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {posts.map((p, i) => (
@@ -39,11 +48,11 @@ export default function Blog() {
                 <div className="p-5">
                   <span className="text-[11px] font-semibold uppercase tracking-widest text-mustard-deep">{p.category}</span>
                   <h3 className="mt-1 font-display text-xl text-teal-deep group-hover:text-mustard-deep transition-colors">
-                    {p.title}
+                    {pick(p, "title")}
                   </h3>
-                  <p className="mt-2 text-sm text-teal-deep/75 line-clamp-3">{p.excerpt}</p>
+                  <p className="mt-2 text-sm text-teal-deep/75 line-clamp-3">{pick(p, "excerpt")}</p>
                   <p className="mt-4 text-xs text-teal-deep/60">
-                    {new Date(p.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                    {new Date(p.created_at).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}
                   </p>
                 </div>
               </Link>
