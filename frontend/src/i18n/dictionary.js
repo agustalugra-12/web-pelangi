@@ -83,6 +83,7 @@ export const DICTIONARY = {
       ],
       startFrom: "Mulai dari",
       perNight: "/ malam",
+      viewDetails: "Lihat Foto & Fasilitas",
     },
     facilities: {
       eyebrow: "Facilities",
@@ -336,6 +337,7 @@ export const DICTIONARY = {
       ],
       startFrom: "From",
       perNight: "/ night",
+      viewDetails: "View Photos & Facilities",
     },
     facilities: {
       eyebrow: "Facilities",

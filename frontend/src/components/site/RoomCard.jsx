@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { facilityIcons } from "@/data/content";
 import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
 import { HOME } from "@/constants/testIds";
+import RoomDetailModal from "./RoomDetailModal";
 
 export default function RoomCard({ room, index = 0 }) {
   const { site } = useContent();
@@ -9,6 +11,7 @@ export default function RoomCard({ room, index = 0 }) {
   const name = pick(room, "name");
   const description = pick(room, "description");
   const capacity = pick(room, "capacity");
+  const [detailOpen, setDetailOpen] = useState(false);
   return (
     <article
       className="relative bg-paper rounded-3xl overflow-hidden shadow-paper-sm border border-ink/5 flex flex-col reveal group"
@@ -21,12 +24,25 @@ export default function RoomCard({ room, index = 0 }) {
         <span className="flex-1 h-1.5 bg-red-500"></span>
       </div>
 
-      <div className="relative">
+      <button
+        type="button"
+        onClick={() => setDetailOpen(true)}
+        data-testid={`room-photo-${room.slug}`}
+        className="relative block w-full text-left cursor-zoom-in"
+        aria-label={`${t("rooms.viewDetails")} — ${name}`}
+      >
         <img src={room.image} alt={name} className="w-full h-56 object-cover" loading="lazy" />
         <span className="absolute top-4 left-4 bg-mustard text-teal-deep font-semibold text-xs px-3 py-1 rounded-full shadow-paper-sm">
           {capacity} · {room.size}
         </span>
-      </div>
+        <span className="absolute inset-0 bg-ink/0 group-hover:bg-ink/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <span className="bg-white/90 text-teal-deep text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1.5">
+            <i className="fa-solid fa-images text-[10px]" aria-hidden="true"></i>
+            {t("rooms.viewDetails")}
+          </span>
+        </span>
+      </button>
+      {detailOpen && <RoomDetailModal room={room} onClose={() => setDetailOpen(false)} />}
       <div className="p-6 flex-1 flex flex-col">
         <h3 className="font-display text-2xl text-teal-deep">{name}</h3>
         <p className="mt-2 text-sm text-teal-deep/75 leading-relaxed">{description}</p>
