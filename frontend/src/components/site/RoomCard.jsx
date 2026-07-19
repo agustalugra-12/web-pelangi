@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { facilityIcons } from "@/data/content";
 import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
@@ -12,6 +13,21 @@ export default function RoomCard({ room, index = 0 }) {
   const description = pick(room, "description");
   const capacity = pick(room, "capacity");
   const [detailOpen, setDetailOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Deep-link ?room=<slug> (dipakai AI WhatsApp - kirim 1 link rapi ke tamu alih-alih
+  // banyak link foto mentah, 2026-07-19) - buka modal detail kamar ini otomatis kalau
+  // slug di URL cocok, lalu bersihkan param supaya link bisa dibagikan ulang/refresh aman.
+  useEffect(() => {
+    if (searchParams.get("room") === room.slug) {
+      setDetailOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("room");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <article
       className="relative bg-paper rounded-3xl overflow-hidden shadow-paper-sm border border-ink/5 flex flex-col reveal group"
