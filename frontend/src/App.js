@@ -1,6 +1,7 @@
 import { useEffect, lazy, Suspense } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { StaticRouter } from "react-router";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import { ContentProvider } from "@/context/ContentContext";
@@ -45,12 +46,14 @@ function ScrollToTop() {
   return null;
 }
 
-function App() {
+function App({ ssrPath } = {}) {
+  const RouterImpl = ssrPath ? StaticRouter : BrowserRouter;
+  const routerProps = ssrPath ? { location: ssrPath } : {};
   return (
     <AuthProvider>
       <ContentProvider>
         <LanguageProvider>
-        <BrowserRouter>
+        <RouterImpl {...routerProps}>
           <ScrollToTop />
           <Toaster
             richColors
@@ -105,7 +108,7 @@ function App() {
             </Route>
           </Routes>
           </Suspense>
-        </BrowserRouter>
+        </RouterImpl>
         </LanguageProvider>
       </ContentProvider>
     </AuthProvider>
