@@ -14,11 +14,23 @@ const queryClient = new QueryClient({
   },
 });
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(
+const container = document.getElementById("root");
+const tree = (
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <App />
     </QueryClientProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
 );
+
+// Prerender LCP fix (2026-07-26): kalau HTML ini datang dari snapshot statis (lihat
+// backend/scripts/prerender_home.py, window.__PRERENDERED__ diinjeksi ke <body> sebelum
+// bundle ini jalan), pakai hydrateRoot supaya markup yang SUDAH ada di-reuse (bukan
+// dibongkar-bangun ulang dari nol) - itu satu-satunya cara manfaat kecepatan prerender
+// benar-benar kepakai. Semua halaman lain (tidak pernah dapat snapshot) tetap pakai
+// createRoot seperti sebelumnya, tidak ada perubahan perilaku untuk mereka.
+if (window.__PRERENDERED__) {
+  ReactDOM.hydrateRoot(container, tree);
+} else {
+  ReactDOM.createRoot(container).render(tree);
+}

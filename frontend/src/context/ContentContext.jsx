@@ -19,8 +19,18 @@ function mergeContent(base, override) {
   return merged;
 }
 
+// Kalau halaman ini datang dari snapshot prerender (2026-07-26, LCP fix), pakai data yang
+// SAMA PERSIS dipakai saat snapshot itu dirender - supaya hydrateRoot tidak lihat mismatch
+// antara markup yang sudah ada dengan render pertama client (yang defaultnya DEFAULT_CONTENT
+// sebelum fetch selesai). Halaman non-Home (tanpa snapshot) tetap mulai dari DEFAULT_CONTENT
+// seperti sebelumnya - window.__PRERENDERED__ cuma ada di HTML hasil prerender.
+function initialContent() {
+  if (typeof window === "undefined" || !window.__PRERENDERED__?.content) return DEFAULT_CONTENT;
+  return mergeContent(DEFAULT_CONTENT, window.__PRERENDERED__.content);
+}
+
 export function ContentProvider({ children }) {
-  const [content, setContent] = useState(DEFAULT_CONTENT);
+  const [content, setContent] = useState(initialContent);
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {

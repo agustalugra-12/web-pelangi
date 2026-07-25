@@ -18,9 +18,16 @@ const SUPPORTED = ["id", "en"];
 
 function initialLang() {
   if (typeof window === "undefined") return DEFAULT_LANG;
+  // Returning visitor's own choice always wins - checked first, before anything
+  // prerender-related, so a snapshot lang can never override a real preference.
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored && SUPPORTED.includes(stored)) return stored;
-  // First visit: try browser preference
+  // First-time visitor (no stored choice yet): match whatever language the served
+  // HTML was prerendered in (2026-07-26, LCP fix) - avoids a hydration text mismatch
+  // on the hero content, which IS the LCP element on Home.
+  const prerendered = window.__PRERENDERED__?.lang;
+  if (prerendered && SUPPORTED.includes(prerendered)) return prerendered;
+  // No snapshot info (non-Home route, or snapshot missing) - fall back to browser preference.
   const browser = (window.navigator.language || "").slice(0, 2).toLowerCase();
   if (SUPPORTED.includes(browser)) return browser;
   return DEFAULT_LANG;
