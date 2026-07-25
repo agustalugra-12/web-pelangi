@@ -12,7 +12,11 @@
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import App from "@/App";
+import { StaticRouter } from "react-router";
+import { AuthProvider } from "@/context/AuthContext";
+import { ContentProvider } from "@/context/ContentContext";
+import { LanguageProvider } from "@/context/LanguageContext";
+import { AppRoutes } from "@/App";
 
 export function renderHome({ content, lang, origin }) {
   // Minimal window/localStorage shim - only what the tree actually touches
@@ -44,9 +48,21 @@ export function renderHome({ content, lang, origin }) {
     defaultOptions: { queries: { staleTime: 60_000 } },
   });
 
+  // Reconstructs the SAME provider tree App.js uses client-side, just with StaticRouter
+  // instead of BrowserRouter - kept as a separate tree (not by passing a prop to App)
+  // specifically so StaticRouter/react-router core is never imported by App.js itself,
+  // keeping it out of the client bundle entirely.
   return renderToString(
     <QueryClientProvider client={queryClient}>
-      <App ssrPath="/" />
+      <AuthProvider>
+        <ContentProvider>
+          <LanguageProvider>
+            <StaticRouter location="/">
+              <AppRoutes />
+            </StaticRouter>
+          </LanguageProvider>
+        </ContentProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

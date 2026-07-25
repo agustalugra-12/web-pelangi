@@ -1,7 +1,6 @@
 import { useEffect, lazy, Suspense } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { StaticRouter } from "react-router";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import { ContentProvider } from "@/context/ContentContext";
@@ -46,69 +45,79 @@ function ScrollToTop() {
   return null;
 }
 
-function App({ ssrPath } = {}) {
-  const RouterImpl = ssrPath ? StaticRouter : BrowserRouter;
-  const routerProps = ssrPath ? { location: ssrPath } : {};
+// Shared between client (App, wrapped in BrowserRouter below) and the Node SSR entry
+// (frontend/ssr/render.jsx, wrapped in StaticRouter instead) - kept as a named export
+// so StaticRouter/react-router core never needs to be imported here, keeping it out of
+// the CLIENT bundle entirely (it's only ever used server-side).
+export function AppRoutes() {
+  return (
+    <>
+      <ScrollToTop />
+      <Toaster
+        richColors
+        position="top-center"
+        toastOptions={{ style: { fontFamily: "DM Sans, sans-serif" } }}
+      />
+      <Suspense fallback={null}>
+      <Routes>
+        {/* Site */}
+        <Route element={<SiteLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/rooms" element={<Rooms />} />
+          <Route path="/facilities" element={<Facilities />} />
+          <Route path="/gallery" element={<Gallery />} />
+          <Route path="/explore-bedugul" element={<ExploreBedugul />} />
+          <Route path="/restaurant" element={<Restaurant />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/blog" element={<Blog />} />
+          <Route path="/blog/:slug" element={<BlogDetail />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/faq" element={<FAQ />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+          <Route path="/cancellation-policy" element={<CancellationPolicy />} />
+          <Route path="/refund-policy" element={<RefundPolicy />} />
+          <Route path="/house-rules" element={<HouseRules />} />
+          <Route path="/payment-information" element={<PaymentInformation />} />
+        </Route>
+
+        {/* Admin */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route
+          element={
+            <ProtectedRoute>
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/admin" element={<CmsBlog />} />
+          <Route path="/admin/dashboard" element={<CmsBlog />} />
+          <Route path="/admin/blog" element={<CmsBlog />} />
+          <Route path="/admin/posts/new" element={<PostEditor />} />
+          <Route path="/admin/posts/:id" element={<PostEditor />} />
+          <Route path="/admin/rooms" element={<CmsList section="rooms" />} />
+          <Route path="/admin/menu" element={<CmsList section="menu" />} />
+          <Route path="/admin/gallery" element={<CmsList section="gallery" />} />
+          <Route path="/admin/attractions" element={<CmsList section="attractions" />} />
+          <Route path="/admin/faqs" element={<CmsList section="faqs" />} />
+          <Route path="/admin/testimonials" element={<CmsList section="testimonials" />} />
+          <Route path="/admin/settings" element={<CmsSettings />} />
+          <Route path="/admin/media" element={<CmsMedia />} />
+        </Route>
+      </Routes>
+      </Suspense>
+    </>
+  );
+}
+
+function App() {
   return (
     <AuthProvider>
       <ContentProvider>
         <LanguageProvider>
-        <RouterImpl {...routerProps}>
-          <ScrollToTop />
-          <Toaster
-            richColors
-            position="top-center"
-            toastOptions={{ style: { fontFamily: "DM Sans, sans-serif" } }}
-          />
-          <Suspense fallback={null}>
-          <Routes>
-            {/* Site */}
-            <Route element={<SiteLayout />}>
-              <Route path="/" element={<Home />} />
-              <Route path="/rooms" element={<Rooms />} />
-              <Route path="/facilities" element={<Facilities />} />
-              <Route path="/gallery" element={<Gallery />} />
-              <Route path="/explore-bedugul" element={<ExploreBedugul />} />
-              <Route path="/restaurant" element={<Restaurant />} />
-              <Route path="/about" element={<About />} />
-              <Route path="/blog" element={<Blog />} />
-              <Route path="/blog/:slug" element={<BlogDetail />} />
-              <Route path="/contact" element={<Contact />} />
-              <Route path="/faq" element={<FAQ />} />
-              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-              <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
-              <Route path="/cancellation-policy" element={<CancellationPolicy />} />
-              <Route path="/refund-policy" element={<RefundPolicy />} />
-              <Route path="/house-rules" element={<HouseRules />} />
-              <Route path="/payment-information" element={<PaymentInformation />} />
-            </Route>
-
-            {/* Admin */}
-            <Route path="/admin/login" element={<AdminLogin />} />
-            <Route
-              element={
-                <ProtectedRoute>
-                  <AdminLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/admin" element={<CmsBlog />} />
-              <Route path="/admin/dashboard" element={<CmsBlog />} />
-              <Route path="/admin/blog" element={<CmsBlog />} />
-              <Route path="/admin/posts/new" element={<PostEditor />} />
-              <Route path="/admin/posts/:id" element={<PostEditor />} />
-              <Route path="/admin/rooms" element={<CmsList section="rooms" />} />
-              <Route path="/admin/menu" element={<CmsList section="menu" />} />
-              <Route path="/admin/gallery" element={<CmsList section="gallery" />} />
-              <Route path="/admin/attractions" element={<CmsList section="attractions" />} />
-              <Route path="/admin/faqs" element={<CmsList section="faqs" />} />
-              <Route path="/admin/testimonials" element={<CmsList section="testimonials" />} />
-              <Route path="/admin/settings" element={<CmsSettings />} />
-              <Route path="/admin/media" element={<CmsMedia />} />
-            </Route>
-          </Routes>
-          </Suspense>
-        </RouterImpl>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
         </LanguageProvider>
       </ContentProvider>
     </AuthProvider>
