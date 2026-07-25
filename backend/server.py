@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os
+import asyncio
 import logging
 import uuid
 import re
@@ -489,6 +490,48 @@ async def get_content_type(type: str, site: str = Depends(get_current_site_admin
     return doc.get("data") if doc else None
 
 
+# Prerender LCP fix (2026-07-26) - regen dipicu di sini, bukan endpoint media upload,
+# karena upload foto sendiri belum mengubah field manapun di site_content sampai admin
+# benar-benar PUT konten yang menunjuk ke foto barunya (lihat catatan di
+# scripts/prerender_home.py). "menu" sengaja dilewati - Home.jsx tidak konsumsi tipe itu.
+_PRERENDER_RUNNING: set = set()
+
+
+def _trigger_prerender(site: str):
+    """Fire-and-forget, subprocess terpisah (BUKAN asyncio.create_task import Playwright
+    langsung ke proses ini) - proses backend ini single-process, tanpa --workers,
+    Restart=always, dan melayani SEMUA trafik API booking/admin kedua situs. Chromium
+    yang macet/crash TIDAK BOLEH bisa mengganggu/me-restart proses API. Guard sederhana:
+    kalau situs ini sedang diproses, lewati saja - simpanan berikutnya akan menyusul."""
+    if site in _PRERENDER_RUNNING:
+        return
+    _PRERENDER_RUNNING.add(site)
+
+    async def _run():
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                str(ROOT_DIR / "venv" / "bin" / "python"), "-m", "scripts.prerender_home", site,
+                cwd=str(ROOT_DIR),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            try:
+                out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+            except asyncio.TimeoutError:
+                proc.kill()
+                logging.getLogger("prerender").error(f"Prerender {site} timeout, di-kill")
+                return
+            if proc.returncode != 0:
+                logging.getLogger("prerender").error(
+                    f"Prerender {site} gagal (exit {proc.returncode}): {out.decode(errors='replace')[:500]}"
+                )
+        except Exception as e:
+            logging.getLogger("prerender").error(f"Prerender {site} error: {e}")
+        finally:
+            _PRERENDER_RUNNING.discard(site)
+
+    asyncio.create_task(_run())
+
+
 @api_router.put("/admin/content/{type}")
 async def update_content_type(
     type: str,
@@ -507,6 +550,8 @@ async def update_content_type(
         {"$set": {"data": data, "updated_at": now, "site": site, "type": type}},
         upsert=True,
     )
+    if type != "menu":
+        _trigger_prerender(site)
     return {"ok": True, "type": type, "site": site, "updated_at": now}
 
 
