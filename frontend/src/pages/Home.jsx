@@ -60,7 +60,7 @@ export default function Home() {
           <div className="lg:col-span-5 relative">
             <div className="relative">
               <div className="blob overflow-hidden shadow-paper w-full aspect-[4/5] max-w-sm mx-auto">
-                <img src="/assets/signage.jpg" alt="Pelangi Homestay signage" className="w-full h-full object-cover" loading="eager" fetchpriority="high" />
+                <img src="/assets/signage.webp" alt="Pelangi Homestay signage" className="w-full h-full object-cover" loading="eager" fetchpriority="high" />
               </div>
               {attractions[0] && (
                 <div className="absolute -bottom-8 -left-6 w-40 h-40 rounded-full overflow-hidden shadow-paper border-4 border-cream hidden md:block">

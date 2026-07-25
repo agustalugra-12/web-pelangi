@@ -14,7 +14,7 @@ export default function LodgingSchema() {
     description: site.seoDescription,
     url: origin,
     logo: `${origin}/assets/pelangi-logo.png`,
-    image: [`${origin}/assets/pelangi-logo.png`, `${origin}/assets/signage.jpg`, `${origin}/assets/facade.jpg`],
+    image: [`${origin}/assets/pelangi-logo.png`, `${origin}/assets/signage.webp`, `${origin}/assets/facade.webp`],
     telephone: `+${site.whatsapp}`,
     email: site.email,
     priceRange: "IDR 175.000 – IDR 225.000",
