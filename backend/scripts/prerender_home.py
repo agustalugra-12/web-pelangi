@@ -1,11 +1,21 @@
 """Content-driven homepage prerendering (2026-07-26) - fixes a real, Lighthouse-measured
 LCP problem: web-pelangi is a plain CRA SPA (no SSR), so the hero image can't paint until
-the JS bundle downloads+parses+executes+React renders the DOM. This captures a REAL
-browser render of the live homepage (via Playwright, not Node SSR - avoids "window is not
-defined" entirely since the page genuinely runs in a browser during capture) and saves it
-as static HTML, with `window.__PRERENDERED__` embedded so the client can hydrate over it
-instead of throwing it away and rebuilding from scratch (see src/index.js/ContentContext.jsx/
-LanguageContext.jsx for the client-side half of this).
+the JS bundle downloads+parses+executes+React renders the DOM.
+
+v1 (headless-browser/Playwright DOM capture after networkidle) shipped, passed every
+loopback test, then caused a MEASURED LIVE REGRESSION (React hydration mismatch,
+`Minified React error #418`) once actually served - root cause: capturing a browser's
+DOM after networkidle reflects the page AFTER mount effects have already fired, which is
+a different point in the lifecycle than what hydrateRoot compares against on a fresh
+client (its own pre-effects first render). See /root/.claude/plans/buzzing-bouncing-lark.md.
+
+v2 (this version): real SSR via `frontend/ssr/dist/render.cjs` (ReactDOMServer.
+renderToString, built separately with esbuild - see frontend/ssr/build.mjs). Real SSR
+never runs effects, so its output always matches a fresh client's first render by
+construction - architecturally avoids the v1 failure mode entirely. `window.__PRERENDERED__`
+embedded exactly as before so the client can hydrate over it instead of throwing it away
+and rebuilding from scratch (see src/index.js/ContentContext.jsx/LanguageContext.jsx for
+the client-side half of this - unchanged from v1).
 
 Auto-triggered by PUT /admin/content/{type} (server.py) as a fire-and-forget subprocess
 whenever an admin saves content - so uploading a new photo never needs a manual rebuild.
@@ -23,9 +33,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import httpx  # noqa: E402
-from playwright.async_api import async_playwright  # noqa: E402
 
-BACKEND_ORIGIN = "http://127.0.0.1:8001"
+FRONTEND_DIR = Path("/var/www/web-pelangi/frontend")
+SSR_BIN = FRONTEND_DIR / "ssr" / "dist" / "render.cjs"
+BUILD_INDEX = FRONTEND_DIR / "build" / "index.html"
+NODE_BIN = "/root/.nvm/versions/node/v20.20.2/bin/node"
 OUTPUT_DIR = Path("/var/www/web-pelangi/prerendered")
 
 
@@ -52,27 +64,38 @@ async def _fetch_content(domain: str) -> dict:
         return r.json()
 
 
+async def _render_ssr(content: dict, lang: str, origin: str) -> str:
+    """Panggil bundle Node SSR (renderToString) - lihat frontend/ssr/render.jsx untuk
+    shim window/localStorage minimal yang dipakai. stdin = payload, stdout = HTML."""
+    stdin_payload = json.dumps({"content": content, "lang": lang, "origin": origin}).encode()
+    proc = await asyncio.create_subprocess_exec(
+        NODE_BIN, str(SSR_BIN),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate(stdin_payload)
+    if proc.returncode != 0:
+        raise RuntimeError(f"SSR render gagal (exit {proc.returncode}): {err.decode(errors='replace')[:1000]}")
+    return out.decode("utf-8")
+
+
 async def prerender_site(site: str, domain: str) -> None:
     content = await _fetch_content(domain)
-    payload = json.dumps({"content": content, "lang": "id"})
+    lang = "id"
+    origin = f"https://{domain}"
+    ssr_html = await _render_ssr(content, lang, origin)
+
+    payload = json.dumps({"content": content, "lang": lang})
     # Jaga-jaga kalau ada teks CMS yang kebetulan mengandung "</script>" literal - bisa
     # menutup tag lebih awal dan merusak halaman kalau tidak di-escape.
     payload_safe = payload.replace("</script>", "<\\/script>")
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        # Context BARU (tanpa localStorage/cookie) - meniru pengunjung pertama kali,
-        # locale id-ID supaya konsisten dengan DEFAULT_LANG di LanguageContext.jsx.
-        context = await browser.new_context(locale="id-ID")
-        page = await context.new_page()
-        await page.goto(f"https://{domain}/", wait_until="networkidle", timeout=20000)
-        html = await page.evaluate("document.documentElement.outerHTML")
-        await browser.close()
-
-    # add_init_script/page context TIDAK meninggalkan <script> literal di outerHTML -
-    # harus disisipkan manual, tepat setelah <body> supaya jalan SEBELUM bundle JS
-    # (yang ditaruh CRA di akhir <body>).
     script_tag = f"<script>window.__PRERENDERED__={payload_safe}</script>"
+
+    # Baca build/index.html SEGAR tiap kali - selalu cocok dengan build yang sedang live
+    # (hash JS/CSS berubah tiap deploy), bukan template lama yang bisa basi.
+    html = BUILD_INDEX.read_text(encoding="utf-8")
+    html = html.replace('<div id="root"></div>', f'<div id="root">{ssr_html}</div>', 1)
     html = html.replace("<body>", f"<body>{script_tag}", 1)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
