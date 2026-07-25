@@ -13,6 +13,11 @@
     <meta property="og:type" content="website" />
     <link rel="icon" href="/assets/pelangi-logo.png" />
     <link rel="apple-touch-icon" href="/assets/pelangi-logo.png" />
+    <!-- LCP (2026-07-25, ditemukan lewat Lighthouse nyata): gambar hero baru bisa diminta
+         browser SETELAH bundle JS termuat+dieksekusi+React merender <img>-nya (SPA client-
+         render) - preload di sini memicu download-nya JAUH lebih awal (paralel dengan JS),
+         "Load Delay" LCP turun drastis dari ~4.4 detik. -->
+    <link rel="preload" as="image" href="/assets/signage.webp" fetchpriority="high" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
