@@ -2,7 +2,7 @@ import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
 import SectionHeading from "@/components/site/SectionHeading";
 
-const byCat = (arr, c) => arr.find((g) => g.category === c) || arr[0];
+const byCat = (arr, c) => arr.find((g) => g.category === c) || arr[0] || { src: "", category: c };
 
 export default function Restaurant() {
   const { site, gallery, menu } = useContent();

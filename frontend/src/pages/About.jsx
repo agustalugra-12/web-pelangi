@@ -5,7 +5,7 @@ import SectionHeading from "@/components/site/SectionHeading";
 import Seo from "@/components/site/Seo";
 import Breadcrumb from "@/components/site/Breadcrumb";
 
-const byCat = (arr, c) => arr.find((g) => g.category === c) || arr[0];
+const byCat = (arr, c) => arr.find((g) => g.category === c) || arr[0] || { src: "", category: c };
 
 // Renders inline `**bold**` markers into <strong>.
 function renderInline(text) {

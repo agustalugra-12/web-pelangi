@@ -31,12 +31,12 @@ export default function Navbar() {
           to="/"
           className="flex items-center gap-3 group"
           data-testid="nav-brand"
-          aria-label="Pelangi Homestay — Beranda"
+          aria-label={`${site.brand || "Pelangi Homestay"} — Beranda`}
         >
           <BrandLogo size={56} hoverFlip className="shrink-0" />
           <span className="hidden sm:flex flex-col leading-none">
             <span className="font-display italic text-xl md:text-2xl text-teal-deep tracking-tight">
-              Pelangi <span className="text-mustard-deep">Homestay</span>
+              {site.brand || "Pelangi Homestay"}
             </span>
             <span className="mt-1 font-script text-mustard-deep text-sm">
               Bedugul, Bali

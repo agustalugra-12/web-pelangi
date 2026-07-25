@@ -1,7 +1,25 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth, KNOWN_SITES } from "@/context/AuthContext";
 import BrandLogo from "@/components/site/BrandLogo";
 import { ADMIN } from "@/constants/testIds";
+
+function SiteSwitcher({ className = "" }) {
+  const { activeSite, setActiveSite } = useAuth();
+  return (
+    <select
+      data-testid="admin-site-switcher"
+      value={activeSite}
+      onChange={(e) => setActiveSite(e.target.value)}
+      className={`w-full rounded-lg bg-cream/10 border border-cream/20 text-cream text-xs font-medium px-2.5 py-2 ${className}`}
+    >
+      {KNOWN_SITES.map((s) => (
+        <option key={s.id} value={s.id} className="text-ink">
+          {s.label}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 const NAV = [
   { to: "/admin/blog", label: "Blog", icon: "fa-newspaper" },
@@ -35,6 +53,9 @@ export default function AdminLayout() {
               <span className="text-[10px] uppercase tracking-widest text-mustard-soft mt-1">Admin</span>
             </span>
           </Link>
+        </div>
+        <div className="px-4 pt-3">
+          <SiteSwitcher />
         </div>
         <nav className="flex-1 overflow-y-auto py-4 space-y-1 px-3">
           {NAV.map((n) => (
@@ -75,13 +96,16 @@ export default function AdminLayout() {
           <BrandLogo size={32} variant="light" />
           <span className="font-display italic">Pelangi Admin</span>
         </Link>
-        <button
-          type="button"
-          onClick={doLogout}
-          className="text-xs rounded-full border border-cream/40 px-3 py-1"
-        >
-          Logout
-        </button>
+        <div className="flex items-center gap-2">
+          <SiteSwitcher className="!w-32" />
+          <button
+            type="button"
+            onClick={doLogout}
+            className="text-xs rounded-full border border-cream/40 px-3 py-1"
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
       <main className="flex-1 min-w-0 md:pl-0 pt-16 md:pt-0">

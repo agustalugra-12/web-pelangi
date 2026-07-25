@@ -12,7 +12,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-const galleryByCategory = (arr, cat) => arr.find((g) => g.category === cat) || arr[0];
+const galleryByCategory = (arr, cat) => arr.find((g) => g.category === cat) || arr[0] || { src: "", category: cat };
 
 export default function Home() {
   const { site, rooms, gallery, attractions, testimonials, faqs } = useContent();

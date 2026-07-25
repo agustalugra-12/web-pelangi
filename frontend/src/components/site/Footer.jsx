@@ -25,7 +25,7 @@ export default function Footer() {
             <BrandLogo size={64} variant="light" hoverFlip />
             <span className="flex flex-col leading-none">
               <span className="font-display italic text-2xl text-cream">
-                Pelangi <span className="text-mustard-soft">Homestay</span>
+                {site.brand || "Pelangi Homestay"}
               </span>
               <span className="mt-1 font-script text-mustard-soft text-sm">Bedugul, Bali</span>
             </span>

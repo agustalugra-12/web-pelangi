@@ -109,6 +109,52 @@ def clear_auth_cookies(response: Response):
     response.delete_cookie("refresh_token", path="/")
 
 
+def _parse_site_host_map() -> dict:
+    """Multi-situs (2026-07-25) - satu backend + satu build React yang sama melayani
+    lebih dari satu domain properti (pelangihomestay.com + harmoni.pelangihomestay.com),
+    dibedakan dari header Host request. Format env `SITE_HOST_MAP`:
+    "harmoni.pelangihomestay.com:harmoni,pelangihomestay.com:pelangi" - domain yang tidak
+    ada di map (termasuk bare IP/localhost) jatuh ke DEFAULT_SITE, sama seperti perilaku
+    sebelum fitur ini ada."""
+    raw = os.environ.get("SITE_HOST_MAP", "")
+    mapping = {}
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if not pair or ":" not in pair:
+            continue
+        host, site = pair.split(":", 1)
+        mapping[host.strip().lower()] = site.strip()
+    return mapping
+
+
+SITE_HOST_MAP = _parse_site_host_map()
+DEFAULT_SITE = os.environ.get("DEFAULT_SITE", "pelangi")
+
+
+def _resolve_site_from_host(request: Request) -> str:
+    host = (request.headers.get("host") or "").split(":")[0].lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return SITE_HOST_MAP.get(host, DEFAULT_SITE)
+
+
+async def get_current_site_public(request: Request) -> str:
+    """Dipakai endpoint publik (content/blog/contact) - tamu tidak login, jadi
+    satu-satunya sinyal properti mana yang dimaksud adalah domain yang diakses."""
+    return _resolve_site_from_host(request)
+
+
+async def get_current_site_admin(request: Request) -> str:
+    """Dipakai endpoint admin (edit konten) - owner yang sama bisa kelola KEDUA situs
+    dari satu login manapun, jadi klien (frontend) mengirim header `X-Site` eksplisit
+    (site switcher) - kalau tidak dikirim (build lama/cache), fallback ke domain Host
+    supaya tetap masuk akal daripada error."""
+    header_site = request.headers.get("x-site")
+    if header_site:
+        return header_site
+    return _resolve_site_from_host(request)
+
+
 async def get_current_user(request: Request) -> dict:
     token = request.cookies.get("access_token")
     if not token:
@@ -270,8 +316,12 @@ async def me(current: dict = Depends(get_current_user)):
 
 # ---------- Routes: Blog Public ----------
 @api_router.get("/blog", response_model=List[BlogPostOut])
-async def list_posts(category: Optional[str] = None, limit: int = 50):
-    query = {"published": True}
+async def list_posts(category: Optional[str] = None, limit: int = 50, site: str = Depends(get_current_site_public)):
+    """Multi-situs (2026-07-25) - ditemukan lewat pengecekan langsung setelah harmoni
+    live: endpoint ini TIDAK di-scope, jadi harmoniby.pelangihomestay.com/blog benar-benar
+    menampilkan 3 postingan blog Pelangi ke tamu asli. Diperbaiki dengan filter `site`
+    (default "pelangi" untuk post lama, backward compatible)."""
+    query = {"published": True, "site": site}
     if category and category.lower() != "all":
         query["category"] = category
     cursor = db.blog_posts.find(query).sort("created_at", -1).limit(limit)
@@ -279,8 +329,8 @@ async def list_posts(category: Optional[str] = None, limit: int = 50):
 
 
 @api_router.get("/blog/{slug}", response_model=BlogPostOut)
-async def get_post(slug: str):
-    doc = await db.blog_posts.find_one({"slug": slug, "published": True})
+async def get_post(slug: str, site: str = Depends(get_current_site_public)):
+    doc = await db.blog_posts.find_one({"slug": slug, "published": True, "site": site})
     if not doc:
         raise HTTPException(status_code=404, detail="Post not found")
     return post_to_out(doc)
@@ -288,8 +338,8 @@ async def get_post(slug: str):
 
 # ---------- Routes: Blog Admin ----------
 @api_router.get("/admin/blog", response_model=List[BlogPostOut])
-async def admin_list_posts(_: dict = Depends(get_current_user)):
-    cursor = db.blog_posts.find({}).sort("created_at", -1)
+async def admin_list_posts(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
+    cursor = db.blog_posts.find({"site": site}).sort("created_at", -1)
     return [post_to_out(doc) async for doc in cursor]
 
 
@@ -305,7 +355,7 @@ async def admin_get_post(post_id: str, _: dict = Depends(get_current_user)):
 
 
 @api_router.post("/admin/blog", response_model=BlogPostOut)
-async def admin_create_post(payload: BlogPostCreate, _: dict = Depends(get_current_user)):
+async def admin_create_post(payload: BlogPostCreate, _: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     now = datetime.now(timezone.utc).isoformat()
     slug_base = slugify(payload.title)
     slug = slug_base
@@ -323,6 +373,7 @@ async def admin_create_post(payload: BlogPostCreate, _: dict = Depends(get_curre
         "tags": payload.tags,
         "published": payload.published,
         "slug": slug,
+        "site": site,
         "created_at": now,
         "updated_at": now,
     }
@@ -369,13 +420,14 @@ async def admin_delete_post(post_id: str, _: dict = Depends(get_current_user)):
 
 # ---------- Routes: Contact ----------
 @api_router.post("/contact")
-async def submit_contact(payload: ContactMessageCreate):
+async def submit_contact(payload: ContactMessageCreate, site: str = Depends(get_current_site_public)):
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "name": payload.name,
         "email": payload.email,
         "subject": payload.subject,
         "message": payload.message,
+        "site": site,
         "created_at": now,
     }
     result = await db.contact_messages.insert_one(doc)
@@ -383,8 +435,8 @@ async def submit_contact(payload: ContactMessageCreate):
 
 
 @api_router.get("/admin/contact", response_model=List[ContactMessageOut])
-async def admin_list_contact(_: dict = Depends(get_current_user)):
-    cursor = db.contact_messages.find({}).sort("created_at", -1).limit(200)
+async def admin_list_contact(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
+    cursor = db.contact_messages.find({"site": site}).sort("created_at", -1).limit(200)
     out = []
     async for doc in cursor:
         out.append(ContactMessageOut(
@@ -413,19 +465,27 @@ ALLOWED_CONTENT_TYPES = {"rooms", "menu", "gallery", "attractions", "faqs", "tes
 
 
 @api_router.get("/content")
-async def get_all_content():
-    """Public endpoint that returns all site content (used by frontend to hydrate)."""
+async def get_all_content(site: str = Depends(get_current_site_public)):
+    """Public endpoint that returns all site content (used by frontend to hydrate).
+    Multi-situs: di-scope ke `site` yang di-resolve dari domain (Host header) yang
+    diakses tamu - lihat get_current_site_public."""
     out = {}
-    async for doc in db.site_content.find({}):
-        out[doc["_id"]] = doc.get("data")
+    async for doc in db.site_content.find({"site": site}):
+        out[doc["type"]] = doc.get("data")
     return out
 
 
 @api_router.get("/content/{type}")
-async def get_content_type(type: str):
+async def get_content_type(type: str, site: str = Depends(get_current_site_admin)):
+    """SATU-SATUNYA pemakai endpoint ini adalah halaman admin (CmsList.jsx/
+    CmsSettings.jsx) untuk memuat data yang akan diedit - situs publik pakai
+    `GET /content` (semua tipe sekaligus). Karena itu resolusi situsnya HARUS ikut
+    switcher admin (X-Site), BUKAN cuma domain - kalau tidak, form edit akan selalu
+    menampilkan data situs sesuai domain (mis. pelangi) walau switcher sudah
+    dipindah ke situs lain, dan simpan bisa menimpa data situs yang salah."""
     if type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Invalid content type")
-    doc = await db.site_content.find_one({"_id": type})
+    doc = await db.site_content.find_one({"site": site, "type": type})
     return doc.get("data") if doc else None
 
 
@@ -434,6 +494,7 @@ async def update_content_type(
     type: str,
     payload: dict,
     _: dict = Depends(get_current_user),
+    site: str = Depends(get_current_site_admin),
 ):
     if type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Invalid content type")
@@ -442,11 +503,11 @@ async def update_content_type(
         raise HTTPException(status_code=400, detail="Missing 'data' field")
     now = datetime.now(timezone.utc).isoformat()
     await db.site_content.update_one(
-        {"_id": type},
-        {"$set": {"data": data, "updated_at": now}},
+        {"site": site, "type": type},
+        {"$set": {"data": data, "updated_at": now, "site": site, "type": type}},
         upsert=True,
     )
-    return {"ok": True, "type": type, "updated_at": now}
+    return {"ok": True, "type": type, "site": site, "updated_at": now}
 
 
 # ---------- Routes: Media Upload ----------
@@ -541,10 +602,14 @@ async def delete_media(file_id: str, _: dict = Depends(get_current_user)):
 # ---------- App wiring ----------
 app.include_router(api_router)
 
+_cors_origins = [o.strip() for o in os.environ.get(
+    "FRONTEND_URLS", os.environ.get("FRONTEND_URL", "http://localhost:3000")
+).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:3000")],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
