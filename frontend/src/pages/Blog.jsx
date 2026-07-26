@@ -44,9 +44,20 @@ export default function Blog() {
                 className="group bg-paper rounded-3xl overflow-hidden shadow-paper-sm border border-ink/5 reveal"
                 style={{ animationDelay: `${i * 80}ms` }}
               >
-                <div className="aspect-[16/10] bg-teal-deep flex items-center justify-center text-mustard-soft font-display italic text-3xl">
-                  {p.category}
-                </div>
+                {p.cover_image ? (
+                  <div className="aspect-[16/10] overflow-hidden">
+                    <img
+                      src={p.cover_image}
+                      alt={pick(p, "title")}
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  </div>
+                ) : (
+                  <div className="aspect-[16/10] bg-teal-deep flex items-center justify-center text-mustard-soft font-display italic text-3xl">
+                    {p.category}
+                  </div>
+                )}
                 <div className="p-5">
                   <span className="text-[11px] font-semibold uppercase tracking-widest text-mustard-deep">{p.category}</span>
                   <h3 className="mt-1 font-display text-xl text-teal-deep group-hover:text-mustard-deep transition-colors">
