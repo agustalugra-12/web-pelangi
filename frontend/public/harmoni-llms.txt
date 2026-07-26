@@ -1,0 +1,33 @@
+# harmoni
+
+> Penginapan di jalur Denpasar–Singaraja, Bali, dengan tipe kamar Cottage.
+
+Reservasi langsung via WhatsApp +62 851-6894-1258.
+
+## Halaman utama
+
+- [Beranda](https://harmoniby.pelangihomestay.com/): ringkasan properti dan highlight kamar
+- [Kamar](https://harmoniby.pelangihomestay.com/rooms): tipe kamar, harga, dan fasilitas
+- [Fasilitas](https://harmoniby.pelangihomestay.com/facilities): fasilitas umum properti
+- [Galeri](https://harmoniby.pelangihomestay.com/gallery): foto kamar dan area properti
+- [Restoran](https://harmoniby.pelangihomestay.com/restaurant): informasi restoran
+- [Jelajah Bedugul](https://harmoniby.pelangihomestay.com/explore-bedugul): atraksi wisata sekitar
+- [Tentang Kami](https://harmoniby.pelangihomestay.com/about): profil properti
+- [Blog](https://harmoniby.pelangihomestay.com/blog): artikel seputar area sekitar
+- [Kontak](https://harmoniby.pelangihomestay.com/contact): kontak dan lokasi
+- [FAQ](https://harmoniby.pelangihomestay.com/faq): pertanyaan umum tamu
+
+## Kebijakan
+
+- [Syarat & Ketentuan](https://harmoniby.pelangihomestay.com/terms-and-conditions)
+- [Kebijakan Pembatalan](https://harmoniby.pelangihomestay.com/cancellation-policy)
+- [Kebijakan Refund](https://harmoniby.pelangihomestay.com/refund-policy)
+- [Peraturan Rumah](https://harmoniby.pelangihomestay.com/house-rules)
+- [Informasi Pembayaran](https://harmoniby.pelangihomestay.com/payment-information)
+- [Kebijakan Privasi](https://harmoniby.pelangihomestay.com/privacy-policy)
+
+## Optional
+
+- Konten kamar/harga/galeri di atas berasal dari sistem CMS milik properti dan dapat
+  berubah sewaktu-waktu — rujuk ke [Kamar](https://harmoniby.pelangihomestay.com/rooms)
+  untuk data terbaru, bukan ke ringkasan statis di file ini.

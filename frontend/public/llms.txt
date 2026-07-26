@@ -1,0 +1,38 @@
+# Pelangi Homestay
+
+> Homestay keluarga di Bedugul, dataran tinggi Bali — kamar hangat dengan pemandangan
+> pegunungan, sarapan lokal, dan akses mudah ke Kebun Raya Bali serta Pura Ulun Danu
+> Beratan.
+
+Berlokasi di Jl. Kebun Raya, Bedugul, Baturiti, Tabanan, Bali 82191. Menyediakan
+2 tipe kamar (Standard Room dan Cottage, masing-masing untuk 2 dewasa + 1 anak) dengan
+fasilitas double bed, air panas, Smart TV, WiFi, teras pribadi, dan sarapan termasuk.
+Reservasi langsung via WhatsApp +62 851-1945-9269, resepsionis buka 07:00–22:00 WITA.
+
+## Halaman utama
+
+- [Beranda](https://pelangihomestay.com/): ringkasan properti, promo, dan highlight kamar
+- [Kamar](https://pelangihomestay.com/rooms): daftar lengkap tipe kamar, harga, dan fasilitas
+- [Fasilitas](https://pelangihomestay.com/facilities): fasilitas umum properti
+- [Galeri](https://pelangihomestay.com/gallery): foto kamar, restoran, dan area properti
+- [Restoran](https://pelangihomestay.com/restaurant): jam buka dan menu restoran (07:00–21:00 WITA)
+- [Jelajah Bedugul](https://pelangihomestay.com/explore-bedugul): atraksi wisata sekitar (Kebun Raya Bali, Pura Ulun Danu Beratan, Danau Beratan, Pasar Candikuning, Handara Gate)
+- [Tentang Kami](https://pelangihomestay.com/about): profil dan cerita properti
+- [Blog](https://pelangihomestay.com/blog): artikel seputar Bedugul dan tips wisata
+- [Kontak](https://pelangihomestay.com/contact): kontak dan lokasi
+- [FAQ](https://pelangihomestay.com/faq): pertanyaan umum tamu
+
+## Kebijakan
+
+- [Syarat & Ketentuan](https://pelangihomestay.com/terms-and-conditions)
+- [Kebijakan Pembatalan](https://pelangihomestay.com/cancellation-policy)
+- [Kebijakan Refund](https://pelangihomestay.com/refund-policy)
+- [Peraturan Rumah](https://pelangihomestay.com/house-rules)
+- [Informasi Pembayaran](https://pelangihomestay.com/payment-information)
+- [Kebijakan Privasi](https://pelangihomestay.com/privacy-policy)
+
+## Optional
+
+- Konten kamar/harga/galeri di atas berasal dari sistem CMS milik properti dan dapat
+  berubah sewaktu-waktu — rujuk ke [Kamar](https://pelangihomestay.com/rooms) untuk
+  data terbaru, bukan ke ringkasan statis di file ini.
