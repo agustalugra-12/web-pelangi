@@ -2,10 +2,19 @@
 // appears on every public page. Complements per-page BreadcrumbList schema
 // from LegalLayout/Seo.
 import { useContent } from "@/context/ContentContext";
+import { faviconPath, heroImagePath } from "@/lib/siteAssets";
 
 export default function LodgingSchema() {
-  const { site } = useContent();
+  const { site, _site } = useContent();
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // NOTE (2026-07-26): sisa field di bawah (address/priceRange/numberOfRooms/
+  // amenityFeature/openingHoursSpecification) MASIH HARDCODE data Pelangi apa pun
+  // situsnya - ditemukan sekaligus saat perbaikan bug foto hero, TAPI belum diperbaiki
+  // di sini krn butuh fakta asli harmoni (alamat lengkap, lat/long, jumlah kamar) yang
+  // belum dikonfirmasi user, dan breakfast harmoni SUDAH dikonfirmasi TIDAK termasuk
+  // (beda dari amenityFeature "Breakfast Included" di bawah). Ini schema.org JSON-LD yang
+  // dibaca Google, jadi field yang salah bisa muncul di hasil pencarian - perlu tindak
+  // lanjut terpisah, jangan anggap sudah benar untuk harmoni.
   const schema = {
     "@context": "https://schema.org",
     "@type": "LodgingBusiness",
@@ -13,8 +22,8 @@ export default function LodgingSchema() {
     name: site.brand,
     description: site.seoDescription,
     url: origin,
-    logo: `${origin}/assets/pelangi-logo.png`,
-    image: [`${origin}/assets/pelangi-logo.png`, `${origin}/assets/signage.webp`, `${origin}/assets/facade.webp`],
+    logo: `${origin}${faviconPath(_site)}`,
+    image: [`${origin}${faviconPath(_site)}`, `${origin}${heroImagePath(_site)}`],
     telephone: `+${site.whatsapp}`,
     email: site.email,
     priceRange: "IDR 175.000 – IDR 225.000",

@@ -5,6 +5,7 @@ import RoomCard from "@/components/site/RoomCard";
 import SectionHeading from "@/components/site/SectionHeading";
 import { DICTIONARY } from "@/i18n/dictionary";
 import { HOME } from "@/constants/testIds";
+import { heroImagePath } from "@/lib/siteAssets";
 import {
   Accordion,
   AccordionContent,
@@ -15,7 +16,7 @@ import {
 const galleryByCategory = (arr, cat) => arr.find((g) => g.category === cat) || arr[0] || { src: "", category: cat };
 
 export default function Home() {
-  const { site, rooms, gallery, attractions, testimonials, faqs } = useContent();
+  const { site, rooms, gallery, attractions, testimonials, faqs, _site } = useContent();
   const { t, lang, pick } = useLang();
   const facs = DICTIONARY[lang]?.facilityData || DICTIONARY.id.facilityData;
 
@@ -60,7 +61,7 @@ export default function Home() {
           <div className="lg:col-span-5 relative">
             <div className="relative">
               <div className="blob overflow-hidden shadow-paper w-full aspect-[4/5] max-w-sm mx-auto">
-                <img src="/assets/signage.webp" alt="Pelangi Homestay signage" className="w-full h-full object-cover" loading="eager" fetchpriority="high" />
+                <img src={heroImagePath(_site)} alt={`${site.brand} signage`} className="w-full h-full object-cover" loading="eager" fetchpriority="high" />
               </div>
               {attractions[0] && (
                 <div className="absolute -bottom-8 -left-6 w-40 h-40 rounded-full overflow-hidden shadow-paper border-4 border-cream hidden md:block">

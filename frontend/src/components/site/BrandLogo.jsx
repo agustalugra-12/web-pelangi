@@ -1,3 +1,6 @@
+import { useContent } from "@/context/ContentContext";
+import { faviconPath } from "@/lib/siteAssets";
+
 // Circle-framed Pelangi logo with coin-flip animation
 // Props:
 //  - size: pixel size (default 56)
@@ -11,6 +14,7 @@ export default function BrandLogo({
   autoFlip = false,
   className = "",
 }) {
+  const { _site } = useContent();
   const bg =
     variant === "light"
       ? "bg-cream border-cream shadow-paper"
@@ -29,7 +33,7 @@ export default function BrandLogo({
       aria-hidden="true"
     >
       <img
-        src="/assets/pelangi-logo.png"
+        src={faviconPath(_site)}
         alt=""
         className="w-full h-full object-cover"
       />

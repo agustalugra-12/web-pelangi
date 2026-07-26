@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
+import { faviconPath } from "@/lib/siteAssets";
 
 function upsertMeta(selector, attrs) {
   let el = document.head.querySelector(selector);
@@ -29,7 +30,7 @@ function upsertLink(rel, href) {
 
 export default function Seo({ title, description, image, jsonLd }) {
   const location = useLocation();
-  const { site } = useContent();
+  const { site, _site } = useContent();
   const { lang, pick } = useLang();
 
   useEffect(() => {
@@ -40,7 +41,7 @@ export default function Seo({ title, description, image, jsonLd }) {
     const siteSeoDesc = pick(site, "seoDescription") || "";
     const t = title ? `${title} — ${brand}` : siteSeoTitle;
     const d = description || siteSeoDesc;
-    const img = image || `${origin}/assets/pelangi-logo.png`;
+    const img = image || `${origin}${faviconPath(_site)}`;
 
     document.title = t;
     if (typeof document !== "undefined") {
@@ -71,7 +72,7 @@ export default function Seo({ title, description, image, jsonLd }) {
       script.textContent = JSON.stringify(jsonLd);
       document.head.appendChild(script);
     }
-  }, [title, description, image, jsonLd, location.pathname, site, lang, pick]);
+  }, [title, description, image, jsonLd, location.pathname, site, _site, lang, pick]);
 
   return null;
 }

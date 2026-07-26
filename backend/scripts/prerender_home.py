@@ -98,6 +98,18 @@ async def prerender_site(site: str, domain: str) -> None:
     html = html.replace('<div id="root"></div>', f'<div id="root">{ssr_html}</div>', 1)
     html = html.replace("<body>", f"<body>{script_tag}", 1)
 
+    # Preload hint hero image (2026-07-26) - build/index.html HARDCODE signage.webp (foto
+    # pelangi) krn dipakai bersama utk semua situs. Sejak hero photo jadi per-situs (lihat
+    # _site_asset_filename di server.py, bug: upload harmoni dulu menimpa punya pelangi),
+    # snapshot situs lain harus preload FILE MILIKNYA SENDIRI, bukan preload foto pelangi
+    # yang tidak relevan (buang budget LCP percuma, sekaligus tidak preload yang benar).
+    if site != "pelangi":
+        html = html.replace(
+            '<link rel="preload" as="image" href="/assets/signage.webp" fetchpriority="high"/>',
+            f'<link rel="preload" as="image" href="/assets/signage-{site}.webp" fetchpriority="high"/>',
+            1,
+        )
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     final_path = OUTPUT_DIR / f"{site}.html"
     tmp_path = OUTPUT_DIR / f".{site}.html.tmp"

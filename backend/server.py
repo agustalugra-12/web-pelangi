@@ -505,6 +505,11 @@ async def get_all_content(site: str = Depends(get_current_site_public)):
     out = {}
     async for doc in db.site_content.find({"site": site}):
         out[doc["type"]] = doc.get("data")
+    # `_site` (2026-07-26, bug nyata: hero pelangi & harmoni ternyata berbagi SATU file
+    # "signage.webp" krn frontend hardcode path tanpa tahu situs mana yang aktif - upload
+    # foto harmoni menimpa punya pelangi juga). Slug ini dipakai komponen frontend
+    # (Home.jsx, BrandLogo.jsx, dst) memilih nama file aset yang benar per situs.
+    out["_site"] = site
     return out
 
 
@@ -642,10 +647,18 @@ async def upload_media(
 # optimasi performa 2026-07-26), baik di build/ (langsung live) maupun public/ (source,
 # supaya deploy/build berikutnya tidak menimpanya balik ke foto lama).
 #
-# Catatan cache: nginx cache gambar 30 hari (max-age=2592000) - pengunjung BARU langsung
-# lihat foto baru, pengunjung LAMA yang browser-nya sudah nge-cache bisa masih lihat foto
-# lama sampai cache-nya kedaluwarsa/di-refresh paksa. Trade-off yang disadari & diterima
-# demi menjaga path tetap sederhana (bukan bug).
+# Catatan cache: nginx cache gambar override jadi 5 menit khusus utk file ini (lihat
+# nginx sites-available/*, location = /assets/signage*.webp) - dipersingkat 2026-07-26
+# stlh laporan user foto masih tampak lama walau server sudah benar (30 hari kelamaan
+# utk aset yang bisa berubah isi kapan saja lewat CMS).
+#
+# Bug nyata ditemukan & diperbaiki 2026-07-26: filename di sini dulu SELALU "signage.webp"
+# / "pelangi-logo.png" apa pun situsnya - desain awal cuma mikirin pelangi, belum
+# mengantisipasi harmoni PAKAI FITUR YANG SAMA. Akibatnya upload foto hero harmoni diam-diam
+# MENIMPA foto hero pelangi juga (satu file fisik yang sama). Sekarang nama file per-situs
+# (pelangi tetap pakai nama asli spy tidak perlu migrasi, situs lain dapat suffix) - lihat
+# `_site_asset_filename`. Frontend (Home.jsx dst) baca `_site` dari /api/content utk pilih
+# file yang benar - lihat ContentContext.jsx.
 SITE_ASSET_SLOTS = {
     "hero": {"filename": "signage.webp", "max_width": 900, "strip_alpha": True, "quality": 78},
     "favicon": {"filename": "pelangi-logo.png", "size": 128, "strip_alpha": False, "quality": None},
@@ -653,6 +666,14 @@ SITE_ASSET_SLOTS = {
 FRONTEND_BUILD_ASSETS = Path("/var/www/web-pelangi/frontend/build/assets")
 FRONTEND_PUBLIC_ASSETS = Path("/var/www/web-pelangi/frontend/public/assets")
 SITE_ASSET_UPLOAD_EXTS = {"jpg", "jpeg", "png", "gif", "webp"}
+
+
+def _site_asset_filename(slot: str, site: str) -> str:
+    base = SITE_ASSET_SLOTS[slot]["filename"]
+    if site == DEFAULT_SITE:
+        return base
+    stem, _, ext = base.rpartition(".")
+    return f"{stem}-{site}.{ext}"
 
 
 async def _process_site_asset(slot: str, data: bytes, ext: str) -> bytes:
@@ -717,7 +738,7 @@ async def upload_site_asset(
 
     processed = await _process_site_asset(slot, data, ext)
 
-    filename = SITE_ASSET_SLOTS[slot]["filename"]
+    filename = _site_asset_filename(slot, site)
     for target_dir in (FRONTEND_BUILD_ASSETS, FRONTEND_PUBLIC_ASSETS):
         target_dir.mkdir(parents=True, exist_ok=True)
         final_path = target_dir / filename

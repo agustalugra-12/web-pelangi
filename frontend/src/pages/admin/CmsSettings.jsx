@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { useRefreshContent } from "@/context/ContentContext";
+import { useAuth } from "@/context/AuthContext";
 import { DEFAULT_CONTENT } from "@/data/content";
 import SiteAssetInput from "@/components/admin/SiteAssetInput";
+import { heroImagePath, faviconPath } from "@/lib/siteAssets";
 import { ChevronDown } from "lucide-react";
 
 // Field jarang dipakai/teknis disembunyikan default di balik "Tampilkan Advanced"
@@ -65,6 +67,7 @@ function FieldList({ fields, data, setData }) {
 
 export default function CmsSettings() {
   const refresh = useRefreshContent();
+  const { activeSite } = useAuth();
   const [data, setData] = useState(DEFAULT_CONTENT.site);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -120,7 +123,7 @@ export default function CmsSettings() {
       <div className="bg-paper rounded-3xl border border-ink/10 shadow-paper-sm p-6 space-y-4 mt-6">
         <SiteAssetInput
           slot="hero"
-          previewUrl="/assets/signage.webp"
+          previewUrl={heroImagePath(activeSite)}
           label="Foto Hero (halaman utama)"
           hint="Otomatis diresize & dikompres. Butuh beberapa detik sampai tampil di situs live."
           testid="settings-hero-photo-upload"
@@ -146,7 +149,7 @@ export default function CmsSettings() {
         <div className="bg-paper rounded-3xl border border-ink/10 shadow-paper-sm p-6 space-y-4 mt-3">
           <SiteAssetInput
             slot="favicon"
-            previewUrl="/assets/pelangi-logo.png"
+            previewUrl={faviconPath(activeSite)}
             label="Logo / Favicon"
             hint="Dipakai untuk logo di Navbar & ikon tab browser. Otomatis dijadikan persegi 128x128."
             testid="settings-favicon-upload"

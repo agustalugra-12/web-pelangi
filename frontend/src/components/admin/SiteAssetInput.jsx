@@ -1,9 +1,11 @@
 // Upload widget khusus hero photo & favicon/logo (2026-07-26) - beda dari ImageInput:
-// path file TETAP (/assets/signage.webp, /assets/pelangi-logo.png), upload di sini cuma
-// MENGGANTI ISI file itu (lihat POST /admin/site-asset/{slot} di server.py) supaya
-// optimasi kecepatan loading yang sudah dikerjakan (preload hint, hardcoded di Home.jsx)
-// tidak perlu diubah tiap admin ganti foto. Tidak ada field URL manual seperti ImageInput
-// - path-nya memang tidak bisa diubah, cuma isinya.
+// path file TETAP per situs (/assets/signage.webp utk pelangi, /assets/signage-harmoni.webp
+// utk harmoni, dst - lihat lib/siteAssets.js & _site_asset_filename di server.py), upload
+// di sini cuma MENGGANTI ISI file itu (lihat POST /admin/site-asset/{slot} di server.py)
+// supaya optimasi kecepatan loading (preload hint, Home.jsx) tidak perlu diubah tiap admin
+// ganti foto. `previewUrl` WAJIB dihitung site-aware oleh pemanggil (lihat CmsSettings.jsx)
+// - bug nyata 2026-07-26: sebelum ini di-hardcode sama utk semua situs, upload hero
+// harmoni diam-diam menimpa punya pelangi krn keduanya nunjuk 1 file fisik yang sama.
 import { useRef, useState } from "react";
 import api from "@/lib/api";
 import { toast } from "sonner";
