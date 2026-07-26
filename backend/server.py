@@ -229,6 +229,11 @@ class BlogPostOut(BaseModel):
     published: bool
     created_at: str
     updated_at: str
+    # Ada isinya HANYA kalau artikel ini dibuat AI SEO Agent (scripts/seo_agent.py),
+    # kosong untuk artikel yang ditulis manual - dipakai admin CmsBlog.jsx menandai
+    # mana yang otomatis (2026-07-26, permintaan user: tidak ada cara lihat aktivitas
+    # AI SEO Agent dari dalam CMS sama sekali sebelum ini).
+    seo_keyword: Optional[str] = None
 
 
 class ContactMessageCreate(BaseModel):
@@ -268,6 +273,7 @@ def post_to_out(doc: dict) -> BlogPostOut:
         published=doc.get("published", True),
         created_at=doc.get("created_at", ""),
         updated_at=doc.get("updated_at", ""),
+        seo_keyword=doc.get("seo_keyword"),
     )
 
 
@@ -370,6 +376,44 @@ async def get_post(slug: str, site: str = Depends(get_current_site_public)):
 
 
 # ---------- Routes: Blog Admin ----------
+@api_router.get("/admin/seo-agent/stats")
+async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
+    """Ringkasan aktivitas AI SEO Agent (scripts/seo_agent.py) untuk ditampilkan di
+    CmsBlog.jsx (2026-07-26, permintaan user - sebelum ini tidak ada cara lihat aktivitas
+    AI SEO Agent dari dalam CMS sama sekali, semua laporan cuma manual). Dihitung
+    langsung dari db.blog_posts (field seo_keyword = ditulis AI) & db.seo_keywords,
+    bukan log terpisah - satu sumber kebenaran yang sama dipakai scripts/seo_agent.py."""
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    generated_today = await db.blog_posts.count_documents({
+        "site": site, "seo_keyword": {"$ne": None}, "created_at": {"$gte": today_start},
+    })
+    generated_total = await db.blog_posts.count_documents({"site": site, "seo_keyword": {"$ne": None}})
+
+    keyword_counts = {"belum_dibuat": 0, "draft": 0, "sudah_dibuat": 0}
+    async for row in db.seo_keywords.aggregate([
+        {"$match": {"site": site}},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]):
+        if row["_id"] in keyword_counts:
+            keyword_counts[row["_id"]] = row["n"]
+
+    last_post = await db.blog_posts.find_one(
+        {"site": site, "seo_keyword": {"$ne": None}},
+        {"created_at": 1, "title": 1}, sort=[("created_at", -1)],
+    )
+
+    return {
+        "generated_today": generated_today,
+        "generated_total": generated_total,
+        "keyword_belum_dibuat": keyword_counts["belum_dibuat"],
+        "keyword_draft": keyword_counts["draft"],
+        "keyword_sudah_dibuat": keyword_counts["sudah_dibuat"],
+        "last_generated_at": (last_post or {}).get("created_at"),
+        "last_generated_title": (last_post or {}).get("title"),
+    }
+
+
 @api_router.get("/admin/blog", response_model=List[BlogPostOut])
 async def admin_list_posts(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     cursor = db.blog_posts.find({"site": site}).sort("created_at", -1)

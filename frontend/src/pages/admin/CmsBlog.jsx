@@ -7,12 +7,17 @@ import { toast } from "sonner";
 export default function CmsBlog() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get("/admin/blog");
+      const [{ data }, { data: statsData }] = await Promise.all([
+        api.get("/admin/blog"),
+        api.get("/admin/seo-agent/stats").catch(() => ({ data: null })),
+      ]);
       setPosts(data);
+      setStats(statsData);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
@@ -51,6 +56,35 @@ export default function CmsBlog() {
         </Link>
       </div>
 
+      {stats && (
+        <div className="bg-paper rounded-2xl border border-ink/10 p-5 mb-6 grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="seo-agent-stats">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Dibuat AI hari ini</p>
+            <p className="text-2xl font-display text-teal-deep">{stats.generated_today}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Total dibuat AI</p>
+            <p className="text-2xl font-display text-teal-deep">{stats.generated_total}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Keyword tersisa</p>
+            <p className="text-2xl font-display text-teal-deep">{stats.keyword_belum_dibuat}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Keyword sudah dipakai</p>
+            <p className="text-2xl font-display text-teal-deep">{stats.keyword_sudah_dibuat}</p>
+          </div>
+          {stats.last_generated_title && (
+            <div className="col-span-2 md:col-span-4 pt-2 border-t border-ink/10 text-sm text-teal-deep/70">
+              Artikel AI terakhir: <span className="font-semibold text-teal-deep">{stats.last_generated_title}</span>
+              {stats.last_generated_at && (
+                <span> — {new Date(stats.last_generated_at).toLocaleString("id-ID")}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="bg-paper rounded-2xl border border-ink/10 overflow-hidden">
         {loading ? (
           <p className="p-8 text-center text-teal-deep/70">Memuat…</p>
@@ -71,7 +105,17 @@ export default function CmsBlog() {
               {posts.map((p) => (
                 <tr key={p.id} className="border-t border-ink/10" data-testid={`admin-post-row-${p.slug}`}>
                   <td className="px-5 py-3">
-                    <p className="font-semibold text-teal-deep">{p.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-teal-deep">{p.title}</p>
+                      {p.seo_keyword && (
+                        <span
+                          className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-mustard-soft/30 text-mustard-deep shrink-0"
+                          title={`Dibuat otomatis AI SEO Agent - keyword: ${p.seo_keyword}`}
+                        >
+                          🤖 AI
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-teal-deep/60 md:hidden">{p.category}</p>
                   </td>
                   <td className="px-5 py-3 hidden md:table-cell text-teal-deep/80">{p.category}</td>
