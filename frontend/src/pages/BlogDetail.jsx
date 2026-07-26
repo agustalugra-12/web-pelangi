@@ -55,6 +55,25 @@ export default function BlogDetail() {
           if (wholeBoldMatch) {
             return <h3 key={i} className="font-display text-2xl text-teal-deep mt-8 mb-2">{renderInline(wholeBoldMatch[1])}</h3>;
           }
+
+          // Blok berisi baris "- item" (single \n, bukan paragraf terpisah) -
+          // tanpa ini, tiap item cuma nempel jadi satu baris panjang karena <p>
+          // tidak menampilkan \n biasa sebagai baris baru.
+          const lines = para.split("\n");
+          const bulletStart = lines.findIndex((l) => l.trim().startsWith("- "));
+          if (bulletStart !== -1 && lines.slice(bulletStart).every((l) => l.trim().startsWith("- "))) {
+            const intro = lines.slice(0, bulletStart).join(" ").trim();
+            const items = lines.slice(bulletStart).map((l) => l.trim().replace(/^- /, ""));
+            return (
+              <div key={i}>
+                {intro && <p>{renderInline(intro)}</p>}
+                <ul className="list-disc pl-5 space-y-1 mb-[1.1rem]">
+                  {items.map((item, j) => <li key={j}>{renderInline(item)}</li>)}
+                </ul>
+              </div>
+            );
+          }
+
           return <p key={i}>{renderInline(para)}</p>;
         })}
       </div>
