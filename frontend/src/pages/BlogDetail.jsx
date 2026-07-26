@@ -50,34 +50,46 @@ export default function BlogDetail() {
       )}
       <p className="mt-6 text-lg text-teal-deep/85 italic font-display">{pick(post, "excerpt")}</p>
       <div className="mt-8 prose-pelangi">
-        {content.split(/\n\n+/).map((para, i) => (
-          <p key={i}>{renderInlineLinks(para)}</p>
-        ))}
+        {content.split(/\n\n+/).map((para, i) => {
+          const wholeBoldMatch = para.match(/^\*\*(.+)\*\*$/s);
+          if (wholeBoldMatch) {
+            return <h3 key={i} className="font-display text-2xl text-teal-deep mt-8 mb-2">{renderInline(wholeBoldMatch[1])}</h3>;
+          }
+          return <p key={i}>{renderInline(para)}</p>;
+        })}
       </div>
     </article>
   );
 }
 
-// Parser ringan untuk link gaya markdown [teks](url) di dalam paragraf artikel -
-// konten blog dirender sebagai teks polos (bukan HTML/markdown), jadi tanpa ini
-// link yang ditulis di artikel cuma tampil sebagai teks mentah, tidak bisa diklik.
-function renderInlineLinks(text) {
-  const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
+// Parser ringan untuk markdown dasar di dalam paragraf artikel - **bold** dan
+// [teks](url) - konten blog dirender sebagai teks polos (bukan HTML/markdown),
+// jadi tanpa ini keduanya cuma tampil sebagai tanda baca mentah (**...**) atau
+// teks link yang tidak bisa diklik. Paragraf yang SELURUHNYA berupa **...**
+// diperlakukan sebagai sub-judul (lihat wholeBoldMatch di atas), sisanya cuma
+// bold inline biasa.
+function renderInline(text) {
+  const pattern = /\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\)/g;
   const parts = [];
   let lastIndex = 0;
   let match;
   let key = 0;
-  while ((match = linkPattern.exec(text)) !== null) {
+  while ((match = pattern.exec(text)) !== null) {
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-    const [, label, href] = match;
-    const isInternal = href.startsWith("/");
-    parts.push(
-      isInternal ? (
-        <Link key={key++} to={href} className="text-mustard-deep underline hover:text-mustard">{label}</Link>
-      ) : (
-        <a key={key++} href={href} target="_blank" rel="noopener noreferrer" className="text-mustard-deep underline hover:text-mustard">{label}</a>
-      )
-    );
+    if (match[1] !== undefined) {
+      parts.push(<strong key={key++}>{match[1]}</strong>);
+    } else {
+      const label = match[2];
+      const href = match[3];
+      const isInternal = href.startsWith("/");
+      parts.push(
+        isInternal ? (
+          <Link key={key++} to={href} className="text-mustard-deep underline hover:text-mustard">{label}</Link>
+        ) : (
+          <a key={key++} href={href} target="_blank" rel="noopener noreferrer" className="text-mustard-deep underline hover:text-mustard">{label}</a>
+        )
+      );
+    }
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < text.length) parts.push(text.slice(lastIndex));
