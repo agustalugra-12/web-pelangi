@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import SectionHeading from "@/components/site/SectionHeading";
 import { useLang } from "@/context/LanguageContext";
 import api from "@/lib/api";
+import Seo from "@/components/site/Seo";
 
 export default function Blog() {
   const [posts, setPosts] = useState([]);
@@ -20,6 +21,7 @@ export default function Blog() {
 
   return (
     <div className="pt-14 pb-24">
+      <Seo title={t("blog.title")} description={t("blog.subtitle")} />
       <section className="max-w-7xl mx-auto px-5 md:px-8">
         <SectionHeading
           eyebrow={t("blog.eyebrow")}

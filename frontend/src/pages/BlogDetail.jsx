@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useLang } from "@/context/LanguageContext";
 import api from "@/lib/api";
+import Seo from "@/components/site/Seo";
 
 export default function BlogDetail() {
   const { slug } = useParams();
@@ -33,6 +34,7 @@ export default function BlogDetail() {
 
   return (
     <article className="max-w-3xl mx-auto px-5 md:px-8 pt-14 pb-24" data-testid={`blog-detail-${post.slug}`}>
+      <Seo title={pick(post, "title")} description={pick(post, "excerpt")} image={post.cover_image || undefined} />
       <Link to="/blog" className="text-sm text-mustard-deep hover:underline">← {t("common.allArticles")}</Link>
       <p className="mt-4 text-[11px] font-semibold uppercase tracking-widest text-mustard-deep">{post.category}</p>
       <h1 className="font-display text-4xl md:text-5xl text-teal-deep leading-tight mt-2">{pick(post, "title")}</h1>
