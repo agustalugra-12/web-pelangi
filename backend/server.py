@@ -665,7 +665,13 @@ async def _process_site_asset(slot: str, data: bytes, ext: str) -> bytes:
         src.write_bytes(data)
         if slot == "hero":
             flat = Path(tmp) / "flat.png"
-            cmd_flat = ["convert", str(src), "-resize", f"{spec['max_width']}x10000>",
+            # -auto-orient WAJIB sebelum -resize (ditemukan 2026-07-26, laporan user foto
+            # hero jadi rotate setelah diganti): foto dari kamera HP menyimpan orientasi
+            # asli sensor + tag EXIF "Orientation" terpisah, bukan piksel yang sudah
+            # diputar. Tanpa -auto-orient, convert resize apa adanya (salah arah), lalu
+            # webp/strip metadata di bawah menghilangkan tag EXIF itu selamanya - hasil
+            # akhir permanen miring/terbalik, tidak bisa "dibetulkan" cuma dgn EXIF viewer.
+            cmd_flat = ["convert", str(src), "-auto-orient", "-resize", f"{spec['max_width']}x10000>",
                         "-background", "white", "-alpha", "remove", "-alpha", "off", str(flat)]
             proc = await asyncio.create_subprocess_exec(*cmd_flat, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             _, err = await proc.communicate()
@@ -682,7 +688,7 @@ async def _process_site_asset(slot: str, data: bytes, ext: str) -> bytes:
             return out.read_bytes()
         else:  # favicon
             out = Path(tmp) / "out.png"
-            cmd = ["convert", str(src), "-resize", f"{spec['size']}x{spec['size']}",
+            cmd = ["convert", str(src), "-auto-orient", "-resize", f"{spec['size']}x{spec['size']}",
                    "-background", "none", "-gravity", "center", "-extent", f"{spec['size']}x{spec['size']}", str(out)]
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             _, err = await proc.communicate()
