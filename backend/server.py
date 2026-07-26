@@ -300,6 +300,37 @@ async def login(payload: LoginRequest, response: Response):
     }
 
 
+@api_router.post("/auth/refresh")
+async def refresh_token(request: Request, response: Response):
+    """Ditemukan 2026-07-26 (laporan user 'gagal simpan' di CMS): access_token cuma
+    berlaku 60 menit dan TIDAK PERNAH ada cara memperpanjang - refresh_token dibuat &
+    disimpan di cookie saat login (7 hari) tapi tidak pernah benar-benar dipakai di
+    manapun. Kalau admin buka CMS >60 menit lalu klik Simpan, permintaan pasti gagal
+    401 tanpa jalan keluar selain login ulang. Endpoint ini + interceptor axios di
+    frontend (lihat lib/api.js) memperbaikinya - refresh token yang masih valid
+    otomatis memperpanjang sesi, transparan tanpa perlu login ulang."""
+    token = request.cookies.get("refresh_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Refresh token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    new_access = create_access_token(str(user["_id"]), user["email"])
+    new_refresh = create_refresh_token(str(user["_id"]))
+    set_auth_cookies(response, new_access, new_refresh)
+    return {"ok": True}
+
+
 @api_router.post("/auth/logout")
 async def logout(response: Response, _: dict = Depends(get_current_user)):
     clear_auth_cookies(response)
