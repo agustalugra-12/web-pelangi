@@ -344,7 +344,7 @@ async def _generate_ai_image(prompt: str) -> bytes:
         resp = await http.post(
             "https://api.openai.com/v1/images/generations",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"model": IMAGE_MODEL, "prompt": prompt, "size": "1536x1024", "quality": "medium", "n": 1},
+            json={"model": IMAGE_MODEL, "prompt": prompt, "size": "1536x1024", "quality": "low", "n": 1},
         )
         resp.raise_for_status()
         b64 = resp.json()["data"][0]["b64_json"]
