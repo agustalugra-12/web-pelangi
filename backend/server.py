@@ -9,6 +9,7 @@ import asyncio
 import logging
 import uuid
 import re
+import tempfile
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Annotated
 
@@ -598,6 +599,97 @@ async def upload_media(
         "content_type": content_type,
         "size": len(data),
     }
+
+
+# ---------- Routes: Site Asset Upload (hero photo, favicon/logo) ----------
+# Beda dari upload_media di atas (2026-07-26) - hero photo & favicon TIDAK lewat
+# Cloudinary/media_files dengan URL baru tiap upload. Path-nya SENGAJA tetap
+# (/assets/signage.webp, /assets/pelangi-logo.png) - dipertahankan supaya optimasi LCP
+# (preload hint di index.html, hardcoded di Home.jsx) & favicon/logo Navbar (BrandLogo.jsx)
+# tidak perlu ikut diubah tiap admin ganti foto. Upload di sini cuma MENGGANTI ISI file di
+# path yang sama (resize/kompresi otomatis, sama teknik yang dipakai manual sepanjang sesi
+# optimasi performa 2026-07-26), baik di build/ (langsung live) maupun public/ (source,
+# supaya deploy/build berikutnya tidak menimpanya balik ke foto lama).
+#
+# Catatan cache: nginx cache gambar 30 hari (max-age=2592000) - pengunjung BARU langsung
+# lihat foto baru, pengunjung LAMA yang browser-nya sudah nge-cache bisa masih lihat foto
+# lama sampai cache-nya kedaluwarsa/di-refresh paksa. Trade-off yang disadari & diterima
+# demi menjaga path tetap sederhana (bukan bug).
+SITE_ASSET_SLOTS = {
+    "hero": {"filename": "signage.webp", "max_width": 900, "strip_alpha": True, "quality": 78},
+    "favicon": {"filename": "pelangi-logo.png", "size": 128, "strip_alpha": False, "quality": None},
+}
+FRONTEND_BUILD_ASSETS = Path("/var/www/web-pelangi/frontend/build/assets")
+FRONTEND_PUBLIC_ASSETS = Path("/var/www/web-pelangi/frontend/public/assets")
+SITE_ASSET_UPLOAD_EXTS = {"jpg", "jpeg", "png", "gif", "webp"}
+
+
+async def _process_site_asset(slot: str, data: bytes, ext: str) -> bytes:
+    """Resize/kompresi file yang di-upload admin jadi format final sesuai slot (hero:
+    WebP lebar maks 900px; favicon: PNG persegi 128x128) - subprocess ke cwebp/convert,
+    sama tool & teknik yang dipakai manual sepanjang optimasi performa sesi ini."""
+    spec = SITE_ASSET_SLOTS[slot]
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f"src.{ext}"
+        src.write_bytes(data)
+        if slot == "hero":
+            flat = Path(tmp) / "flat.png"
+            cmd_flat = ["convert", str(src), "-resize", f"{spec['max_width']}x10000>",
+                        "-background", "white", "-alpha", "remove", "-alpha", "off", str(flat)]
+            proc = await asyncio.create_subprocess_exec(*cmd_flat, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            _, err = await proc.communicate()
+            if proc.returncode != 0:
+                raise HTTPException(400, f"Gagal memproses gambar: {err.decode(errors='replace')[:300]}")
+            out = Path(tmp) / "out.webp"
+            proc2 = await asyncio.create_subprocess_exec(
+                "cwebp", "-q", str(spec["quality"]), str(flat), "-o", str(out),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            _, err2 = await proc2.communicate()
+            if proc2.returncode != 0:
+                raise HTTPException(400, f"Gagal kompresi WebP: {err2.decode(errors='replace')[:300]}")
+            return out.read_bytes()
+        else:  # favicon
+            out = Path(tmp) / "out.png"
+            cmd = ["convert", str(src), "-resize", f"{spec['size']}x{spec['size']}",
+                   "-background", "none", "-gravity", "center", "-extent", f"{spec['size']}x{spec['size']}", str(out)]
+            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            _, err = await proc.communicate()
+            if proc.returncode != 0:
+                raise HTTPException(400, f"Gagal memproses gambar: {err.decode(errors='replace')[:300]}")
+            return out.read_bytes()
+
+
+@api_router.post("/admin/site-asset/{slot}")
+async def upload_site_asset(
+    slot: str,
+    file: UploadFile = File(...),
+    current: dict = Depends(get_current_user),
+    site: str = Depends(get_current_site_admin),
+):
+    if slot not in SITE_ASSET_SLOTS:
+        raise HTTPException(400, f"Slot tidak dikenal: {slot}")
+    if not file.filename:
+        raise HTTPException(400, "Missing filename")
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in SITE_ASSET_UPLOAD_EXTS:
+        raise HTTPException(400, f"Format tidak didukung: .{ext} (pakai jpg/jpeg/png/gif/webp)")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(400, "File terlalu besar (maks 6 MB)")
+
+    processed = await _process_site_asset(slot, data, ext)
+
+    filename = SITE_ASSET_SLOTS[slot]["filename"]
+    for target_dir in (FRONTEND_BUILD_ASSETS, FRONTEND_PUBLIC_ASSETS):
+        target_dir.mkdir(parents=True, exist_ok=True)
+        final_path = target_dir / filename
+        tmp_path = target_dir / f".{filename}.tmp"
+        tmp_path.write_bytes(processed)
+        os.rename(tmp_path, final_path)  # atomic - nginx tidak pernah baca file setengah tertulis
+
+    logger.info(f"Site asset '{slot}' diganti oleh {current.get('email')} (site={site}, {len(processed)} bytes)")
+    return {"ok": True, "slot": slot, "url": f"/assets/{filename}", "size": len(processed)}
 
 
 @api_router.get("/media/{file_id}")
