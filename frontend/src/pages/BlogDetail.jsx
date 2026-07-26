@@ -31,10 +31,11 @@ export default function BlogDetail() {
 
   const locale = lang === "en" ? "en-GB" : "id-ID";
   const content = pick(post, "content") || post.content;
+  const jsonLd = buildArticleSchema(post, content);
 
   return (
     <article className="max-w-3xl mx-auto px-5 md:px-8 pt-14 pb-24" data-testid={`blog-detail-${post.slug}`}>
-      <Seo title={pick(post, "title")} description={pick(post, "excerpt")} image={post.cover_image || undefined} />
+      <Seo title={pick(post, "title")} description={pick(post, "excerpt")} image={post.cover_image || undefined} jsonLd={jsonLd} />
       <Link to="/blog" className="text-sm text-mustard-deep hover:underline">← {t("common.allArticles")}</Link>
       <p className="mt-4 text-[11px] font-semibold uppercase tracking-widest text-mustard-deep">{post.category}</p>
       <h1 className="font-display text-4xl md:text-5xl text-teal-deep leading-tight mt-2">{pick(post, "title")}</h1>
@@ -74,11 +75,66 @@ export default function BlogDetail() {
             );
           }
 
+          // Jaring pengaman umum: blok manapun dengan >1 baris (single \n) yang
+          // BUKAN pola bullet di atas - render tiap baris dengan <br/> di antaranya,
+          // bukan biarkan nempel jadi satu baris panjang. Ditemukan nyata dari
+          // artikel auto-generate AI yang menulis pola "**Pertanyaan?**\n*teks*\njawaban"
+          // (bukan **teks pertanyaan?** langsung) - parser harus tetap aman meski
+          // AI tidak persis ikuti format yang diminta di prompt.
+          if (lines.length > 1) {
+            return (
+              <p key={i}>
+                {lines.map((line, j) => (
+                  <span key={j}>
+                    {j > 0 && <br />}
+                    {renderInline(line)}
+                  </span>
+                ))}
+              </p>
+            );
+          }
+
           return <p key={i}>{renderInline(para)}</p>;
         })}
       </div>
     </article>
   );
+}
+
+// Bangun JSON-LD Article + (kalau ada) FAQPage langsung dari data post yang sudah
+// tersedia lewat API - server.py (post_to_out) cuma meneruskan field tertentu, jadi
+// field schema terpisah tidak akan pernah sampai ke sini kalau disimpan di backend.
+function buildArticleSchema(post, content) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // 2 pola didukung: (a) "**Pertanyaan asli?**" diikuti 1 ATAU 2 baris baru lalu
+  // jawaban - AI kadang pakai \n kadang \n\n meski diminta \n\n persis, jadi regex
+  // sengaja longgar (\n+) - dipakai artikel manual maupun auto-generate AI yang sudah
+  // benar formatnya, (b) "**Pertanyaan?**\n*teks pertanyaan asli*\njawaban" - pola
+  // salah yang PERNAH dihasilkan AI sebelum prompt diperbaiki (2026-07-26), tetap
+  // didukung supaya artikel lama dgn pola ini juga dapat schema yang benar.
+  const faqPairs = [
+    ...content.matchAll(/\*\*([^*]+\?)\*\*\n+([^\n]+)/g),
+    ...content.matchAll(/\*\*Pertanyaan\?\*\*\n\*([^*]+)\*\n([^\n]+)/g),
+  ];
+  const graph = [{
+    "@type": "Article",
+    headline: post.title,
+    description: post.excerpt,
+    image: post.cover_image ? `${origin}${post.cover_image}` : undefined,
+    datePublished: post.created_at,
+    dateModified: post.updated_at,
+    url: `${origin}/blog/${post.slug}`,
+  }];
+  if (faqPairs.length) {
+    graph.push({
+      "@type": "FAQPage",
+      mainEntity: faqPairs.map(([, q, a]) => ({
+        "@type": "Question", name: q,
+        acceptedAnswer: { "@type": "Answer", text: a },
+      })),
+    });
+  }
+  return { "@context": "https://schema.org", "@graph": graph };
 }
 
 // Parser ringan untuk markdown dasar di dalam paragraf artikel - **bold** dan
@@ -88,7 +144,7 @@ export default function BlogDetail() {
 // diperlakukan sebagai sub-judul (lihat wholeBoldMatch di atas), sisanya cuma
 // bold inline biasa.
 function renderInline(text) {
-  const pattern = /\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\)/g;
+  const pattern = /\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[([^\]]+)\]\(([^)]+)\)/g;
   const parts = [];
   let lastIndex = 0;
   let match;
@@ -97,9 +153,11 @@ function renderInline(text) {
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
     if (match[1] !== undefined) {
       parts.push(<strong key={key++}>{match[1]}</strong>);
+    } else if (match[2] !== undefined) {
+      parts.push(<em key={key++}>{match[2]}</em>);
     } else {
-      const label = match[2];
-      const href = match[3];
+      const label = match[3];
+      const href = match[4];
       const isInternal = href.startsWith("/");
       parts.push(
         isInternal ? (

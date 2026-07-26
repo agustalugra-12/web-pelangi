@@ -12,6 +12,10 @@
 /build
 /ssr/dist
 
+# gambar cover artikel auto-generate AI SEO Agent (2026-07-26) - dibuat ulang terus oleh
+# cron harian, bukan aset sumber yang perlu di-version-control seperti foto asli properti
+/public/assets/ai
+
 # misc
 .DS_Store
 .env.local
