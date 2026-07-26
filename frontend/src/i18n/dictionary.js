@@ -46,6 +46,7 @@ export const DICTIONARY = {
       roomsTitle: "Tempat",
       roomsItalic: "beristirahat",
       roomsSub: "Dua tipe akomodasi, masing-masing dengan karakternya sendiri.",
+      roomsSubSingle: "Satu tipe kamar, dirawat dengan hati.",
       facilitiesEyebrow: "Fasilitas",
       facilitiesTitle: "Kenyamanan yang",
       facilitiesItalic: "menemani",
@@ -74,6 +75,7 @@ export const DICTIONARY = {
       title: "Pilih kamar",
       italic: "Anda",
       subtitle: "Dua tipe akomodasi, semuanya dirawat dengan hati.",
+      subtitleSingle: "Satu tipe kamar, dirawat dengan hati.",
       policyTitle: "Kebijakan Umum",
       policy: [
         "Check-in mulai 14:00 WITA · Check-out 12:00 WITA",
@@ -300,6 +302,7 @@ export const DICTIONARY = {
       roomsTitle: "A place to",
       roomsItalic: "rest",
       roomsSub: "Two room types, each with its own character.",
+      roomsSubSingle: "One room type, cared for with heart.",
       facilitiesEyebrow: "Facilities",
       facilitiesTitle: "Comforts that",
       facilitiesItalic: "keep you company",
@@ -328,6 +331,7 @@ export const DICTIONARY = {
       title: "Choose your",
       italic: "room",
       subtitle: "Two room types, both cared for with heart.",
+      subtitleSingle: "One room type, cared for with heart.",
       policyTitle: "General Policy",
       policy: [
         "Check-in from 14:00 WITA · Check-out by 12:00 WITA",

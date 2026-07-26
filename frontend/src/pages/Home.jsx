@@ -19,6 +19,11 @@ export default function Home() {
   const { site, rooms, gallery, attractions, testimonials, faqs, _site } = useContent();
   const { t, lang, pick } = useLang();
   const facs = DICTIONARY[lang]?.facilityData || DICTIONARY.id.facilityData;
+  // "Dua tipe akomodasi..." (dictionary statis, dipakai bersama semua situs) salah kalau
+  // properti cuma punya 1 tipe kamar (mis. harmoni, Cottage saja) - ditemukan lewat
+  // laporan user 2026-07-26. Override dgn kalimat yang benar utk 1 kamar, tetap pakai
+  // teks dictionary asli kalau memang >1 tipe.
+  const roomsSub = rooms.length === 1 ? t("home.roomsSubSingle") : t("home.roomsSub");
 
   return (
     <div>
@@ -111,10 +116,20 @@ export default function Home() {
 
       <section className="bg-paper py-20">
         <div className="max-w-7xl mx-auto px-5 md:px-8">
-          <SectionHeading eyebrow={t("home.roomsEyebrow")} title={t("home.roomsTitle")} italicWord={t("home.roomsItalic")} subtitle={t("home.roomsSub")} />
-          <div className="mt-12 grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-            {rooms.map((r, i) => <RoomCard key={r.id || r.slug} room={r} index={i} />)}
-          </div>
+          <SectionHeading eyebrow={t("home.roomsEyebrow")} title={t("home.roomsTitle")} italicWord={t("home.roomsItalic")} subtitle={roomsSub} />
+          {/* Grid 2 kolom bikin kartu nempel kiri kalau cuma 1 tipe kamar (mis. harmoni,
+              Cottage saja) - ditemukan lewat laporan user 2026-07-26. */}
+          {rooms.length === 1 ? (
+            <div className="mt-12 flex justify-center">
+              <div className="w-full max-w-md">
+                <RoomCard room={rooms[0]} index={0} />
+              </div>
+            </div>
+          ) : (
+            <div className="mt-12 grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+              {rooms.map((r, i) => <RoomCard key={r.id || r.slug} room={r} index={i} />)}
+            </div>
+          )}
         </div>
       </section>
 

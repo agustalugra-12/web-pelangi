@@ -14,11 +14,22 @@ export default function Rooms() {
           eyebrow={t("rooms.eyebrow")}
           title={t("rooms.title")}
           italicWord={t("rooms.italic")}
-          subtitle={t("rooms.subtitle")}
+          subtitle={rooms.length === 1 ? t("rooms.subtitleSingle") : t("rooms.subtitle")}
         />
-        <div className="mt-12 grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-          {rooms.map((r, i) => <RoomCard key={r.id || r.slug} room={r} index={i} />)}
-        </div>
+        {/* Grid 2 kolom bikin kartu nempel kiri kalau cuma 1 tipe kamar (mis. harmoni,
+            Cottage saja) - ditemukan lewat laporan user 2026-07-26. Kartu tunggal
+            di-tengah-kan lebar terbatas, bukan diregangkan penuh atau nempel kiri. */}
+        {rooms.length === 1 ? (
+          <div className="mt-12 flex justify-center">
+            <div className="w-full max-w-md">
+              <RoomCard room={rooms[0]} index={0} />
+            </div>
+          </div>
+        ) : (
+          <div className="mt-12 grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+            {rooms.map((r, i) => <RoomCard key={r.id || r.slug} room={r} index={i} />)}
+          </div>
+        )}
         <div className="mt-16 bg-paper rounded-3xl p-8 md:p-12 border border-ink/5 shadow-paper-sm">
           <h3 className="font-display text-2xl text-teal-deep">{t("rooms.policyTitle")}</h3>
           <ul className="mt-4 grid md:grid-cols-2 gap-3 text-sm text-teal-deep/85 list-disc pl-5">
