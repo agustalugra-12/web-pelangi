@@ -557,6 +557,39 @@ async def get_all_content(site: str = Depends(get_current_site_public)):
     return out
 
 
+# Halaman statis (harus disamakan manual dengan <Route> di App.js kalau ada rute publik
+# baru ditambahkan/dihapus - tidak ada cara introspeksi otomatis dari sisi backend).
+STATIC_SITEMAP_PATHS = [
+    "/", "/rooms", "/facilities", "/gallery", "/explore-bedugul", "/restaurant", "/about",
+    "/blog", "/contact", "/faq", "/privacy-policy", "/terms-and-conditions",
+    "/cancellation-policy", "/refund-policy", "/house-rules", "/payment-information",
+]
+
+
+@api_router.get("/sitemap.xml")
+async def sitemap_xml(request: Request, site: str = Depends(get_current_site_public)):
+    """sitemap.xml (2026-07-26, permintaan user - butuh utk Google Search Console).
+    Dinamis per-situs (BUKAN file statis) supaya artikel blog baru - termasuk yang
+    di-auto-publish AI SEO Agent tiap hari - otomatis ikut tanpa perlu regenerasi
+    terpisah. Origin dibangun dari Host header request ITU SENDIRI (bukan reverse-lookup
+    SITE_HOST_MAP) supaya otomatis benar apa pun domain yang sedang diakses. Nginx
+    proxy /sitemap.xml (root domain) -> endpoint ini, lihat sites-available/*."""
+    host = request.headers.get("host", "").split(":")[0]
+    origin = f"https://{host}"
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    urls = [(f"{origin}{p}", now) for p in STATIC_SITEMAP_PATHS]
+    async for post in db.blog_posts.find({"site": site, "published": True}, {"slug": 1, "updated_at": 1}):
+        lastmod = (post.get("updated_at") or now)[:10]
+        urls.append((f"{origin}/blog/{post['slug']}", lastmod))
+
+    entries = "".join(
+        f"<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod></url>" for loc, lastmod in urls
+    )
+    xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{entries}</urlset>'
+    return StarletteResponse(content=xml, media_type="application/xml", headers={"Content-Type": "application/xml; charset=utf-8"})
+
+
 @api_router.get("/content/{type}")
 async def get_content_type(type: str, site: str = Depends(get_current_site_admin)):
     """SATU-SATUNYA pemakai endpoint ini adalah halaman admin (CmsList.jsx/
