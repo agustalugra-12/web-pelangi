@@ -352,15 +352,21 @@ async def _generate_ai_image(prompt: str) -> bytes:
 
 
 async def pick_cover_image(site: str, keyword: str, cluster: str, slug: str) -> str:
-    """Foto tempat wisata nyata pakai aset asli (akurat, gratis). Selain itu, generate
-    gambar BARU pakai AI (gpt-image-2) - SENGAJA bergaya ilustrasi/artistik (bukan
-    foto-realistis) supaya tidak terkesan "ini foto asli kamar/bangunan properti" yang
-    bisa menyesatkan tamu kalau kenyataan fisiknya beda (properti belum kirim foto asli
-    sendiri - lihat SiteAssetInput.jsx utk upload foto asli nanti)."""
+    """Foto tempat wisata nyata pakai aset asli (akurat, gratis). Selain itu, DIROTASI
+    2:1 (permintaan user 2026-07-26: foto AI kelihatan terlalu mirip semua kalau dipakai
+    tiap artikel) - 2 dari 3 artikel pakai foto aset asli yang sudah ada (variasi asli
+    dari kamar/properti, sekaligus hemat biaya), 1 dari 3 generate gambar BARU pakai AI
+    (gpt-image-2, bergaya ilustrasi/artistik BUKAN foto-realistis - supaya tidak terkesan
+    "ini foto asli kamar/bangunan properti" yang bisa menyesatkan tamu)."""
     kw = keyword.lower()
     for needle, path in REAL_PLACE_ASSETS.items():
         if needle in kw:
             return path
+
+    generated_so_far = await db.blog_posts.count_documents({"site": site, "seo_keyword": {"$ne": None}})
+    if generated_so_far % 3 != 2:  # 2 dari 3 -> aset asli
+        pool = SITE_ASSETS.get(site, SHARED_ASSETS)
+        return pool[hash(keyword) % len(pool)]
 
     brand = "traditional Balinese cottage" if site == "harmoni" else "mountain homestay"
     prompt = (
