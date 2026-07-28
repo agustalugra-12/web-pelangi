@@ -1,17 +1,30 @@
 """AI SEO Growth Agent - versi ramping (2026-07-26, permintaan user setelah diskusi PRD
 16-Agent penuh yang dianggap over-engineering untuk 2 properti milik sendiri, bukan SaaS
 multi-tenant komersial). Cakupan yang DIBANGUN: Keyword Agent (dari 100 keyword yang
-diberi user + generate keyword baru kalau pool habis), Writer Agent (grounded ke data
-CMS asli - lihat _fetch_site_facts), Competitor Analysis Agent (2026-07-28, lihat
-analyze_competitors - awalnya "sengaja tidak dibangun", ditambahkan belakangan begitu
-user minta), Quality Gate (rule-based, BUKAN "AI menilai AI"), Internal Link + Schema +
-Cover Image Agent, Publish (auto, TANPA approval manusia - ini keputusan sadar user
-setelah diberi tahu risiko kebijakan "Scaled Content Abuse" Google).
-Cakupan yang SENGAJA TIDAK dibangun: Analytics/Conversion/Learning Agent (SEBAGIAN
-sudah ada - lihat GET /admin/gsc/summary di server.py, GSC Integration + Analytics
-Dashboard 2026-07-28), Autopilot penuh 10.000 artikel sekaligus. Volume naik bertahap:
-3/hari/situs (2026-07-26) -> 7/hari/situs (2026-07-28, permintaan user) - lihat
-scripts/run_daily_seo.sh utk penjadwalan cron aktual.
+diberi user + generate keyword baru kalau pool habis, prioritas High/Medium/Low lalu
+tie-break sinyal demand GSC riil - lihat _cluster_demand_scores), Keyword Cannibalization
+Check (2026-07-28, real-time SEBELUM keyword mana pun dipilih ditulis - lihat
+_keyword_cannibalizes_existing, cek embedding similarity ke JUDUL artikel yang sudah
+terbit, bukan cuma ke sesama keyword generate-baru spt sebelumnya), Writer Agent
+(grounded ke data CMS asli - lihat _fetch_site_facts), Competitor Analysis Agent
+(2026-07-28, lihat analyze_competitors - awalnya "sengaja tidak dibangun", ditambahkan
+belakangan begitu user minta; heading kompetitor yang berbentuk pertanyaan jadi kandidat
+FAQ prioritas krn Serper "peopleAlsoAsk" TIDAK tersedia utk keyword long-tail lokal kita -
+sudah dites 3 query berbeda, semua kosong), Internal Link Agent (2026-07-28, kandidat
+link dikirim SEBELUM menulis supaya anchor text natural tertanam di kalimat, BUKAN
+ditempel mekanis "Baca juga: [Judul]" - fallback mekanis tetap ada kalau model tidak
+menyelipkan satupun), Fact-Check pass (2026-07-28, satu panggilan API tambahan verifikasi
+draft final ke DATA ASLI SEBELUM publish - lihat fact_check, lapis KEDUA setelah instruksi
+anti-mengarang di system prompt), Quality Gate (rule-based, BUKAN "AI menilai AI"), Schema
++ Cover Image Agent, Publish (auto, TANPA approval manusia - ini keputusan sadar user
+setelah diberi tahu risiko kebijakan "Scaled Content Abuse" Google), Impression-based
+Expansion Agent (2026-07-28, script terpisah scripts/expand_top_articles.py - jalan
+mingguan, perdalam artikel yang TERBUKTI dapat impression GSC riil).
+Cakupan yang SENGAJA TIDAK dibangun: Autopilot penuh 10.000 artikel sekaligus, Analytics
+Dashboard penuh (SEBAGIAN sudah ada - lihat GET /admin/gsc/summary di server.py, GSC
+Integration 2026-07-28). Volume naik bertahap: 3/hari/situs (2026-07-26) ->
+7/hari/situs (2026-07-28, permintaan user) - lihat scripts/run_daily_seo.sh utk
+penjadwalan cron aktual.
 
 Jalankan manual: `venv/bin/python -m scripts.seo_agent --site pelangi --count 1`
 """
@@ -151,19 +164,102 @@ def _cosine(a: list, b: list) -> float:
 # ---------------------------------------------------------------------------
 # 1. Keyword Agent
 # ---------------------------------------------------------------------------
+async def _keyword_cannibalizes_existing(site: str, keyword: str) -> Optional[str]:
+    """Return judul artikel yang SUDAH TERBIT kalau `keyword` mirip secara semantik
+    (cosine >0.88, ambang sama dgn _generate_new_keywords) - None kalau aman ditulis.
+
+    2026-07-28 - sebelumnya cek duplikat semantik cuma jalan di _generate_new_keywords()
+    (keyword hasil brainstorm AI saat 100 keyword awal user habis), TIDAK PERNAH jalan
+    utk 100 keyword awal itu sendiri, dan tidak pernah bandingkan ke JUDUL artikel yang
+    beneran sudah terbit (cuma ke sesama keyword+judul saat itu juga). Akibatnya 2 keyword
+    beda kalimat tapi topik sama (mis. "hotel murah dekat ulun danu" & "penginapan murah
+    ulun danu beratan") bisa lolos jadi 2 artikel yang saling bersaing di SERP - inilah
+    "keyword cannibalization" yang user tanyakan. Sekarang dicek REAL-TIME persis sebelum
+    keyword mana pun dipilih utk ditulis, apa pun sumbernya (user/AI-generated)."""
+    existing = await db.blog_posts.find({"site": site, "published": True}, {"title": 1}).to_list(500)
+    if not existing:
+        return None
+    titles = [p["title"] for p in existing]
+    embeds = await _embed([keyword] + titles)
+    kw_emb, title_embs = embeds[0], embeds[1:]
+    for title, emb in zip(titles, title_embs):
+        if _cosine(kw_emb, emb) > 0.88:
+            return title
+    return None
+
+
+async def _cluster_demand_scores(site: str) -> dict:
+    """cluster -> total impression GSC (28 hari terakhir) dari artikel yang SUDAH ditulis
+    utk cluster itu - sinyal riil "topik ini benar-benar dicari orang", bukan tebakan.
+
+    2026-07-28 - jawaban konkret utk "apakah AI membaca performa Search Console sebelum
+    menulis": ya, dipakai get_next_keyword() sbg tie-breaker SEKUNDER (BUKAN menggantikan
+    priority High/Medium/Low yang user tentukan manual - itu tetap kunci utama) - di ANTARA
+    keyword dgn priority yang sama, cluster yang artikelnya terbukti dapat impression nyata
+    dari GSC didahulukan drpd cluster yang belum terbukti diminati. blog_posts sendiri tidak
+    simpan field cluster (cuma category, terlalu kasar - 1 category = gabungan bbrp cluster,
+    lihat CLUSTER_CATEGORY), jadi join lewat db.seo_keywords (field cluster ADA di sana,
+    persis keyword yang dipakai menulis artikel itu) -> bangun URL dari artikel_slug -> cocokkan
+    ke db.gsc_page_stats. None/kosong (situs baru/GSC belum sync) - caller HARUS tetap jalan
+    normal tanpa sinyal ini (bukan dianggap error)."""
+    domain = SITE_DOMAIN.get(site)
+    if not domain:
+        return {}
+    written = await db.seo_keywords.find(
+        {"site": site, "status": "sudah_dibuat", "artikel_slug": {"$ne": None}},
+        {"cluster": 1, "artikel_slug": 1},
+    ).to_list(1000)
+    if not written:
+        return {}
+    url_to_cluster = {f"https://{domain}/blog/{w['artikel_slug']}": w["cluster"] for w in written}
+    stats = await db.gsc_page_stats.find(
+        {"site": site, "url": {"$in": list(url_to_cluster.keys())}}, {"url": 1, "impressions": 1},
+    ).to_list(1000)
+    scores: dict = {}
+    for row in stats:
+        cluster = url_to_cluster.get(row["url"])
+        if cluster:
+            scores[cluster] = scores.get(cluster, 0) + row.get("impressions", 0)
+    return scores
+
+
 async def get_next_keyword(site: str) -> dict:
-    """Ambil keyword prioritas tertinggi yang statusnya 'belum_dibuat'. Kalau pool habis,
-    generate keyword baru dulu (cek duplikat semantik ke keyword+judul artikel yang sudah
-    ada) sebelum diambil."""
+    """Ambil keyword prioritas tertinggi yang statusnya 'belum_dibuat' DAN belum
+    cannibalize topik yang sudah pernah ditulis. Di antara keyword dgn priority sama,
+    dahulukan cluster yang terbukti dapat impression GSC nyata (lihat
+    _cluster_demand_scores). Kalau pool habis (atau semua kandidat ternyata
+    cannibalizing), generate keyword baru dulu (cek duplikat semantik ke keyword+judul
+    artikel yang sudah ada) sebelum diambil."""
     order = {"High": 0, "Medium": 1, "Low": 2}
-    pool = await db.seo_keywords.find({"site": site, "status": "belum_dibuat"}).to_list(500)
-    if not pool:
-        await _generate_new_keywords(site, n=10)
+    cluster_scores = await _cluster_demand_scores(site)
+
+    async def _pick_from_pool() -> Optional[dict]:
         pool = await db.seo_keywords.find({"site": site, "status": "belum_dibuat"}).to_list(500)
-    if not pool:
-        raise RuntimeError(f"Tidak ada keyword tersedia untuk situs {site} (generate gagal)")
-    pool.sort(key=lambda k: order.get(k["priority"], 9))
-    return pool[0]
+        pool.sort(key=lambda k: (order.get(k["priority"], 9), -cluster_scores.get(k.get("cluster"), 0)))
+        now = datetime.now(timezone.utc).isoformat()
+        for kw_doc in pool:
+            dupe_title = await _keyword_cannibalizes_existing(site, kw_doc["keyword"])
+            if dupe_title is None:
+                return kw_doc
+            await db.seo_keywords.update_one(
+                {"id": kw_doc["id"]},
+                {"$set": {
+                    "status": "dilewati_mirip", "updated_at": now,
+                    "cannibalization_note": f'mirip artikel yang sudah ada: "{dupe_title}"',
+                }},
+            )
+        return None
+
+    picked = await _pick_from_pool()
+    if picked is None:
+        await _generate_new_keywords(site, n=10)
+        picked = await _pick_from_pool()
+    if picked is None:
+        raise RuntimeError(
+            f"Tidak ada keyword tersedia untuk situs {site} (pool habis/semua kandidat "
+            "mirip topik yang sudah ditulis, generate baru juga gagal)"
+        )
+    return picked
 
 
 async def _generate_new_keywords(site: str, n: int = 10) -> None:
@@ -347,6 +443,23 @@ async def analyze_competitors(keyword: str) -> Optional[dict]:
     all_headings = [h for p in pages for h in p["headings"]]
     sample_headings = all_headings[:20]
 
+    # Pertanyaan nyata dari kompetitor (2026-07-28) - dicoba dulu Serper "peopleAlsoAsk"
+    # utk sumber FAQ berbasis pertanyaan yang benar-benar sering dicari, tapi dites 3
+    # query berbeda (semua terkait Bedugul/hotel lokal) dan field itu TIDAK PERNAH ada di
+    # respons - kemungkinan krn Google cuma munculkan kotak "People Also Ask" utk query
+    # bervolume tinggi, sedangkan keyword long-tail lokal kita rata-rata tidak memicunya.
+    # Ganti sumber: heading H2/H3 kompetitor yang sudah di-scrape di atas SERINGKALI
+    # sudah berbentuk pertanyaan (pola umum blog travel Indonesia) - itu tetap data nyata
+    # (bukan karangan AI), jadi dipakai sbg kandidat FAQ prioritas di prompt Writer Agent.
+    question_headings = []
+    seen_q = set()
+    for h in all_headings:
+        h_stripped = h.strip()
+        if h_stripped.endswith("?") and h_stripped.lower() not in seen_q:
+            seen_q.add(h_stripped.lower())
+            question_headings.append(h_stripped)
+    question_headings = question_headings[:8]
+
     lines = [
         f"{len(pages)} artikel kompetitor teratas ditemukan untuk keyword ini, rata-rata "
         f"panjang {avg_words} kata.",
@@ -359,12 +472,23 @@ async def analyze_competitors(keyword: str) -> Optional[dict]:
         f"Tulis artikel MINIMAL sepanjang rata-rata kompetitor ({avg_words} kata) dan "
         "usahakan lebih lengkap (bahas 1-2 topik relevan yang tidak ada di daftar di atas)."
     )
+    if question_headings:
+        lines.append(
+            "\nPERTANYAAN NYATA dari kompetitor (dipakai orang lain sbg sub-judul, bukan "
+            "karangan) - prioritaskan ini utk bagian FAQ kalau relevan & bisa dijawab jujur "
+            "dari DATA ASLI di atas, boleh diparafrase agar natural, JANGAN dipaksakan kalau "
+            "tidak relevan/tidak bisa dijawab akurat untuk properti ini:"
+        )
+        for q in question_headings:
+            lines.append(f"- {q}")
+
     return {
         "prompt_text": "\n".join(lines),
         "data": {
             "keyword": keyword,
             "competitors": [{"url": p["url"], "word_count": p["word_count"], "headings": p["headings"]} for p in pages],
             "avg_word_count": avg_words,
+            "question_headings": question_headings,
             "analyzed_at": datetime.now(timezone.utc).isoformat(),
         },
     }
@@ -373,7 +497,7 @@ async def analyze_competitors(keyword: str) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 # 3. Writer Agent
 # ---------------------------------------------------------------------------
-async def write_article(site: str, keyword_doc: dict) -> dict:
+async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[list] = None) -> dict:
     facts = await _fetch_site_facts(site)
     keyword = keyword_doc["keyword"]
     competitor_result = await analyze_competitors(keyword)
@@ -410,9 +534,32 @@ async def write_article(site: str, keyword_doc: dict) -> dict:
         f"\n\nANALISIS KOMPETITOR (dari hasil pencarian Google nyata):\n{competitor_result['prompt_text']}"
         if competitor_result else ""
     )
+    # Internal link SEBAGAI KONTEKS PENULISAN, bukan ditempel di akhir (2026-07-28,
+    # perbaikan anchor text natural) - sebelumnya pick_internal_links() dipanggil SETELAH
+    # write_article() lalu ditempel mekanis sbg "Baca juga: [Judul Asli] [Judul Asli]."
+    # sebelum FAQ - anchor text-nya selalu judul mentah, bukan ditulis natural mengikuti
+    # konteks kalimat. Sekarang kandidat link dikirim SEBELUM menulis supaya model bisa
+    # menyelipkan 1-2 link itu sendiri di kalimat yang relevan dgn anchor text wajar.
+    # _inject_links() di generate_one() tetap jadi JARING PENGAMAN (fallback list mekanis)
+    # kalau ternyata model tidak menyelipkan satupun - linking tidak pernah 0.
+    links_block = ""
+    if link_candidates:
+        cand_lines = "\n".join(f"- [{l['title']}](/blog/{l['slug']})" for l in link_candidates)
+        links_block = (
+            "\n\nARTIKEL LAIN YANG BISA DI-LINK (opsional, dari situs yang sama):\n"
+            f"{cand_lines}\n"
+            "Kalau ada kalimat di isi artikel yang relevan secara alami dengan salah satu "
+            "artikel di atas, selipkan SEBAGAI LINK MARKDOWN di dalam kalimat itu sendiri "
+            "(bukan daftar terpisah), pakai anchor text natural yang cocok dgn konteks "
+            "kalimat (boleh beda dari judul asli di atas, tapi harus jujur mewakili isi "
+            "tujuan link, contoh: '...seperti dibahas di [tips memilih kamar keluarga]"
+            "(/blog/slug-asli)...'). Maksimal 1-2 link total, JANGAN dipaksakan kalau "
+            "tidak ada kalimat yang cocok secara alami, JANGAN ubah path slug-nya."
+        )
     user = f"""DATA ASLI ({site}):
 {facts}
 {competitor_block}
+{links_block}
 
 Tulis artikel SEO untuk target keyword: "{keyword}"
 
@@ -420,7 +567,7 @@ Format balasan HARUS JSON valid dengan struktur persis ini (tanpa markdown code 
 {{
   "title": "judul menarik & mengandung keyword, maks 70 karakter",
   "excerpt": "ringkasan 1-2 kalimat, maks 160 karakter",
-  "content": "isi artikel WAJIB 900-1300 kata (ini batas keras, hitung sendiri sebelum menjawab - kalau draftmu kurang dari 900 kata, perpanjang tiap bagian dengan detail/contoh lebih dulu sebelum dikirim). Struktur WAJIB: 1 paragraf pembuka (~80-120 kata), lalu PERSIS 6 sub-judul **Sub Judul** (masing-masing paragraf tersendiri, tiap sub-judul diikuti isi 100-150 kata - JANGAN ada sub-judul dengan isi di bawah 100 kata), lalu WAJIB 4 FAQ di bagian akhir, ditutup 1 paragraf penutup singkat. Paragraf dipisah \\n\\n. ATURAN FORMAT FAQ (WAJIB DIIKUTI PERSIS, JANGAN pakai kata literal 'Pertanyaan' sebagai label, JANGAN pakai *tanda-bintang-tunggal* untuk pertanyaan): tulis TEKS PERTANYAAN ASLI langsung di dalam **dua bintang**, contoh PERSIS begini -> **Apakah sarapan sudah termasuk di kamar ini?**\\n\\nYa, sarapan sudah termasuk untuk 2 orang di semua tipe kamar. <- lihat, pertanyaan aslinya ADA di dalam ** **, bukan diganti kata 'Pertanyaan' lalu pertanyaan aslinya ditaruh terpisah.",
+  "content": "isi artikel WAJIB 900-1300 kata (ini batas keras, hitung sendiri sebelum menjawab - kalau draftmu kurang dari 900 kata, perpanjang tiap bagian dengan detail/contoh lebih dulu sebelum dikirim). Struktur WAJIB: 1 paragraf pembuka (~80-120 kata), lalu PERSIS 6 sub-judul **Sub Judul** (masing-masing paragraf tersendiri, tiap sub-judul diikuti isi 100-150 kata - JANGAN ada sub-judul dengan isi di bawah 100 kata), lalu WAJIB 4 FAQ di bagian akhir, ditutup 1 paragraf penutup singkat. Paragraf dipisah \\n\\n. UNTUK FAQ: kalau di atas ada daftar 'PERTANYAAN NYATA dari kompetitor', UTAMAKAN pertanyaan itu (boleh diparafrase, wajib tetap bisa dijawab jujur dari DATA ASLI) - baru tambahkan pertanyaan relevan lain kalau kurang dari 4 atau tidak ada yang cocok. ATURAN FORMAT FAQ (WAJIB DIIKUTI PERSIS, JANGAN pakai kata literal 'Pertanyaan' sebagai label, JANGAN pakai *tanda-bintang-tunggal* untuk pertanyaan): tulis TEKS PERTANYAAN ASLI langsung di dalam **dua bintang**, contoh PERSIS begini -> **Apakah sarapan sudah termasuk di kamar ini?**\\n\\nYa, sarapan sudah termasuk untuk 2 orang di semua tipe kamar. <- lihat, pertanyaan aslinya ADA di dalam ** **, bukan diganti kata 'Pertanyaan' lalu pertanyaan aslinya ditaruh terpisah.",
   "tags": ["tag1", "tag2", "tag3"]
 }}"""
 
@@ -495,10 +642,9 @@ async def pick_internal_links(site: str, cluster: str, exclude_slug: str = "") -
 
 
 def _inject_links(content: str, links: list, wa_url: str) -> str:
-    """Selipkan link internal (2-3 artikel terkait, kalau ada) + link booking WA (SELALU,
-    bahkan kalau belum ada artikel lain utk disarankan - mis. situs baru) SEBELUM SELURUH
-    bagian FAQ, bukan ditempel asal di akhir. Kerja di level daftar paragraf (bukan potong
-    string mentah dgn regex posisi).
+    """Selipkan link booking WA (SELALU, bahkan kalau belum ada artikel lain utk
+    disarankan - mis. situs baru) SEBELUM SELURUH bagian FAQ, bukan ditempel asal di
+    akhir. Kerja di level daftar paragraf (bukan potong string mentah dgn regex posisi).
 
     2 bug nyata ditemukan & diperbaiki (2026-07-26) sebelum sempat live:
     (1) versi awal cuma cari pertanyaan **...?** PERTAMA - salah masuk DI TENGAH FAQ
@@ -508,9 +654,16 @@ def _inject_links(content: str, links: list, wa_url: str) -> str:
     Sekarang: prioritaskan label eksplisit "**FAQ**" (case-insensitive) sebagai jangkar;
     kalau model tidak menulis label itu, fallback ke deteksi RUN minimal 2 paragraf
     **...?** BERTURUT-TURUT (satu subjudul-gaya-tanya yang berdiri sendiri, diikuti body
-    text biasa, tidak akan pernah cocok - FAQ asli selalu berupa beberapa Q&A beruntun)."""
+    text biasa, tidak akan pernah cocok - FAQ asli selalu berupa beberapa Q&A beruntun).
+
+    Baca-juga mekanis DIHAPUS sbg jalur utama (2026-07-28, perbaikan anchor text natural)
+    - write_article() sekarang dikasih kandidat link SEBELUM menulis supaya bisa
+    menyelipkan link natural sendiri di dalam isi (lihat links_block di write_article).
+    Fallback JARING PENGAMAN di bawah: kalau TIDAK SATUPUN slug kandidat ternyata muncul
+    di isi (model mengabaikan instruksi), baru tempel daftar mekanis spt sebelumnya -
+    supaya internal linking tidak pernah nol, cuma tidak jadi jalur utama lagi."""
     baca_juga = ""
-    if links:
+    if links and not any(f"/blog/{l['slug']}" in content for l in links):
         link_lines = " ".join(f"[{l['title']}](/blog/{l['slug']})" for l in links)
         baca_juga = f"Baca juga: {link_lines}.\n\n"
     insert_para = f"{baca_juga}Siap booking? [Chat sekarang lewat WhatsApp]({wa_url})."
@@ -664,6 +817,50 @@ def quality_check(article: dict, content_with_links: str) -> list:
     return problems
 
 
+async def fact_check(site: str, content: str) -> list:
+    """Verifikasi draft FINAL terhadap DATA ASLI SEBELUM publish (2026-07-28, jawaban
+    konkret utk "AI melakukan fact-check sebelum publikasi") - lapis KEDUA, lapis
+    PERTAMA (instruksi anti-mengarang di system prompt Writer Agent) sudah ada sejak
+    awal tapi cuma preventif, tidak ada verifikasi terpisah stlh draft jadi.
+
+    SENGAJA cuma SATU panggilan API tambahan yang bandingkan draft ke DATA ASLI &
+    laporkan klaim SPESIFIK yang tidak didukung - BUKAN agent "Fact Checker" penuh
+    terpisah bergaya PRD 16-Agent yang sudah ditolak user (over-engineering utk 2
+    properti milik sendiri). Reuse mekanisme reject-&-requeue quality_check() yang
+    sudah ada di generate_one() - problem list digabung jadi satu, bukan status/plumbing
+    baru. temperature rendah (0.2, beda dari Writer Agent 0.6) krn ini tugas verifikasi
+    presisi, bukan tugas kreatif - variasi jawaban tidak diinginkan di sini.
+
+    Gagal parse/API dari fact-checker sendiri TIDAK memblokir publish (return [] diam-diam,
+    dicatat ke stderr) - bug di lapis verifikasi tidak boleh menghentikan seluruh pipeline,
+    beda dari kalau fact-checker BERHASIL jalan & memang menemukan klaim tidak didukung."""
+    facts = await _fetch_site_facts(site)
+    system = (
+        "Kamu fact-checker konten editorial yang teliti & skeptis. Tugasmu HANYA "
+        "membandingkan draft artikel dengan DATA ASLI yang diberikan, cari klaim "
+        "SPESIFIK (harga, ukuran kamar, nama fasilitas, kapasitas, jarak/lokasi) yang "
+        "TIDAK ADA di DATA ASLI atau BERTENTANGAN dengannya. Klaim umum yang wajar "
+        "(mis. 'pemandangan indah', 'suasana tenang', 'udara sejuk') BUKAN masalah - "
+        "fokus HANYA pada angka/nama spesifik yang bisa saja salah/dikarang."
+    )
+    user = f"""DATA ASLI ({site}):
+{facts}
+
+DRAFT ARTIKEL (final, siap terbit):
+{content}
+
+Balas HARUS JSON valid (tanpa markdown code fence):
+{{"issues": ["klaim spesifik yang TIDAK didukung DATA ASLI, kalau ada", "..."]}}
+Array "issues" KOSONG kalau semua klaim spesifik di draft sudah sesuai/didukung DATA ASLI."""
+    try:
+        raw = await _chat(system, user, temperature=0.2)
+        result = _parse_json_response(raw)
+        return [i for i in result.get("issues", []) if i]
+    except Exception as e:
+        print(f"[fact-check] gagal (tidak memblokir publish): {type(e).__name__}: {e}")
+        return []
+
+
 # ---------------------------------------------------------------------------
 # 8. Orkestrasi + publish
 # ---------------------------------------------------------------------------
@@ -674,11 +871,14 @@ async def generate_one(site: str) -> dict:
     keyword_doc = await get_next_keyword(site)
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "draft", "updated_at": datetime.now(timezone.utc).isoformat()}})
 
-    article = await write_article(site, keyword_doc)
     links = await pick_internal_links(site, keyword_doc["cluster"])
+    article = await write_article(site, keyword_doc, link_candidates=links)
     content_final = _inject_links(article["content"], links, WA_BY_SITE[site])
 
     problems = quality_check(article, content_final)
+    fact_issues = await fact_check(site, content_final)
+    if fact_issues:
+        problems.append("fact-check: " + "; ".join(fact_issues))
     if problems:
         await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "belum_dibuat"}})
         return {"ok": False, "keyword": keyword_doc["keyword"], "problems": problems}

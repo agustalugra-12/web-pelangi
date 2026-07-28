@@ -243,6 +243,9 @@ class BlogPostOut(BaseModel):
     # headings}], avg_word_count, analyzed_at}. None kalau analisis di-skip (budget
     # Serper harian habis/API down) atau artikel ditulis manual (bukan AI).
     competitor_analysis: Optional[dict] = None
+    # Kapan artikel ini terakhir diperdalam AI krn terbukti dapat impression GSC riil
+    # (2026-07-28, lihat scripts/expand_top_articles.py) - None kalau belum pernah.
+    expanded_at: Optional[str] = None
 
 
 class ContactMessageCreate(BaseModel):
@@ -284,6 +287,7 @@ def post_to_out(doc: dict) -> BlogPostOut:
         updated_at=doc.get("updated_at", ""),
         seo_keyword=doc.get("seo_keyword"),
         competitor_analysis=doc.get("competitor_analysis"),
+        expanded_at=doc.get("expanded_at"),
     )
 
 
@@ -430,7 +434,10 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
     })
     generated_total = await db.blog_posts.count_documents({"site": site, "seo_keyword": {"$ne": None}})
 
-    keyword_counts = {"belum_dibuat": 0, "draft": 0, "sudah_dibuat": 0}
+    # dilewati_mirip (2026-07-28) - keyword yang DILEWATI otomatis krn cek cannibalization
+    # (topiknya terlalu mirip artikel yang sudah terbit, lihat _keyword_cannibalizes_existing
+    # di seo_agent.py) - ditampilkan biar transparan, bukan diam-diam hilang dari hitungan.
+    keyword_counts = {"belum_dibuat": 0, "draft": 0, "sudah_dibuat": 0, "dilewati_mirip": 0}
     async for row in db.seo_keywords.aggregate([
         {"$match": {"site": site}},
         {"$group": {"_id": "$status", "n": {"$sum": 1}}},
@@ -449,6 +456,7 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
         "keyword_belum_dibuat": keyword_counts["belum_dibuat"],
         "keyword_draft": keyword_counts["draft"],
         "keyword_sudah_dibuat": keyword_counts["sudah_dibuat"],
+        "keyword_dilewati_mirip": keyword_counts["dilewati_mirip"],
         "last_generated_at": (last_post or {}).get("created_at"),
         "last_generated_title": (last_post or {}).get("title"),
     }

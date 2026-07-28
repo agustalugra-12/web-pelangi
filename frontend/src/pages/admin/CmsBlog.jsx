@@ -88,11 +88,20 @@ export default function CmsBlog() {
             <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Keyword sudah dipakai</p>
             <p className="text-2xl font-display text-teal-deep">{stats.keyword_sudah_dibuat}</p>
           </div>
-          {stats.last_generated_title && (
-            <div className="col-span-2 md:col-span-4 pt-2 border-t border-ink/10 text-sm text-teal-deep/70">
-              Artikel AI terakhir: <span className="font-semibold text-teal-deep">{stats.last_generated_title}</span>
-              {stats.last_generated_at && (
-                <span> — {new Date(stats.last_generated_at).toLocaleString("id-ID")}</span>
+          {(stats.last_generated_title || stats.keyword_dilewati_mirip > 0) && (
+            <div className="col-span-2 md:col-span-4 pt-2 border-t border-ink/10 text-sm text-teal-deep/70 space-y-1">
+              {stats.last_generated_title && (
+                <p>
+                  Artikel AI terakhir: <span className="font-semibold text-teal-deep">{stats.last_generated_title}</span>
+                  {stats.last_generated_at && (
+                    <span> — {new Date(stats.last_generated_at).toLocaleString("id-ID")}</span>
+                  )}
+                </p>
+              )}
+              {stats.keyword_dilewati_mirip > 0 && (
+                <p title="Keyword yang dilewati otomatis karena topiknya terlalu mirip artikel yang sudah terbit (cegah keyword cannibalization).">
+                  {stats.keyword_dilewati_mirip} keyword dilewati otomatis (topik mirip artikel yang sudah ada)
+                </p>
               )}
             </div>
           )}
@@ -203,6 +212,14 @@ export default function CmsBlog() {
                           }
                         >
                           🔍 {p.competitor_analysis.competitors.length} Kompetitor
+                        </span>
+                      )}
+                      {p.expanded_at && (
+                        <span
+                          className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-leaf/15 text-leaf shrink-0"
+                          title={`Diperdalam AI karena terbukti dapat impression Google nyata — ${new Date(p.expanded_at).toLocaleString("id-ID")}`}
+                        >
+                          📈 Diperluas
                         </span>
                       )}
                     </div>
