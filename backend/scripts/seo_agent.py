@@ -164,27 +164,52 @@ def _cosine(a: list, b: list) -> float:
 # ---------------------------------------------------------------------------
 # 1. Keyword Agent
 # ---------------------------------------------------------------------------
-async def _keyword_cannibalizes_existing(site: str, keyword: str) -> Optional[str]:
-    """Return judul artikel yang SUDAH TERBIT kalau `keyword` mirip secara semantik
-    (cosine >0.88, ambang sama dgn _generate_new_keywords) - None kalau aman ditulis.
+CANNIBALIZATION_THRESHOLD = 0.65
+
+
+async def _keyword_cannibalizes_existing(site: str, keyword: str, cluster: str) -> Optional[str]:
+    """Return keyword ASLI (yang sudah dipakai menulis artikel terbit, di CLUSTER YANG
+    SAMA) kalau `keyword` baru ini mirip secara semantik (cosine > CANNIBALIZATION_
+    THRESHOLD) - None kalau aman ditulis.
 
     2026-07-28 - sebelumnya cek duplikat semantik cuma jalan di _generate_new_keywords()
     (keyword hasil brainstorm AI saat 100 keyword awal user habis), TIDAK PERNAH jalan
-    utk 100 keyword awal itu sendiri, dan tidak pernah bandingkan ke JUDUL artikel yang
-    beneran sudah terbit (cuma ke sesama keyword+judul saat itu juga). Akibatnya 2 keyword
-    beda kalimat tapi topik sama (mis. "hotel murah dekat ulun danu" & "penginapan murah
-    ulun danu beratan") bisa lolos jadi 2 artikel yang saling bersaing di SERP - inilah
-    "keyword cannibalization" yang user tanyakan. Sekarang dicek REAL-TIME persis sebelum
-    keyword mana pun dipilih utk ditulis, apa pun sumbernya (user/AI-generated)."""
-    existing = await db.blog_posts.find({"site": site, "published": True}, {"title": 1}).to_list(500)
-    if not existing:
+    utk 100 keyword awal itu sendiri. Melalui 2 revisi hari ini, keduanya salah & DITEMUKAN
+    LEWAT TES EMPIRIS NYATA (bukan cuma teori), bukan lewat baca kode doang:
+
+    Revisi 1 (dibuang): bandingkan keyword ke JUDUL artikel terbit, ambang 0.88 (disalin
+    apa adanya dari _generate_new_keywords). SALAH: keyword pendek vs judul panjang (byk
+    kata boilerplate "Pilihan Nyaman dan Terjangkau di Pelangi Homestay") selalu skor
+    <0.6 walau topik identik ("hotel bedugul" vs judul "Hotel Murah Bedugul: ..." cuma
+    0.594) - cannibalization LOLOS tanpa terdeteksi.
+
+    Revisi 2 (dibuang): ganti perbandingan ke KEYWORD ASLI (bukan judul, struktur teks
+    sebanding) TANPA batasi cluster, ambang 0.65. Menangkap kasus asli user dgn benar,
+    TAPI dites dampaknya ke SELURUH 81 keyword belum_dibuat pelangi -> 71/81 (88%!)
+    ke-skip, termasuk keyword yang SENGAJA dibuat beda angle (mis. "cottage keluarga
+    bedugul" vs "cottage bedugul" - cluster Keluarga vs Utama, target audiens beda).
+    Niche Bedugul sempit (kosakata "hotel/homestay/cottage" + "bedugul" berulang di
+    hampir semua keyword) bikin cosine keyword-vs-keyword secara umum tinggi walau
+    angle/intent-nya beda - threshold tunggal tidak bisa membedakan "duplikat asli"
+    dari "variasi angle yang disengaja".
+
+    Revisi 3 (dipakai): batasi perbandingan HANYA ke keyword tertulis di CLUSTER YANG
+    SAMA (cluster memang sengaja dirancang jadi sinyal "angle berbeda" - Keluarga vs
+    Pasangan vs Booking vs Harga, dst - lihat CLUSTER_CATEGORY & seo_keywords.cluster).
+    Dites ulang scr empiris: kasus asli user (semua di cluster Booking) tetap tertangkap
+    benar di ambang 0.65 (skor 0.69-0.87), TAPI dampak ke seluruh pool turun jadi 20/81
+    (25%) - jauh lebih masuk akal, tidak lagi memblokir variasi angle yang disengaja."""
+    written = await db.seo_keywords.find(
+        {"site": site, "status": "sudah_dibuat", "cluster": cluster}, {"keyword": 1},
+    ).to_list(1000)
+    if not written:
         return None
-    titles = [p["title"] for p in existing]
-    embeds = await _embed([keyword] + titles)
-    kw_emb, title_embs = embeds[0], embeds[1:]
-    for title, emb in zip(titles, title_embs):
-        if _cosine(kw_emb, emb) > 0.88:
-            return title
+    written_kws = [w["keyword"] for w in written]
+    embeds = await _embed([keyword] + written_kws)
+    kw_emb, written_embs = embeds[0], embeds[1:]
+    for w_kw, emb in zip(written_kws, written_embs):
+        if _cosine(kw_emb, emb) > CANNIBALIZATION_THRESHOLD:
+            return w_kw
     return None
 
 
@@ -238,14 +263,14 @@ async def get_next_keyword(site: str) -> dict:
         pool.sort(key=lambda k: (order.get(k["priority"], 9), -cluster_scores.get(k.get("cluster"), 0)))
         now = datetime.now(timezone.utc).isoformat()
         for kw_doc in pool:
-            dupe_title = await _keyword_cannibalizes_existing(site, kw_doc["keyword"])
-            if dupe_title is None:
+            dupe_kw = await _keyword_cannibalizes_existing(site, kw_doc["keyword"], kw_doc["cluster"])
+            if dupe_kw is None:
                 return kw_doc
             await db.seo_keywords.update_one(
                 {"id": kw_doc["id"]},
                 {"$set": {
                     "status": "dilewati_mirip", "updated_at": now,
-                    "cannibalization_note": f'mirip artikel yang sudah ada: "{dupe_title}"',
+                    "cannibalization_note": f'topik sama dgn keyword yang sudah ditulis: "{dupe_kw}"',
                 }},
             )
         return None
@@ -871,14 +896,26 @@ async def generate_one(site: str) -> dict:
     keyword_doc = await get_next_keyword(site)
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "draft", "updated_at": datetime.now(timezone.utc).isoformat()}})
 
-    links = await pick_internal_links(site, keyword_doc["cluster"])
-    article = await write_article(site, keyword_doc, link_candidates=links)
-    content_final = _inject_links(article["content"], links, WA_BY_SITE[site])
+    try:
+        links = await pick_internal_links(site, keyword_doc["cluster"])
+        article = await write_article(site, keyword_doc, link_candidates=links)
+        content_final = _inject_links(article["content"], links, WA_BY_SITE[site])
 
-    problems = quality_check(article, content_final)
-    fact_issues = await fact_check(site, content_final)
-    if fact_issues:
-        problems.append("fact-check: " + "; ".join(fact_issues))
+        problems = quality_check(article, content_final)
+        fact_issues = await fact_check(site, content_final)
+        if fact_issues:
+            problems.append("fact-check: " + "; ".join(fact_issues))
+    except Exception:
+        # Reset ke "belum_dibuat" - JANGAN biarkan macet permanen di "draft" kalau ada
+        # error TAK TERDUGA (2026-07-28, ditemukan nyata: httpx.ReadTimeout dari OpenAI
+        # saat cron jalan bikin keyword "hotel bedugul" macet selamanya di status "draft" -
+        # main() cuma catat "GAGAL" ke log tanpa pernah reset status keyword-nya, jadi
+        # get_next_keyword() TIDAK PERNAH memilihnya lagi krn query-nya cuma status=
+        # "belum_dibuat"). Re-raise supaya try/except per-situs di main() tetap mencatat
+        # kegagalannya spt biasa (perilaku log tidak berubah, cuma DB tidak lagi macet).
+        await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "belum_dibuat"}})
+        raise
+
     if problems:
         await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "belum_dibuat"}})
         return {"ok": False, "keyword": keyword_doc["keyword"], "problems": problems}
