@@ -33,8 +33,7 @@ MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
-GOOGLE_CSE_API_KEY = os.environ.get("GOOGLE_CSE_API_KEY", "")
-GOOGLE_CSE_CX = os.environ.get("GOOGLE_CSE_CX", "")
+SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "")
 CHAT_MODEL = "gpt-4.1-mini"
 EMBED_MODEL = "text-embedding-3-small"
 
@@ -224,20 +223,28 @@ async def _fetch_site_facts(site: str) -> str:
 # 2.5 Competitor Analysis Agent (2026-07-28) - cari artikel top-ranking Google utk
 # keyword yang sama, analisis panjang/struktur heading/FAQ, supaya Writer Agent
 # bisa menulis artikel yang LEBIH LENGKAP daripada kompetitor (bukan cuma sama
-# panjang). Best-effort penuh: kalau Custom Search API/fetch kompetitor gagal
-# (quota habis, situs kompetitor block scraping, dll), fungsi ini return None dan
+# panjang). Best-effort penuh: kalau search API/fetch kompetitor gagal (quota
+# habis, situs kompetitor block scraping, dll), fungsi ini return None dan
 # write_article() lanjut TANPA analisis kompetitor - tidak pernah menggagalkan
 # generate artikel gara-gara langkah tambahan ini.
+#
+# Pakai Serper (serper.dev), BUKAN Google Custom Search JSON API - dicoba lebih
+# dulu tapi ternyata Google sudah menutup akses API itu utk project/customer baru
+# (dikonfirmasi via web search, ada rencana deprecation penuh 2027), gagal terus
+# walau enable API + billing sudah benar. Serper reseller hasil Google Search asli
+# dgn API sederhana, jauh lebih murah & tanpa syarat billing GCP.
 # ---------------------------------------------------------------------------
 async def _search_competitors(keyword: str) -> list:
-    if not GOOGLE_CSE_API_KEY or not GOOGLE_CSE_CX:
+    if not SERPER_API_KEY:
         return []
     async with httpx.AsyncClient(timeout=15) as http:
-        resp = await http.get("https://www.googleapis.com/customsearch/v1", params={
-            "key": GOOGLE_CSE_API_KEY, "cx": GOOGLE_CSE_CX, "q": keyword, "num": 5,
-        })
+        resp = await http.post(
+            "https://google.serper.dev/search",
+            headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+            json={"q": keyword, "num": 5, "gl": "id", "hl": "id"},
+        )
         resp.raise_for_status()
-        return resp.json().get("items", [])
+        return resp.json().get("organic", [])
 
 
 async def _fetch_competitor_page(url: str) -> dict:
