@@ -399,13 +399,31 @@ Format balasan HARUS JSON valid dengan struktur persis ini (tanpa markdown code 
 
     # gpt-4.1-mini konsisten menulis lebih pendek dari target (~500-600 kata) apapun
     # instruksi jumlah kata di prompt awal - daripada terus-menerus gagal quality gate
-    # & buang keyword, coba SATU kali panggilan tambahan minta perpanjang tiap bagian
-    # (cuma kalau memang masih kurang, supaya tidak selalu 2x biaya API per artikel).
+    # & buang keyword, coba panggilan tambahan minta perpanjang tiap bagian (cuma kalau
+    # memang masih kurang, supaya tidak selalu 2-3x biaya API per artikel).
+    #
+    # Threshold trigger dinaikkan dari <850 ke <1000 (2026-07-28, ditemukan lewat
+    # laporan user - audit 19 artikel AI live menunjukkan banyak draft mendarat persis
+    # di 850-988 kata, LOLOS trigger lama tanpa pernah diperpanjang, padahal masih di
+    # bawah target riil user "di atas 1000 kata"). Target expand juga dinaikkan ke
+    # 1050+ (bukan cuma "900-1300" yang sudah terbukti under-deliver sekali) supaya ada
+    # buffer setelah _inject_links nambah sedikit kata link internal/WA nanti.
+    #
+    # Loop, BUKAN sekali (2026-07-28, ditemukan lewat tes live: 1 dari 3 percobaan
+    # SETELAH fix di atas MASIH mendarat di bawah 1000 walau sudah 1x expand - LLM
+    # tidak selalu tepat sasaran walau diminta eksplisit). Maks 2x percobaan expand
+    # (3 panggilan API total per artikel di kasus terburuk) - berhenti lebih awal
+    # begitu >=1000, supaya tidak selalu 3x biaya kalau expand pertama sudah cukup.
     word_count = len(data["content"].split())
-    if word_count < 850:
-        expand_user = f"""Artikel ini masih terlalu pendek ({word_count} kata, target 900-1300).
+    attempts = 0
+    while word_count < 1000 and attempts < 2:
+        attempts += 1
+        expand_user = f"""Artikel ini masih terlalu pendek ({word_count} kata, target MINIMAL 1050 kata,
+idealnya 1100-1300).
 Tulis ULANG dengan struktur & fakta yang SAMA PERSIS, tapi perpanjang tiap sub-judul jadi
-150-200 kata (tambah detail/contoh konkret dari DATA ASLI, JANGAN mengarang fakta baru).
+180-220 kata (tambah detail/contoh konkret dari DATA ASLI, JANGAN mengarang fakta baru).
+Hitung sendiri jumlah kata draftmu sebelum menjawab - kalau masih di bawah 1050, perpanjang
+lagi sebelum dikirim.
 JSON artikel sebelumnya:
 {json.dumps(data, ensure_ascii=False)}
 
@@ -413,10 +431,12 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
         raw2 = await _chat(system, expand_user, temperature=0.6)
         try:
             data2 = _parse_json_response(raw2)
-            if len(data2["content"].split()) > word_count:
+            new_count = len(data2["content"].split())
+            if new_count > word_count:
                 data = data2
+                word_count = new_count
         except (json.JSONDecodeError, KeyError):
-            pass  # gagal expand - tetap pakai draft pertama, quality gate yg akan menolak kalau kurang
+            break  # gagal expand - tetap pakai draft terbaik sejauh ini, hentikan loop
     # Disisipkan ke doc artikel oleh generate_one() (2026-07-28, permintaan user - tampil
     # di dashboard CMS "data kompetitor yang dibaca") - None kalau analisis di-skip/gagal.
     data["_competitor_data"] = competitor_result["data"] if competitor_result else None
