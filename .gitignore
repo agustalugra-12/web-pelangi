@@ -37,6 +37,7 @@ dist
 
 *token.json*
 *credentials.json*
+backend/secrets/
 
 # Logs and debug files
 npm-debug.log*

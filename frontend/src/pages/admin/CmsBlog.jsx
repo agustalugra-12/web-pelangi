@@ -8,16 +8,19 @@ export default function CmsBlog() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
+  const [gsc, setGsc] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data }, { data: statsData }] = await Promise.all([
+      const [{ data }, { data: statsData }, { data: gscData }] = await Promise.all([
         api.get("/admin/blog"),
         api.get("/admin/seo-agent/stats").catch(() => ({ data: null })),
+        api.get("/admin/gsc/summary").catch(() => ({ data: null })),
       ]);
       setPosts(data);
       setStats(statsData);
+      setGsc(gscData);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
@@ -26,6 +29,14 @@ export default function CmsBlog() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Analytics Dashboard (2026-07-28) - performa per artikel dari Google Search Console
+  // (GET /admin/gsc/summary, data disinkron harian lewat scripts/gsc_sync.py). Dicocokkan
+  // ke baris tabel via slug - artikel yang belum ada datanya (mis. baru terbit, GSC punya
+  // lag pelaporan ~2-3 hari) tampil "-" bukan 0, supaya tidak disalahartikan "0 klik nyata".
+  const gscBySlug = Object.fromEntries((gsc?.articles || []).map((a) => [a.slug, a]));
+  const fmtCtr = (v) => (v == null ? "-" : `${(v * 100).toFixed(1)}%`);
+  const fmtPos = (v) => (v == null ? "-" : v.toFixed(1));
 
   const handleDelete = async (id, title) => {
     if (!window.confirm(`Hapus artikel "${title}"?`)) return;
@@ -85,6 +96,35 @@ export default function CmsBlog() {
         </div>
       )}
 
+      {gsc && (
+        <div className="bg-paper rounded-2xl border border-ink/10 p-5 mb-6" data-testid="gsc-analytics-summary">
+          <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mb-3">
+            Performa Google Search Console (28 hari terakhir)
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Total Klik</p>
+              <p className="text-2xl font-display text-teal-deep">{gsc.total_clicks}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Total Impression</p>
+              <p className="text-2xl font-display text-teal-deep">{gsc.total_impressions}</p>
+            </div>
+            <div className="col-span-2 md:col-span-2">
+              <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Artikel Terbaik</p>
+              <p className="text-lg font-display text-teal-deep truncate">
+                {gsc.best_article ? `${gsc.best_article.title} (${gsc.best_article.clicks} klik)` : "Belum ada data"}
+              </p>
+            </div>
+          </div>
+          {gsc.last_synced_at && (
+            <p className="mt-3 pt-3 border-t border-ink/10 text-xs text-teal-deep/60">
+              Terakhir sinkron: {new Date(gsc.last_synced_at).toLocaleString("id-ID")}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="bg-paper rounded-2xl border border-ink/10 overflow-hidden">
         {loading ? (
           <p className="p-8 text-center text-teal-deep/70">Memuat…</p>
@@ -98,6 +138,14 @@ export default function CmsBlog() {
                 <th className="px-5 py-3 font-medium hidden md:table-cell">Kategori</th>
                 <th className="px-5 py-3 font-medium hidden md:table-cell">Status</th>
                 <th className="px-5 py-3 font-medium hidden md:table-cell">Tanggal</th>
+                {gsc && (
+                  <>
+                    <th className="px-5 py-3 font-medium hidden lg:table-cell text-right" title="Klik dari Google Search Console, 28 hari terakhir">Klik</th>
+                    <th className="px-5 py-3 font-medium hidden lg:table-cell text-right" title="Impression dari Google Search Console, 28 hari terakhir">Impresi</th>
+                    <th className="px-5 py-3 font-medium hidden lg:table-cell text-right" title="Click-through rate">CTR</th>
+                    <th className="px-5 py-3 font-medium hidden lg:table-cell text-right" title="Posisi rata-rata di hasil pencarian Google">Posisi</th>
+                  </>
+                )}
                 <th className="px-5 py-3 font-medium text-right">Aksi</th>
               </tr>
             </thead>
@@ -127,6 +175,22 @@ export default function CmsBlog() {
                   <td className="px-5 py-3 hidden md:table-cell text-xs text-teal-deep/70">
                     {new Date(p.created_at).toLocaleDateString("id-ID")}
                   </td>
+                  {gsc && (
+                    <>
+                      <td className="px-5 py-3 hidden lg:table-cell text-right text-teal-deep/80">
+                        {gscBySlug[p.slug]?.clicks ?? "-"}
+                      </td>
+                      <td className="px-5 py-3 hidden lg:table-cell text-right text-teal-deep/80">
+                        {gscBySlug[p.slug]?.impressions ?? "-"}
+                      </td>
+                      <td className="px-5 py-3 hidden lg:table-cell text-right text-teal-deep/80">
+                        {fmtCtr(gscBySlug[p.slug]?.ctr)}
+                      </td>
+                      <td className="px-5 py-3 hidden lg:table-cell text-right text-teal-deep/80">
+                        {fmtPos(gscBySlug[p.slug]?.position)}
+                      </td>
+                    </>
+                  )}
                   <td className="px-5 py-3 text-right whitespace-nowrap">
                     <Link to={`/admin/posts/${p.id}`} data-testid={`admin-edit-${p.slug}`}
                       className="text-teal-deep hover:text-mustard-deep font-semibold text-sm mr-3">

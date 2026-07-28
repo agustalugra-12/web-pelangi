@@ -132,6 +132,10 @@ def _parse_site_host_map() -> dict:
 SITE_HOST_MAP = _parse_site_host_map()
 DEFAULT_SITE = os.environ.get("DEFAULT_SITE", "pelangi")
 
+# Sama seperti SITE_DOMAIN di scripts/gsc_sync.py & scripts/seo_agent.py (2026-07-28) -
+# dipakai admin_gsc_summary utk mencocokkan slug artikel ke URL yang disimpan GSC.
+GSC_SITE_DOMAIN = {"pelangi": "pelangihomestay.com", "harmoni": "harmoniby.pelangihomestay.com"}
+
 
 def _resolve_site_from_host(request: Request) -> str:
     host = (request.headers.get("host") or "").split(":")[0].lower()
@@ -441,6 +445,44 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
         "keyword_sudah_dibuat": keyword_counts["sudah_dibuat"],
         "last_generated_at": (last_post or {}).get("created_at"),
         "last_generated_title": (last_post or {}).get("title"),
+    }
+
+
+@api_router.get("/admin/gsc/summary")
+async def admin_gsc_summary(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
+    """Analytics Dashboard (2026-07-28) - performa artikel dari Google Search Console
+    (klik, impression, CTR, posisi rata-rata). Data ditarik scripts/gsc_sync.py (cron
+    harian) ke db.gsc_page_stats - endpoint ini CUMA baca & gabungkan dengan
+    db.blog_posts by URL (bukan panggil GSC API langsung tiap admin buka halaman -
+    lebih cepat & tidak kena rate limit)."""
+    domain = GSC_SITE_DOMAIN.get(site)
+    posts = await db.blog_posts.find(
+        {"site": site, "published": True}, {"_id": 0, "slug": 1, "title": 1},
+    ).to_list(500)
+    stats_by_url = {
+        row["url"]: row async for row in db.gsc_page_stats.find({"site": site}, {"_id": 0})
+    }
+
+    articles = []
+    for p in posts:
+        url = f"https://{domain}/blog/{p['slug']}"
+        s = stats_by_url.get(url)
+        articles.append({
+            "slug": p["slug"], "title": p["title"],
+            "clicks": s["clicks"] if s else 0,
+            "impressions": s["impressions"] if s else 0,
+            "ctr": s["ctr"] if s else 0,
+            "position": s["position"] if s else None,
+        })
+    articles.sort(key=lambda a: (-a["clicks"], -a["impressions"]))
+    synced_ats = [s["synced_at"] for s in stats_by_url.values() if s.get("synced_at")]
+
+    return {
+        "articles": articles,
+        "total_clicks": sum(a["clicks"] for a in articles),
+        "total_impressions": sum(a["impressions"] for a in articles),
+        "best_article": articles[0] if articles and articles[0]["clicks"] > 0 else None,
+        "last_synced_at": max(synced_ats) if synced_ats else None,
     }
 
 
