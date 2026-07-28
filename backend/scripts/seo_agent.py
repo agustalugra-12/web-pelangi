@@ -306,9 +306,12 @@ async def _fetch_competitor_page(url: str) -> dict:
         return {"url": url, "word_count": word_count, "headings": headings[:15]}
 
 
-async def analyze_competitors(keyword: str) -> Optional[str]:
-    """Return ringkasan teks siap-pakai utk disisipkan ke prompt Writer Agent, atau
-    None kalau analisis kompetitor gagal total (search API down/tidak dikonfigurasi)."""
+async def analyze_competitors(keyword: str) -> Optional[dict]:
+    """Return {"prompt_text": ..., "data": {...}} - prompt_text siap disisipkan ke
+    Writer Agent, data = hasil mentah (url/word_count/heading per kompetitor) UTK
+    DISIMPAN ke blog_posts.competitor_analysis (2026-07-28, permintaan user - tampil
+    di dashboard CMS "data kompetitor yang dibaca"). None kalau analisis gagal total
+    (search API down/tidak dikonfigurasi/budget harian habis)."""
     try:
         results = await _search_competitors(keyword)
     except Exception as e:
@@ -346,7 +349,15 @@ async def analyze_competitors(keyword: str) -> Optional[str]:
         f"Tulis artikel MINIMAL sepanjang rata-rata kompetitor ({avg_words} kata) dan "
         "usahakan lebih lengkap (bahas 1-2 topik relevan yang tidak ada di daftar di atas)."
     )
-    return "\n".join(lines)
+    return {
+        "prompt_text": "\n".join(lines),
+        "data": {
+            "keyword": keyword,
+            "competitors": [{"url": p["url"], "word_count": p["word_count"], "headings": p["headings"]} for p in pages],
+            "avg_word_count": avg_words,
+            "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +366,7 @@ async def analyze_competitors(keyword: str) -> Optional[str]:
 async def write_article(site: str, keyword_doc: dict) -> dict:
     facts = await _fetch_site_facts(site)
     keyword = keyword_doc["keyword"]
-    competitor_analysis = await analyze_competitors(keyword)
+    competitor_result = await analyze_competitors(keyword)
 
     system = (
         "Kamu content writer SEO Bahasa Indonesia untuk penginapan di Bedugul, Bali. "
@@ -366,8 +377,8 @@ async def write_article(site: str, keyword_doc: dict) -> dict:
         "daripada mengarang. Tulis natural, tidak keyword stuffing, gaya sapaan 'Kakak'."
     )
     competitor_block = (
-        f"\n\nANALISIS KOMPETITOR (dari hasil pencarian Google nyata):\n{competitor_analysis}"
-        if competitor_analysis else ""
+        f"\n\nANALISIS KOMPETITOR (dari hasil pencarian Google nyata):\n{competitor_result['prompt_text']}"
+        if competitor_result else ""
     )
     user = f"""DATA ASLI ({site}):
 {facts}
@@ -406,6 +417,9 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
                 data = data2
         except (json.JSONDecodeError, KeyError):
             pass  # gagal expand - tetap pakai draft pertama, quality gate yg akan menolak kalau kurang
+    # Disisipkan ke doc artikel oleh generate_one() (2026-07-28, permintaan user - tampil
+    # di dashboard CMS "data kompetitor yang dibaca") - None kalau analisis di-skip/gagal.
+    data["_competitor_data"] = competitor_result["data"] if competitor_result else None
     return data
 
 
@@ -635,6 +649,10 @@ async def generate_one(site: str) -> dict:
         "cover_image": cover, "tags": article.get("tags", []), "published": True,
         "slug": slug, "site": site, "created_at": now, "updated_at": now,
         "seo_keyword": keyword_doc["keyword"],
+        # Data kompetitor yang dibaca AI sebelum menulis (2026-07-28, permintaan user -
+        # tampil di dashboard CMS) - None kalau analisis di-skip (budget Serper habis
+        # hari itu/API down) - lihat analyze_competitors().
+        "competitor_analysis": article.get("_competitor_data"),
     }
     await db.blog_posts.insert_one(doc)
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {

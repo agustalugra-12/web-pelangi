@@ -9,18 +9,21 @@ export default function CmsBlog() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [gsc, setGsc] = useState(null);
+  const [queue, setQueue] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data }, { data: statsData }, { data: gscData }] = await Promise.all([
+      const [{ data }, { data: statsData }, { data: gscData }, { data: queueData }] = await Promise.all([
         api.get("/admin/blog"),
         api.get("/admin/seo-agent/stats").catch(() => ({ data: null })),
         api.get("/admin/gsc/summary").catch(() => ({ data: null })),
+        api.get("/admin/seo-agent/queue").catch(() => ({ data: null })),
       ]);
       setPosts(data);
       setStats(statsData);
       setGsc(gscData);
+      setQueue(queueData);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
@@ -125,6 +128,33 @@ export default function CmsBlog() {
         </div>
       )}
 
+      {queue && queue.next_up.length > 0 && (
+        <div className="bg-paper rounded-2xl border border-ink/10 p-5 mb-6" data-testid="seo-agent-queue">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">
+              Perencanaan Artikel — Antrean Berikutnya
+            </p>
+            <p className="text-xs text-teal-deep/60">{queue.total_belum_dibuat} keyword tersisa</p>
+          </div>
+          <ol className="space-y-2">
+            {queue.next_up.slice(0, 8).map((k, i) => (
+              <li key={k.keyword} className="flex items-center gap-3 text-sm">
+                <span className="w-5 text-right text-teal-deep/40 font-mono text-xs shrink-0">{i + 1}.</span>
+                <span className="flex-1 text-teal-deep font-medium">{k.keyword}</span>
+                <span className="text-xs text-teal-deep/60 hidden sm:inline">{k.cluster}</span>
+                <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 shrink-0 ${
+                  k.priority === "High" ? "bg-red-100 text-red-700"
+                    : k.priority === "Medium" ? "bg-mustard-soft/30 text-mustard-deep"
+                    : "bg-ink/10 text-ink/60"
+                }`}>
+                  {k.priority}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       <div className="bg-paper rounded-2xl border border-ink/10 overflow-hidden">
         {loading ? (
           <p className="p-8 text-center text-teal-deep/70">Memuat…</p>
@@ -161,6 +191,18 @@ export default function CmsBlog() {
                           title={`Dibuat otomatis AI SEO Agent - keyword: ${p.seo_keyword}`}
                         >
                           🤖 AI
+                        </span>
+                      )}
+                      {p.competitor_analysis && (
+                        <span
+                          className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-teal-deep/10 text-teal-deep shrink-0"
+                          title={
+                            `Analisis ${p.competitor_analysis.competitors.length} kompetitor, ` +
+                            `rata-rata ${p.competitor_analysis.avg_word_count} kata:\n` +
+                            p.competitor_analysis.competitors.map((c) => `• ${c.url} (${c.word_count} kata)`).join("\n")
+                          }
+                        >
+                          🔍 {p.competitor_analysis.competitors.length} Kompetitor
                         </span>
                       )}
                     </div>

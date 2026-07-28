@@ -238,6 +238,11 @@ class BlogPostOut(BaseModel):
     # mana yang otomatis (2026-07-26, permintaan user: tidak ada cara lihat aktivitas
     # AI SEO Agent dari dalam CMS sama sekali sebelum ini).
     seo_keyword: Optional[str] = None
+    # Data kompetitor yang dibaca AI sebelum menulis artikel ini (2026-07-28, permintaan
+    # user - tampil di dashboard CMS). Shape: {keyword, competitors: [{url, word_count,
+    # headings}], avg_word_count, analyzed_at}. None kalau analisis di-skip (budget
+    # Serper harian habis/API down) atau artikel ditulis manual (bukan AI).
+    competitor_analysis: Optional[dict] = None
 
 
 class ContactMessageCreate(BaseModel):
@@ -278,6 +283,7 @@ def post_to_out(doc: dict) -> BlogPostOut:
         created_at=doc.get("created_at", ""),
         updated_at=doc.get("updated_at", ""),
         seo_keyword=doc.get("seo_keyword"),
+        competitor_analysis=doc.get("competitor_analysis"),
     )
 
 
@@ -446,6 +452,24 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
         "last_generated_at": (last_post or {}).get("created_at"),
         "last_generated_title": (last_post or {}).get("title"),
     }
+
+
+@api_router.get("/admin/seo-agent/queue")
+async def admin_seo_agent_queue(
+    limit: int = 20, _: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin),
+):
+    """Perencanaan artikel - keyword yang AKAN ditulis AI berikutnya (2026-07-28,
+    permintaan user - tampil di dashboard CMS). Urutan PERSIS sama dengan
+    get_next_keyword() di scripts/seo_agent.py (priority High > Medium > Low, lalu
+    urutan insert/_id sbg tie-breaker) - supaya daftar ini betul-betul mencerminkan
+    urutan nyata, bukan tebakan terpisah."""
+    order = {"High": 0, "Medium": 1, "Low": 2}
+    pool = await db.seo_keywords.find(
+        {"site": site, "status": "belum_dibuat"}, {"_id": 0, "keyword": 1, "cluster": 1, "priority": 1, "intent": 1},
+    ).to_list(500)
+    pool.sort(key=lambda k: order.get(k.get("priority"), 9))
+    total_belum_dibuat = len(pool)
+    return {"total_belum_dibuat": total_belum_dibuat, "next_up": pool[:limit]}
 
 
 @api_router.get("/admin/gsc/summary")
