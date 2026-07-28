@@ -2,19 +2,22 @@ import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
 import RoomCard from "@/components/site/RoomCard";
 import SectionHeading from "@/components/site/SectionHeading";
+import Seo from "@/components/site/Seo";
 
 export default function Rooms() {
   const { site, rooms } = useContent();
   const { t } = useLang();
   const policy = t("rooms.policy") || [];
+  const subtitle = rooms.length === 1 ? t("rooms.subtitleSingle") : t("rooms.subtitle");
   return (
     <div className="pt-14 pb-24">
+      <Seo title={t("rooms.title")} description={subtitle} />
       <section className="max-w-7xl mx-auto px-5 md:px-8">
         <SectionHeading
           eyebrow={t("rooms.eyebrow")}
           title={t("rooms.title")}
           italicWord={t("rooms.italic")}
-          subtitle={rooms.length === 1 ? t("rooms.subtitleSingle") : t("rooms.subtitle")}
+          subtitle={subtitle}
         />
         {/* Grid 2 kolom bikin kartu nempel kiri kalau cuma 1 tipe kamar (mis. harmoni,
             Cottage saja) - ditemukan lewat laporan user 2026-07-26. Kartu tunggal

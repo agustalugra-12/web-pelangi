@@ -1,12 +1,14 @@
 import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
 import SectionHeading from "@/components/site/SectionHeading";
+import Seo from "@/components/site/Seo";
 
 export default function ExploreBedugul() {
   const { attractions } = useContent();
   const { t, pick } = useLang();
   return (
     <div className="pt-14 pb-24">
+      <Seo title={t("explore.title")} description={t("explore.subtitle")} />
       <section className="max-w-7xl mx-auto px-5 md:px-8">
         <SectionHeading
           eyebrow={t("explore.eyebrow")}

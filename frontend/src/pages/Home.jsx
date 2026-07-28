@@ -6,6 +6,7 @@ import SectionHeading from "@/components/site/SectionHeading";
 import { DICTIONARY } from "@/i18n/dictionary";
 import { HOME } from "@/constants/testIds";
 import { heroImagePath } from "@/lib/siteAssets";
+import Seo from "@/components/site/Seo";
 import {
   Accordion,
   AccordionContent,
@@ -27,6 +28,13 @@ export default function Home() {
 
   return (
     <div>
+      {/* Bare <Seo/> (2026-07-28, audit SEO teknis) - homepage sebelumnya TIDAK PERNAH
+          memasang canonical/robots meta client-side sama sekali (satu-satunya halaman yang
+          benar2 tanpa <Seo/>). Tanpa title/description eksplisit, Seo.jsx otomatis pakai
+          site.seoTitle/site.seoDescription dari CMS - sama seperti yang sudah dipakai static
+          index.html, jadi tidak ada perubahan judul/deskripsi yang tampil, cuma menambah
+          canonical+robots meta yang sebelumnya kosong. */}
+      <Seo />
       <section data-testid={HOME.hero} className="relative overflow-hidden pt-8 pb-24 md:pb-32">
         <div className="max-w-7xl mx-auto px-5 md:px-8 grid lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7 relative">
