@@ -14,7 +14,6 @@ Jalankan manual: `venv/bin/python -m scripts.seo_agent --site pelangi --count 1`
 """
 import argparse
 import asyncio
-import base64
 import json
 import math
 import os
@@ -68,17 +67,20 @@ CLUSTER_CATEGORY = {
 # Query pencarian Pexels (2026-07-28) - Pexels cuma cari bagus dalam Bahasa Inggris, jadi
 # dipetakan per cluster (bukan pakai keyword Indonesia mentah) - beberapa varian per cluster
 # supaya tidak selalu dapat foto yang sama persis utk cluster yang sama.
+# Setiap query WAJIB eksplisit "bali"/"tropical" (2026-07-28, ditemukan lewat uji visual -
+# query generik seperti "cozy cottage interior" tanpa kata itu sering nyasar ke hasil kabin
+# gaya Eropa/alpine, bukan tropis Bali - tidak sesuai suasana properti sama sekali).
 CLUSTER_PEXELS_QUERY = {
-    "Utama": ["tropical cottage garden", "bali mountain homestay"],
-    "Harga": ["cozy tropical guesthouse", "affordable tropical cottage"],
-    "Lokasi Wisata": ["bali mountain lake", "tropical highland scenery"],
-    "View": ["misty mountain lake view", "tropical garden view"],
-    "Keluarga": ["family tropical vacation", "family garden relaxing outdoor"],
-    "Pasangan": ["romantic tropical getaway", "couple garden veranda"],
-    "Fasilitas": ["cozy cottage interior", "tropical guesthouse veranda"],
-    "Aktivitas": ["bali nature walk", "tropical garden path"],
-    "Booking": ["tropical resort relaxing", "cozy vacation cottage"],
-    "Long Tail": ["tropical mountain cottage", "bali highland garden"],
+    "Utama": ["tropical bali garden cottage", "bali mountain homestay"],
+    "Harga": ["tropical bali guesthouse", "affordable bali tropical resort"],
+    "Lokasi Wisata": ["bali mountain lake", "tropical bali highland scenery"],
+    "View": ["misty bali mountain lake", "tropical bali garden view"],
+    "Keluarga": ["bali family tropical vacation", "tropical family garden outdoor"],
+    "Pasangan": ["romantic bali tropical getaway", "bali couple garden veranda"],
+    "Fasilitas": ["tropical bali guesthouse interior", "bali resort veranda"],
+    "Aktivitas": ["bali tropical nature walk", "tropical bali garden path"],
+    "Booking": ["tropical bali resort relaxing", "bali vacation cottage tropical"],
+    "Long Tail": ["tropical bali mountain cottage", "bali highland tropical garden"],
 }
 
 
@@ -349,25 +351,8 @@ REAL_PLACE_ASSETS = {
     "candikuning": "/assets/pasar-candikuning.webp", "pasar": "/assets/pasar-candikuning.webp",
 }
 
-IMAGE_MODEL = "gpt-image-2"
-GENERATED_DIR = Path("/var/www/web-pelangi/frontend/public/assets/ai")
-GENERATED_DIR_BUILD = Path("/var/www/web-pelangi/frontend/build/assets/ai")
 PEXELS_DIR = Path("/var/www/web-pelangi/frontend/public/assets/pexels")
 PEXELS_DIR_BUILD = Path("/var/www/web-pelangi/frontend/build/assets/pexels")
-
-
-async def _generate_ai_image(prompt: str) -> bytes:
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY belum diisi di backend/.env")
-    async with httpx.AsyncClient(timeout=120) as http:
-        resp = await http.post(
-            "https://api.openai.com/v1/images/generations",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={"model": IMAGE_MODEL, "prompt": prompt, "size": "1536x1024", "quality": "low", "n": 1},
-        )
-        resp.raise_for_status()
-        b64 = resp.json()["data"][0]["b64_json"]
-        return base64.b64decode(b64)
 
 
 async def _fetch_pexels_photo(cluster: str, keyword: str) -> bytes:
@@ -398,18 +383,13 @@ async def _fetch_pexels_photo(cluster: str, keyword: str) -> bytes:
 
 async def pick_cover_image(site: str, keyword: str, cluster: str, slug: str) -> str:
     """Foto tempat wisata nyata pakai aset asli (akurat, gratis). Selain itu, DIROTASI
-    2:1 (permintaan user 2026-07-26: foto AI/stok kelihatan terlalu mirip semua kalau
-    dipakai tiap artikel) - 2 dari 3 artikel pakai foto aset asli yang sudah ada (variasi
-    asli dari kamar/properti, sekaligus hemat biaya).
-
-    Slot ke-3 BEDA per situs (2026-07-28, permintaan user - Pelangi tidak lagi pakai foto
-    AI berbayar sama sekali):
-    - Pelangi: foto stok GRATIS dari Pexels API (_fetch_pexels_photo) - foto sungguhan,
-      bukan properti sendiri, jadi TIDAK diklaim sebagai foto kamar/bangunan asli (dipilih
-      dari query generik suasana tropis/pegunungan, bukan properti spesifik).
-    - Situs lain (harmoni): tetap generate AI (gpt-image-2) bergaya ilustrasi/artistik
-      BUKAN foto-realistis - supaya tidak terkesan "ini foto asli kamar/bangunan properti".
-    """
+    2:1 (permintaan user 2026-07-26: foto kelihatan terlalu mirip semua kalau dipakai
+    tiap artikel) - 2 dari 3 artikel pakai foto aset asli yang sudah ada (variasi asli
+    dari kamar/properti, sekaligus hemat biaya), 1 dari 3 pakai foto stok GRATIS dari
+    Pexels API (2026-07-28, permintaan user - SEMUA situs berhenti generate AI berbayar
+    sama sekali, awalnya cuma Pelangi lalu diperluas ke Harmoni juga). Foto Pexels generik
+    suasana tropis/pegunungan (bukan properti spesifik), jadi tidak diklaim sbg foto kamar/
+    bangunan asli - sama alasannya dengan gaya ilustrasi AI yang dipakai sebelumnya."""
     kw = keyword.lower()
     for needle, path in REAL_PLACE_ASSETS.items():
         if needle in kw:
@@ -420,48 +400,20 @@ async def pick_cover_image(site: str, keyword: str, cluster: str, slug: str) -> 
         pool = SITE_ASSETS.get(site, SHARED_ASSETS)
         return pool[hash(keyword) % len(pool)]
 
-    if site == "pelangi":
-        try:
-            img_bytes = await _fetch_pexels_photo(cluster, keyword)
-        except Exception as e:
-            print(f"  [image agent] gagal ambil foto Pexels, fallback ke aset asli: {e}")
-            pool = SITE_ASSETS.get(site, SHARED_ASSETS)
-            return pool[hash(keyword) % len(pool)]
-        filename = f"{slug}.webp"
-        PEXELS_DIR.mkdir(parents=True, exist_ok=True)
-        webp_bytes = await _resize_to_webp(img_bytes)
-        (PEXELS_DIR / filename).write_bytes(webp_bytes)
-        if PEXELS_DIR_BUILD.parent.exists():
-            PEXELS_DIR_BUILD.mkdir(parents=True, exist_ok=True)
-            (PEXELS_DIR_BUILD / filename).write_bytes(webp_bytes)
-        return f"/assets/pexels/{filename}"
-
-    brand = "traditional Balinese cottage" if site == "harmoni" else "mountain homestay"
-    prompt = (
-        "A loose hand-painted watercolor and ink illustration, flat artistic brush strokes clearly "
-        "visible, textured paper grain, soft muted watercolor bleed edges - in the style of a travel "
-        "sketchbook painting, DEFINITELY NOT photorealistic, DEFINITELY NOT a photograph, no sharp "
-        f"photographic detail or lens blur anywhere. Subject: a {brand} veranda/garden scene amid "
-        f"misty green mountains in the Bedugul highlands, Bali, calm serene mood, related to the "
-        f"theme '{keyword}'. Absolutely no text, no words, no letters, no typography, no signage, "
-        "no logos anywhere. No specific human faces. Warm muted color palette, artistic and "
-        "painterly throughout."
-    )
     try:
-        img_bytes = await _generate_ai_image(prompt)
+        img_bytes = await _fetch_pexels_photo(cluster, keyword)
     except Exception as e:
-        print(f"  [image agent] gagal generate, fallback ke aset asli: {e}")
+        print(f"  [image agent] gagal ambil foto Pexels, fallback ke aset asli: {e}")
         pool = SITE_ASSETS.get(site, SHARED_ASSETS)
         return pool[hash(keyword) % len(pool)]
-
     filename = f"{slug}.webp"
-    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    PEXELS_DIR.mkdir(parents=True, exist_ok=True)
     webp_bytes = await _resize_to_webp(img_bytes)
-    (GENERATED_DIR / filename).write_bytes(webp_bytes)
-    if GENERATED_DIR_BUILD.parent.exists():
-        GENERATED_DIR_BUILD.mkdir(parents=True, exist_ok=True)
-        (GENERATED_DIR_BUILD / filename).write_bytes(webp_bytes)
-    return f"/assets/ai/{filename}"
+    (PEXELS_DIR / filename).write_bytes(webp_bytes)
+    if PEXELS_DIR_BUILD.parent.exists():
+        PEXELS_DIR_BUILD.mkdir(parents=True, exist_ok=True)
+        (PEXELS_DIR_BUILD / filename).write_bytes(webp_bytes)
+    return f"/assets/pexels/{filename}"
 
 
 async def _resize_to_webp(png_bytes: bytes, max_width: int = 1200, quality: int = 78) -> bytes:
