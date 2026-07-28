@@ -511,10 +511,19 @@ async def main():
     args = ap.parse_args()
     sites = ["pelangi", "harmoni"] if args.site == "all" else [args.site]
 
+    # try/except per situs (2026-07-28) - sebelumnya satu error (mis. OpenAI ReadTimeout,
+    # sudah pernah kejadian nyata di log) di pelangi bikin harmoni IKUT SKIP di run yang
+    # sama (loop crash total, --site all cuma 1 proses Python) - artikel harmoni jadi
+    # ketinggalan 1 siklus cron tanpa error yang kelihatan jelas (silent, cuma keliatan
+    # dari created_at terakhir yang beda 4 jam). Sekarang tiap situs independen: gagal di
+    # satu situs tidak menghalangi situs lain tetap dapat jatahnya di run yang sama.
     for site in sites:
         for i in range(args.count):
-            result = await generate_one(site)
-            print(f"[{site}] {i+1}/{args.count}: {json.dumps(result, ensure_ascii=False)}")
+            try:
+                result = await generate_one(site)
+                print(f"[{site}] {i+1}/{args.count}: {json.dumps(result, ensure_ascii=False)}")
+            except Exception as e:
+                print(f"[{site}] {i+1}/{args.count}: GAGAL - {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":
