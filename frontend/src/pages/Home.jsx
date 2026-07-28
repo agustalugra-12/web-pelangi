@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { ChevronDown } from "lucide-react";
 import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
 import RoomCard from "@/components/site/RoomCard";
@@ -7,12 +8,6 @@ import { DICTIONARY } from "@/i18n/dictionary";
 import { HOME } from "@/constants/testIds";
 import { heroImagePath } from "@/lib/siteAssets";
 import Seo from "@/components/site/Seo";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 
 const galleryByCategory = (arr, cat) => arr.find((g) => g.category === cat) || arr[0] || { src: "", category: cat };
 
@@ -291,18 +286,27 @@ export default function Home() {
       <section className="bg-teal-deep text-cream py-24">
         <div className="max-w-4xl mx-auto px-5 md:px-8">
           <SectionHeading light eyebrow={t("home.faqEyebrow")} title={t("home.faqTitle")} italicWord={t("home.faqItalic")} />
-          <Accordion type="single" collapsible className="mt-10">
+          {/* <details>/<summary> asli, BUKAN Radix Accordion (2026-07-28, perbaikan Lighthouse
+              TBT) - Radix Accordion/Collapsible mengukur tinggi konten tiap item ke DOM
+              (ResizeObserver + layout read) saat mount utk animasi buka-tutup, dikali 5 item
+              di homepage jadi kontributor nyata ke "Style & Layout" 2.1 detik yang ditemukan
+              di trace Lighthouse (TBT 2.84 detik). <details> native ZERO overhead JS/hydration
+              (browser bawaan), tetap fully accessible & seluruh teks tetap ada di HTML SSR
+              (tidak mengurangi konten yang terindeks). Accordion Radix tetap dipakai apa
+              adanya di halaman /faq (lazy-loaded, di luar jalur kritis homepage). */}
+          <div className="mt-10 divide-y divide-cream/15">
             {faqs.slice(0, 5).map((f, i) => (
-              <AccordionItem key={f.id || i} value={`item-${i}`} className="border-cream/15" data-testid={`faq-item-${i}`}>
-                <AccordionTrigger className="text-left text-cream hover:text-mustard-soft font-display text-lg">
+              <details key={f.id || i} className="group py-4" data-testid={`faq-item-${i}`}>
+                <summary className="flex items-center justify-between gap-4 cursor-pointer list-none text-left text-cream hover:text-mustard-soft font-display text-lg [&::-webkit-details-marker]:hidden">
                   {pick(f, "q")}
-                </AccordionTrigger>
-                <AccordionContent className="text-cream/80 leading-relaxed">
+                  <ChevronDown className="h-4 w-4 shrink-0 text-cream/60 transition-transform duration-200 group-open:rotate-180" />
+                </summary>
+                <p className="text-cream/80 leading-relaxed pt-3">
                   {pick(f, "a")}
-                </AccordionContent>
-              </AccordionItem>
+                </p>
+              </details>
             ))}
-          </Accordion>
+          </div>
           <div className="text-center mt-10">
             <Link to="/faq" className="btn-lift inline-flex rounded-full bg-mustard text-teal-deep px-6 py-3 font-semibold shadow-paper-sm">
               {t("common.allQuestions")}
