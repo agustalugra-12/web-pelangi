@@ -64,10 +64,22 @@ async def _fetch_content(domain: str) -> dict:
         return r.json()
 
 
-async def _render_ssr(content: dict, lang: str, origin: str) -> str:
-    """Panggil bundle Node SSR (renderToString) - lihat frontend/ssr/render.jsx untuk
-    shim window/localStorage minimal yang dipakai. stdin = payload, stdout = HTML."""
-    stdin_payload = json.dumps({"content": content, "lang": lang, "origin": origin}).encode()
+# Halaman non-homepage yang didukung prerender (2026-07-28, perluas Priority 3 audit
+# produksi - "Rendering ~27%" krn cuma homepage yang SSR). name -> (path, output_suffix).
+# Rooms/Facilities dipilih dulu krn konten statis murni (sama utk semua pengunjung,
+# tidak ada rute dinamis per-item seperti /blog/:slug) - paling aman & bernilai tinggi.
+EXTRA_PAGES = {
+    "rooms": "/rooms",
+    "facilities": "/facilities",
+}
+
+
+async def _render_ssr(content: dict, lang: str, origin: str, path: str = "/") -> str:
+    """Panggil bundle Node SSR (renderToPipeableStream + onAllReady - lihat
+    frontend/ssr/render.jsx, WAJIB nunggu lazy-loaded page component selesai resolve,
+    renderToString sinkron biasa tidak bisa) - shim window/localStorage minimal yang
+    dipakai. stdin = payload, stdout = HTML."""
+    stdin_payload = json.dumps({"content": content, "lang": lang, "origin": origin, "path": path}).encode()
     proc = await asyncio.create_subprocess_exec(
         NODE_BIN, str(SSR_BIN),
         stdin=asyncio.subprocess.PIPE,
@@ -80,11 +92,14 @@ async def _render_ssr(content: dict, lang: str, origin: str) -> str:
     return out.decode("utf-8")
 
 
-async def prerender_site(site: str, domain: str) -> None:
+async def prerender_site(site: str, domain: str, page: str = "") -> None:
+    """page="" -> homepage ("/", output {site}.html). page="rooms"/"facilities"/dst
+    (lihat EXTRA_PAGES) -> path terkait, output {site}__{page}.html."""
+    path = EXTRA_PAGES[page] if page else "/"
     content = await _fetch_content(domain)
     lang = "id"
     origin = f"https://{domain}"
-    ssr_html = await _render_ssr(content, lang, origin)
+    ssr_html = await _render_ssr(content, lang, origin, path)
 
     payload = json.dumps({"content": content, "lang": lang})
     # Jaga-jaga kalau ada teks CMS yang kebetulan mengandung "</script>" literal - bisa
@@ -114,29 +129,35 @@ async def prerender_site(site: str, domain: str) -> None:
     # laporan user 57rb+ URL sampah ter-index GSC, salah satu penyebabnya: crawler yang
     # baca HTML mentah/belum-render-JS sama sekali tidak lihat sinyal canonical apa pun di
     # homepage, jadi variasi query string acak di "/" (mis. "/?m=123456") berisiko dianggap
-    # URL terpisah. Seo.jsx SUDAH pasang canonical dinamis lewat JS utk semua halaman lain,
-    # ini khusus tambahan utk homepage yang di-prerender (satu-satunya yang perlu versi
-    # statis - hanya path "/" persis yang dapat perlakuan prerender ini).
-    html = html.replace("</head>", f'<link rel="canonical" href="{origin}/"/></head>', 1)
+    # URL terpisah. Seo.jsx SUDAH pasang canonical dinamis lewat JS utk semua halaman lain -
+    # halaman yang di-prerender (statis, HTML mentah dibaca crawler sebelum JS jalan) butuh
+    # versi statisnya juga, path yang benar sesuai halaman (bukan selalu "/").
+    html = html.replace("</head>", f'<link rel="canonical" href="{origin}{path}"/></head>', 1)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    final_path = OUTPUT_DIR / f"{site}.html"
-    tmp_path = OUTPUT_DIR / f".{site}.html.tmp"
+    out_name = f"{site}.html" if not page else f"{site}__{page}.html"
+    final_path = OUTPUT_DIR / out_name
+    tmp_path = OUTPUT_DIR / f".{out_name}.tmp"
     tmp_path.write_text(html, encoding="utf-8")
     os.rename(tmp_path, final_path)  # atomic - nginx never sees a partial write
-    print(f"{site}: snapshot ditulis ke {final_path} ({len(html)} bytes)")
+    print(f"{site} [{page or 'home'}]: snapshot ditulis ke {final_path} ({len(html)} bytes)")
 
 
 async def main():
     if len(sys.argv) < 2:
-        print("Usage: venv/bin/python -m scripts.prerender_home <site>")
+        print("Usage: venv/bin/python -m scripts.prerender_home <site> [page]")
+        print(f"  page pilihan: {list(EXTRA_PAGES)} (kosong = homepage)")
         sys.exit(1)
     site = sys.argv[1]
+    page = sys.argv[2] if len(sys.argv) > 2 else ""
+    if page and page not in EXTRA_PAGES:
+        print(f"Page '{page}' tidak dikenal. Pilihan: {list(EXTRA_PAGES)}")
+        sys.exit(1)
     domains = _site_domains()
     if site not in domains:
         print(f"Situs '{site}' tidak dikenal di SITE_HOST_MAP. Pilihan: {list(domains)}")
         sys.exit(1)
-    await prerender_site(site, domains[site])
+    await prerender_site(site, domains[site], page)
 
 
 if __name__ == "__main__":

@@ -15,8 +15,8 @@ function readStdin() {
 
 async function main() {
   const raw = await readStdin();
-  const { content, lang, origin } = JSON.parse(raw);
-  const html = renderHome({ content, lang, origin });
+  const { content, lang, origin, path } = JSON.parse(raw);
+  const html = await renderHome({ content, lang, origin, path });
   process.stdout.write(html);
 }
 

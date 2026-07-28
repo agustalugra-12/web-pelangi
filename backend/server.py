@@ -690,6 +690,13 @@ async def get_content_type(type: str, site: str = Depends(get_current_site_admin
 _PRERENDER_RUNNING: set = set()
 
 
+# Halaman yang diprerender per situs (2026-07-28, perluas Priority 3 audit produksi) -
+# "" = homepage, sisanya cocok dgn EXTRA_PAGES di scripts/prerender_home.py. Statis murni
+# (Rooms/Facilities) - aman diregenerasi tiap ada perubahan konten apa pun, sama seperti
+# homepage sebelumnya.
+_PRERENDER_PAGES = ["", "rooms", "facilities"]
+
+
 def _trigger_prerender(site: str):
     """Fire-and-forget, subprocess terpisah (BUKAN asyncio.create_task import Playwright
     langsung ke proses ini) - proses backend ini single-process, tanpa --workers,
@@ -702,21 +709,23 @@ def _trigger_prerender(site: str):
 
     async def _run():
         try:
-            proc = await asyncio.create_subprocess_exec(
-                str(ROOT_DIR / "venv" / "bin" / "python"), "-m", "scripts.prerender_home", site,
-                cwd=str(ROOT_DIR),
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            )
-            try:
-                out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
-            except asyncio.TimeoutError:
-                proc.kill()
-                logging.getLogger("prerender").error(f"Prerender {site} timeout, di-kill")
-                return
-            if proc.returncode != 0:
-                logging.getLogger("prerender").error(
-                    f"Prerender {site} gagal (exit {proc.returncode}): {out.decode(errors='replace')[:500]}"
+            for page in _PRERENDER_PAGES:
+                args = ["-m", "scripts.prerender_home", site] + ([page] if page else [])
+                proc = await asyncio.create_subprocess_exec(
+                    str(ROOT_DIR / "venv" / "bin" / "python"), *args,
+                    cwd=str(ROOT_DIR),
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
                 )
+                try:
+                    out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    logging.getLogger("prerender").error(f"Prerender {site} [{page or 'home'}] timeout, di-kill")
+                    continue
+                if proc.returncode != 0:
+                    logging.getLogger("prerender").error(
+                        f"Prerender {site} [{page or 'home'}] gagal (exit {proc.returncode}): {out.decode(errors='replace')[:500]}"
+                    )
         except Exception as e:
             logging.getLogger("prerender").error(f"Prerender {site} error: {e}")
         finally:
