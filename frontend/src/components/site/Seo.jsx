@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
-import { faviconPath } from "@/lib/siteAssets";
+import { faviconPath, tabIconPath } from "@/lib/siteAssets";
 
 function upsertMeta(selector, attrs) {
   let el = document.head.querySelector(selector);
@@ -65,8 +65,11 @@ export default function Seo({ title, description, image, jsonLd, noindex = false
     // sudah pakai faviconPath sejak awal) - baru cuma dipakai utk social preview,
     // bukan utk icon tab asli. Reuse upsertLink yang sudah ada, cocokkan pola query
     // selector persis dgn <link rel="icon"> yang sudah ada di index.html.
-    upsertLink("icon", `${origin}${faviconPath(_site)}`);
-    upsertLink("apple-touch-icon", `${origin}${faviconPath(_site)}`);
+    //
+    // Pakai tabIconPath() (2026-07-28, bukan faviconPath()) - logo lengkap ada teks brand
+    // kecil yang jadi tidak terbaca di ukuran favicon asli (16-32px), lihat siteAssets.js.
+    upsertLink("icon", `${origin}${tabIconPath(_site)}`);
+    upsertLink("apple-touch-icon", `${origin}${tabIconPath(_site)}`);
     // noindex (2026-07-28, audit SEO teknis) - dipakai halaman 404/error yang memang
     // sengaja TIDAK boleh masuk index Google, beda dari halaman biasa yang selalu
     // "index,follow". Lapis pengaman KEDUA (lapis pertama: nginx 404 asli utk URL tak

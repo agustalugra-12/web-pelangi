@@ -11,3 +11,18 @@ export function heroImagePath(site) {
 export function faviconPath(site) {
   return site && site !== "pelangi" ? `/assets/pelangi-logo-${site}.png` : "/assets/pelangi-logo.png";
 }
+
+// Ikon KHUSUS tab browser/search-engine favicon (2026-07-28, laporan user - logo lengkap
+// dari faviconPath() di atas ada teks brand kecil ("PELANGI HOMESTAY"/"HARMONI HILLS
+// Village") yang jadi buram/tidak terbaca sama sekali begitu di-scale ke ukuran favicon
+// asli (16-32px) - dites nyata via ImageMagick, hasilnya cuma blur warna tanpa bentuk
+// jelas. faviconPath() SENGAJA TIDAK diubah krn dipakai jg utk logo header (BrandLogo.jsx),
+// JSON-LD LodgingBusiness (LodgingSchema.jsx), & preview admin (CmsSettings.jsx) - semua
+// itu memang harus tampilkan logo LENGKAP dgn teks, beda kebutuhan dari ikon tab kecil.
+// Aset ini di-crop manual ke bagian grafis paling ikonik saja (swoosh warna Pelangi /
+// pohon-di-gapura Harmoni), tanpa teks - tetap jelas di ukuran 16px sekalipun.
+export function tabIconPath(site) {
+  return site && site !== "pelangi"
+    ? `/assets/pelangi-favicon-icon-${site}.png`
+    : "/assets/pelangi-favicon-icon.png";
+}
