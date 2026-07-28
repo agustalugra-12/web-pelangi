@@ -122,6 +122,16 @@ export default function Home() {
         </div>
       </section>
 
+      {/* "Tentang Bedugul" (2026-07-28, permintaan user - perluas konten homepage utk SEO,
+          sebelumnya homepage cuma ~600 kata) - fakta umum ttg kawasan, bukan klaim spesifik
+          properti, aman dipakai bersama Pelangi & Harmoni lewat dictionary yang sama. */}
+      <section className="max-w-4xl mx-auto px-5 md:px-8 pb-24">
+        <SectionHeading eyebrow={t("home.aboutAreaEyebrow")} title={t("home.aboutAreaTitle")} italicWord={t("home.aboutAreaItalic")} />
+        <div className="mt-8 space-y-4 text-teal-deep/80 leading-relaxed">
+          {(t("home.aboutAreaBody") || []).map((p, i) => <p key={i}>{p}</p>)}
+        </div>
+      </section>
+
       <section className="bg-paper py-20">
         <div className="max-w-7xl mx-auto px-5 md:px-8">
           <SectionHeading eyebrow={t("home.roomsEyebrow")} title={t("home.roomsTitle")} italicWord={t("home.roomsItalic")} subtitle={roomsSub} />
@@ -154,6 +164,20 @@ export default function Home() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* "Kenapa Memilih Kami" (2026-07-28) - ringkasan benefit dari fakta yang sudah ada
+          (FAQ/facilities), bukan klaim baru. */}
+      <section className="max-w-4xl mx-auto px-5 md:px-8 pb-24">
+        <SectionHeading eyebrow={t("home.whyEyebrow")} title={t("home.whyTitle")} italicWord={t("home.whyItalic")} />
+        <ul className="mt-10 grid sm:grid-cols-2 gap-4">
+          {(t("home.whyList") || []).map((reason, i) => (
+            <li key={i} className="flex gap-3 items-start bg-paper rounded-2xl p-5 border border-ink/5 shadow-paper-sm reveal" style={{ animationDelay: `${i * 60}ms` }}>
+              <i className="fa-solid fa-star text-mustard-deep mt-1 shrink-0" aria-hidden="true"></i>
+              <span className="text-teal-deep/85 leading-relaxed text-sm">{reason}</span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="max-w-7xl mx-auto px-5 md:px-8 pb-24">
@@ -191,6 +215,7 @@ export default function Home() {
 
       <section className="max-w-7xl mx-auto px-5 md:px-8 py-24">
         <SectionHeading eyebrow={t("home.exploreEyebrow")} title={t("home.exploreTitle")} italicWord={t("home.exploreItalic")} subtitle={t("home.exploreSub")} />
+        <p className="mt-6 max-w-2xl mx-auto text-center text-teal-deep/80 leading-relaxed">{t("home.exploreIntro")}</p>
         <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {attractions.slice(0, 6).map((a, i) => (
             <article key={a.id || a.title} className="group relative rounded-3xl overflow-hidden shadow-paper-sm reveal" style={{ animationDelay: `${i * 80}ms` }}>
@@ -203,6 +228,29 @@ export default function Home() {
               </div>
             </article>
           ))}
+        </div>
+      </section>
+
+      {/* "Cara Menuju Lokasi" + "Tips Menginap" (2026-07-28, sama seperti "Tentang Bedugul"
+          di atas - fakta rute umum & tips generik, aman dipakai bersama Pelangi & Harmoni). */}
+      <section className="max-w-4xl mx-auto px-5 md:px-8 pb-24">
+        <SectionHeading eyebrow={t("home.directionsEyebrow")} title={t("home.directionsTitle")} italicWord={t("home.directionsItalic")} />
+        <div className="mt-8 space-y-4 text-teal-deep/80 leading-relaxed">
+          {(t("home.directionsBody") || []).map((p, i) => <p key={i}>{p}</p>)}
+        </div>
+      </section>
+
+      <section className="bg-paper py-24">
+        <div className="max-w-4xl mx-auto px-5 md:px-8">
+          <SectionHeading eyebrow={t("home.tipsEyebrow")} title={t("home.tipsTitle")} italicWord={t("home.tipsItalic")} />
+          <ul className="mt-10 space-y-4">
+            {(t("home.tipsList") || []).map((tip, i) => (
+              <li key={i} className="flex gap-3 items-start reveal" style={{ animationDelay: `${i * 60}ms` }}>
+                <i className="fa-solid fa-circle-check text-leaf mt-1 shrink-0" aria-hidden="true"></i>
+                <span className="text-teal-deep/85 leading-relaxed">{tip}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 

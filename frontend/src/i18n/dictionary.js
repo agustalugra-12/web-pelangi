@@ -41,7 +41,18 @@ export const DICTIONARY = {
       aboutTitleItalic: "hangat",
       aboutTitleSuffix: "untuk perjalanan tenang.",
       aboutBody:
-        "adalah keluarga kecil di Bedugul. Kami percaya liburan terbaik bukan tentang kemewahan, melainkan tentang kopi yang mengepul, percakapan yang tulus, dan pagi yang tak terburu-buru.",
+        "adalah keluarga kecil di Bedugul. Kami percaya liburan terbaik bukan tentang kemewahan, melainkan tentang kopi yang mengepul, percakapan yang tulus, dan pagi yang tak terburu-buru. Setiap kamar dirawat dengan detail sederhana namun konsisten — air panas yang selalu siap, sarapan hangat setiap pagi, dan staf lokal yang mengenal Bedugul luar dalam. Kami ada untuk tamu yang mencari jeda dari keramaian: pelancong yang datang untuk melihat kabut pagi di Danau Beratan, keluarga yang ingin anak-anaknya merasakan dinginnya dataran tinggi, atau siapa pun yang sekadar ingin tidur nyenyak setelah seharian menjelajah.",
+      // "Tentang Bedugul" (2026-07-28, permintaan user - perluas konten homepage) - SENGAJA
+      // tidak menyebut nama brand spesifik (dipakai bersama Pelangi & Harmoni), murni fakta
+      // umum ttg kawasan Bedugul yang sama-sama relevan utk kedua properti.
+      aboutAreaEyebrow: "Tentang Kawasan",
+      aboutAreaTitle: "Mengenal",
+      aboutAreaItalic: "Homestay Bedugul",
+      aboutAreaBody: [
+        "Bedugul adalah kawasan dataran tinggi di jantung Bali, mengelilingi Danau Beratan yang tenang dan sering berselimut kabut tipis di pagi hari. Berbeda dari suasana pantai di selatan Bali, udara di sini terasa sejuk sepanjang tahun — cocok bagi siapa pun yang ingin melarikan diri sejenak dari terik dan keramaian.",
+        "Kawasan ini paling dikenal lewat Pura Ulun Danu Beratan, pura yang berdiri di tepi danau dan menjadi salah satu ikon Bali yang paling sering difoto — bahkan tampil di lembar uang kertas Rp 50.000. Tak jauh dari sana, Kebun Raya Bali menyimpan ribuan koleksi tanaman tropis dataran tinggi, sementara Pasar Candikuning menjual stroberi segar dan sayur mayur hasil kebun lokal setiap hari.",
+        "Karena berada di jalur utama Denpasar–Singaraja, Bedugul juga menjadi persinggahan populer bagi pelancong yang menuju Bali utara, sekaligus tujuan akhir tersendiri bagi yang ingin liburan singkat namun berkesan di homestay Bedugul yang tenang.",
+      ],
       roomsEyebrow: "Pilihan Kamar",
       roomsTitle: "Tempat",
       roomsItalic: "beristirahat",
@@ -50,6 +61,19 @@ export const DICTIONARY = {
       facilitiesEyebrow: "Fasilitas",
       facilitiesTitle: "Kenyamanan yang",
       facilitiesItalic: "menemani",
+      // "Kenapa Memilih Kami" (2026-07-28) - rangkuman benefit dari fakta yang SUDAH ada
+      // (FAQ breakfast/pembatalan/extra bed/parkir, facilityData air panas) - bukan klaim
+      // baru, cuma ditegaskan ulang jadi ringkasan yang mudah dipindai tamu.
+      whyEyebrow: "Kenapa Kami",
+      whyTitle: "Alasan Tamu",
+      whyItalic: "Kembali Lagi",
+      whyList: [
+        "Sarapan lokal hangat sudah termasuk setiap malam menginap — bukan biaya tambahan terpisah.",
+        "Pembatalan gratis hingga 3 hari sebelum tanggal check-in, tanpa proses berbelit.",
+        "Air panas 24 jam — kebutuhan penting di suhu dingin dataran tinggi Bedugul.",
+        "Parkir gratis untuk mobil maupun motor, tanpa biaya tambahan.",
+        "Tim lokal yang memahami Bedugul luar dalam, siap membantu setiap hari.",
+      ],
       galleryEyebrow: "Galeri",
       galleryTitle: "Sudut",
       galleryItalic: "favorit",
@@ -59,6 +83,30 @@ export const DICTIONARY = {
       exploreItalic: "Bedugul",
       exploreSub:
         "Tempat-tempat favorit yang bisa dicapai dalam hitungan menit dari kamar Anda.",
+      exploreIntro:
+        "Semua daya tarik utama Bedugul berada dalam radius singkat dari homestay, cocok dijelajahi jalan kaki maupun naik motor sewaan. Mulai pagi dengan sarapan hangat, berjalan santai ke tepi danau, mampir ke pasar lokal untuk stroberi segar, lalu kembali beristirahat sebelum kabut sore turun.",
+      // "Cara Menuju Lokasi" & "Tips Menginap" (2026-07-28) - fakta rute umum (bukan klaim
+      // spesifik properti) & tips generik ttg kawasan, aman dipakai bersama Pelangi & Harmoni.
+      directionsEyebrow: "Perjalanan",
+      directionsTitle: "Cara Menuju",
+      directionsItalic: "Lokasi",
+      directionsBody: [
+        "Bedugul dapat dicapai dengan mobil pribadi, taksi, maupun kendaraan sewaan dari Bandara Internasional Ngurah Rai atau pusat kota Denpasar, menyusuri jalur utama Denpasar–Singaraja menuju Bali utara. Perjalanan biasanya memakan waktu sekitar 2–2,5 jam tergantung kondisi lalu lintas, melewati Mengwi dan hamparan sawah berundak sebelum tanjakan mulai terasa dan suhu udara perlahan menurun.",
+        "Jalan menuju kawasan ini sudah beraspal baik dan dilalui banyak kendaraan wisata, sehingga cukup nyaman digunakan siang maupun malam hari. Bagi yang datang dari arah Singaraja atau Lovina di Bali utara, homestay Bedugul juga bisa menjadi persinggahan nyaman di tengah perjalanan menuju Bali selatan.",
+      ],
+      tipsEyebrow: "Panduan",
+      tipsTitle: "Tips Menginap di",
+      tipsItalic: "Bedugul",
+      tipsList: [
+        "Bawa jaket atau pakaian hangat — suhu malam hari di Bedugul bisa turun cukup jauh, jauh lebih dingin dibanding kawasan pantai Bali.",
+        "Datang atau bangun pagi hari untuk melihat Danau Beratan saat kabut belum terangkat — pemandangan yang paling difavoritkan wisatawan.",
+        "Pesan lebih awal saat akhir pekan atau musim liburan sekolah — kamar di kawasan ini cepat penuh karena permintaan yang tinggi.",
+        "Sempatkan mampir ke Pasar Candikuning untuk stroberi segar, sayur mayur, dan oleh-oleh khas dataran tinggi.",
+        "Siapkan uang tunai secukupnya — sebagian usaha kecil di sekitar kawasan wisata belum menerima pembayaran digital.",
+        "Konfirmasi jam kedatangan Anda lewat WhatsApp bila tiba di luar jam reception, supaya tetap bisa dilayani dengan lancar.",
+        "Jangan lewatkan berjalan kaki santai di sekitar Kebun Raya Bali pada pagi hari — udaranya paling segar sebelum siang.",
+        "Alokasikan waktu ekstra di perjalanan pulang menuju bandara, terutama saat jam sibuk di sekitar Denpasar.",
+      ],
       testimonialsEyebrow: "Kata Tamu",
       testimonialsTitle: "Cerita",
       testimonialsItalic: "mereka",
@@ -303,7 +351,15 @@ export const DICTIONARY = {
       aboutTitleItalic: "warm",
       aboutTitleSuffix: "home for a slow journey.",
       aboutBody:
-        "is a small family in Bedugul. We believe the best holidays are not about luxury, but about steaming coffee, honest conversations, and unhurried mornings.",
+        "is a small family in Bedugul. We believe the best holidays are not about luxury, but about steaming coffee, honest conversations, and unhurried mornings. Every room is looked after with simple, consistent details — hot water always ready, a warm breakfast every morning, and local staff who know Bedugul inside out. We're here for guests looking for a break from the crowds: travelers coming to see the morning mist over Lake Beratan, families wanting their kids to feel the highland chill, or anyone who just wants a good night's sleep after a day of exploring.",
+      aboutAreaEyebrow: "About the Area",
+      aboutAreaTitle: "Getting to know",
+      aboutAreaItalic: "Bedugul Homestay",
+      aboutAreaBody: [
+        "Bedugul is a highland region in the heart of Bali, surrounding the calm, often mist-covered Lake Beratan. Unlike the beach atmosphere of southern Bali, the air here stays cool year-round — perfect for anyone wanting a break from the heat and crowds.",
+        "The area is best known for Ulun Danu Beratan Temple, standing at the lake's edge and one of Bali's most photographed icons — it even appears on the Rp 50,000 banknote. Nearby, Bali Botanic Garden holds thousands of highland tropical plant species, while Candikuning Market sells fresh strawberries and local produce every day.",
+        "Sitting on the main Denpasar–Singaraja road, Bedugul is also a popular stopover for travelers heading to northern Bali, as well as a destination in its own right for a short but memorable stay at a quiet Bedugul homestay.",
+      ],
       roomsEyebrow: "Our Rooms",
       roomsTitle: "A place to",
       roomsItalic: "rest",
@@ -312,6 +368,16 @@ export const DICTIONARY = {
       facilitiesEyebrow: "Facilities",
       facilitiesTitle: "Comforts that",
       facilitiesItalic: "keep you company",
+      whyEyebrow: "Why Choose Us",
+      whyTitle: "Why Guests",
+      whyItalic: "Come Back",
+      whyList: [
+        "Warm local breakfast is included every night you stay — not a separate add-on cost.",
+        "Free cancellation up to 3 days before your check-in date, no complicated process.",
+        "Hot water available 24 hours — essential in Bedugul's cool highland temperatures.",
+        "Free parking for both cars and motorbikes, at no extra charge.",
+        "A local team who knows Bedugul inside and out, ready to help every day.",
+      ],
       galleryEyebrow: "Gallery",
       galleryTitle: "Favourite",
       galleryItalic: "corners",
@@ -321,6 +387,28 @@ export const DICTIONARY = {
       exploreItalic: "Bedugul",
       exploreSub:
         "Beloved places just minutes away from your room.",
+      exploreIntro:
+        "Every major Bedugul attraction sits within a short radius of the homestay, easy to explore on foot or by rented motorbike. Start the morning with a warm breakfast, take a relaxed walk to the lakeside, stop by the local market for fresh strawberries, then head back to rest before the afternoon mist rolls in.",
+      directionsEyebrow: "Getting Here",
+      directionsTitle: "How to Reach",
+      directionsItalic: "Bedugul",
+      directionsBody: [
+        "Bedugul is reachable by private car, taxi, or rental vehicle from Ngurah Rai International Airport or central Denpasar, following the main Denpasar–Singaraja road toward northern Bali. The drive usually takes around 2–2.5 hours depending on traffic, passing through Mengwi and terraced rice fields before the road starts climbing and the air gradually cools.",
+        "The road into the area is well paved and used by plenty of tour vehicles, making it comfortable to travel by day or night. For those coming from Singaraja or Lovina in northern Bali, a Bedugul homestay also makes a convenient stopover on the way to southern Bali.",
+      ],
+      tipsEyebrow: "Guide",
+      tipsTitle: "Tips for Staying in",
+      tipsItalic: "Bedugul",
+      tipsList: [
+        "Bring a jacket or warm clothing — nighttime temperatures in Bedugul can drop noticeably lower than Bali's coastal areas.",
+        "Arrive or wake up early to see Lake Beratan before the morning mist lifts — travelers' favorite view.",
+        "Book ahead on weekends or school holidays — rooms in the area fill up fast due to high demand.",
+        "Make time to visit Candikuning Market for fresh strawberries, local produce, and highland souvenirs.",
+        "Carry some cash — many small local businesses near the attractions don't yet accept digital payments.",
+        "Confirm your arrival time via WhatsApp if you're arriving outside reception hours, so you can still be served smoothly.",
+        "Don't skip a relaxed morning walk around Bali Botanic Garden — the air is freshest before midday.",
+        "Allow extra travel time on the way back to the airport, especially during peak hours around Denpasar.",
+      ],
       testimonialsEyebrow: "Guest Words",
       testimonialsTitle: "Their",
       testimonialsItalic: "stories",
