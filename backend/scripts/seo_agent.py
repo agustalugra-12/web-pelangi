@@ -233,9 +233,41 @@ async def _fetch_site_facts(site: str) -> str:
 # (dikonfirmasi via web search, ada rencana deprecation penuh 2027), gagal terus
 # walau enable API + billing sudah benar. Serper reseller hasil Google Search asli
 # dgn API sederhana, jauh lebih murah & tanpa syarat billing GCP.
-# ---------------------------------------------------------------------------
+#
+# Budget kredit (2026-07-28, permintaan user) - user cuma punya 2400 kredit Serper
+# SEKALI PAKAI (bukan kuota bulanan yang reset), diminta dijaga bertahan 2 tahun.
+# Dengan sampai 6 artikel/hari (2 situs x 3x cron/hari), cap 3 kredit/hari cukup
+# utk 730 hari (2190 dari 2400 kredit, sisa buffer 210) - kira-kira separuh artikel
+# per hari dapat analisis kompetitor, sisanya tetap ditulis normal TANPA analisis
+# (bukan gagal, cuma skip - graceful degradation yang sama seperti kalau API down).
+SERPER_TOTAL_CREDITS = 2400
+SERPER_TARGET_DAYS = 2 * 365
+SERPER_DAILY_CAP = SERPER_TOTAL_CREDITS // SERPER_TARGET_DAYS  # = 3/hari
+
+
+async def _serper_budget_ok() -> bool:
+    """Cek & catat pemakaian kredit Serper hari ini - return False (skip search,
+    HEMAT kredit) kalau cap harian ATAU total kredit sudah tercapai. Disimpan di
+    db.serper_usage (1 dokumen per situs+tanggal via upsert $inc, atomic)."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    total_used = 0
+    async for doc in db.serper_usage.find({}, {"_id": 0, "count": 1}):
+        total_used += doc.get("count", 0)
+    if total_used >= SERPER_TOTAL_CREDITS:
+        return False
+    today_doc = await db.serper_usage.find_one({"date": today})
+    if today_doc and today_doc.get("count", 0) >= SERPER_DAILY_CAP:
+        return False
+    await db.serper_usage.update_one(
+        {"date": today}, {"$inc": {"count": 1}}, upsert=True,
+    )
+    return True
+
+
 async def _search_competitors(keyword: str) -> list:
     if not SERPER_API_KEY:
+        return []
+    if not await _serper_budget_ok():
         return []
     async with httpx.AsyncClient(timeout=15) as http:
         resp = await http.post(
