@@ -31,6 +31,7 @@ from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
 CHAT_MODEL = "gpt-4.1-mini"
 EMBED_MODEL = "text-embedding-3-small"
 
@@ -62,6 +63,22 @@ CLUSTER_CATEGORY = {
     "Utama": "General", "Harga": "Tips", "Lokasi Wisata": "Wisata", "View": "Wisata",
     "Keluarga": "Tips", "Pasangan": "Tips", "Fasilitas": "Tips", "Aktivitas": "Wisata",
     "Booking": "Tips", "Long Tail": "General",
+}
+
+# Query pencarian Pexels (2026-07-28) - Pexels cuma cari bagus dalam Bahasa Inggris, jadi
+# dipetakan per cluster (bukan pakai keyword Indonesia mentah) - beberapa varian per cluster
+# supaya tidak selalu dapat foto yang sama persis utk cluster yang sama.
+CLUSTER_PEXELS_QUERY = {
+    "Utama": ["tropical cottage garden", "bali mountain homestay"],
+    "Harga": ["cozy tropical guesthouse", "affordable tropical cottage"],
+    "Lokasi Wisata": ["bali mountain lake", "tropical highland scenery"],
+    "View": ["misty mountain lake view", "tropical garden view"],
+    "Keluarga": ["family tropical vacation", "family garden relaxing outdoor"],
+    "Pasangan": ["romantic tropical getaway", "couple garden veranda"],
+    "Fasilitas": ["cozy cottage interior", "tropical guesthouse veranda"],
+    "Aktivitas": ["bali nature walk", "tropical garden path"],
+    "Booking": ["tropical resort relaxing", "cozy vacation cottage"],
+    "Long Tail": ["tropical mountain cottage", "bali highland garden"],
 }
 
 
@@ -335,6 +352,8 @@ REAL_PLACE_ASSETS = {
 IMAGE_MODEL = "gpt-image-2"
 GENERATED_DIR = Path("/var/www/web-pelangi/frontend/public/assets/ai")
 GENERATED_DIR_BUILD = Path("/var/www/web-pelangi/frontend/build/assets/ai")
+PEXELS_DIR = Path("/var/www/web-pelangi/frontend/public/assets/pexels")
+PEXELS_DIR_BUILD = Path("/var/www/web-pelangi/frontend/build/assets/pexels")
 
 
 async def _generate_ai_image(prompt: str) -> bytes:
@@ -351,13 +370,46 @@ async def _generate_ai_image(prompt: str) -> bytes:
         return base64.b64decode(b64)
 
 
+async def _fetch_pexels_photo(cluster: str, keyword: str) -> bytes:
+    """Ambil 1 foto stok GRATIS dari Pexels (2026-07-28, permintaan user - ganti generate AI
+    berbayar dengan foto stok gratis utk artikel Pelangi). Query dipilih dari CLUSTER_PEXELS_QUERY
+    (bukan keyword Indonesia mentah - Pexels cuma bagus dicari Bahasa Inggris), foto dipilih dari
+    15 hasil teratas pakai hash keyword supaya variatif tapi tetap deterministik per keyword yang
+    sama. Lisensi Pexels bebas pakai tanpa atribusi wajib (pexels.com/license)."""
+    if not PEXELS_API_KEY:
+        raise RuntimeError("PEXELS_API_KEY belum diisi di backend/.env")
+    queries = CLUSTER_PEXELS_QUERY.get(cluster, CLUSTER_PEXELS_QUERY["Utama"])
+    query = queries[hash(keyword) % len(queries)]
+    async with httpx.AsyncClient(timeout=30) as http:
+        resp = await http.get(
+            "https://api.pexels.com/v1/search",
+            headers={"Authorization": PEXELS_API_KEY},
+            params={"query": query, "per_page": 15, "orientation": "landscape"},
+        )
+        resp.raise_for_status()
+        photos = resp.json().get("photos") or []
+        if not photos:
+            raise RuntimeError(f"Tidak ada hasil Pexels untuk query '{query}'")
+        photo = photos[hash(keyword + cluster) % len(photos)]
+        img_resp = await http.get(photo["src"]["large"])
+        img_resp.raise_for_status()
+        return img_resp.content
+
+
 async def pick_cover_image(site: str, keyword: str, cluster: str, slug: str) -> str:
     """Foto tempat wisata nyata pakai aset asli (akurat, gratis). Selain itu, DIROTASI
-    2:1 (permintaan user 2026-07-26: foto AI kelihatan terlalu mirip semua kalau dipakai
-    tiap artikel) - 2 dari 3 artikel pakai foto aset asli yang sudah ada (variasi asli
-    dari kamar/properti, sekaligus hemat biaya), 1 dari 3 generate gambar BARU pakai AI
-    (gpt-image-2, bergaya ilustrasi/artistik BUKAN foto-realistis - supaya tidak terkesan
-    "ini foto asli kamar/bangunan properti" yang bisa menyesatkan tamu)."""
+    2:1 (permintaan user 2026-07-26: foto AI/stok kelihatan terlalu mirip semua kalau
+    dipakai tiap artikel) - 2 dari 3 artikel pakai foto aset asli yang sudah ada (variasi
+    asli dari kamar/properti, sekaligus hemat biaya).
+
+    Slot ke-3 BEDA per situs (2026-07-28, permintaan user - Pelangi tidak lagi pakai foto
+    AI berbayar sama sekali):
+    - Pelangi: foto stok GRATIS dari Pexels API (_fetch_pexels_photo) - foto sungguhan,
+      bukan properti sendiri, jadi TIDAK diklaim sebagai foto kamar/bangunan asli (dipilih
+      dari query generik suasana tropis/pegunungan, bukan properti spesifik).
+    - Situs lain (harmoni): tetap generate AI (gpt-image-2) bergaya ilustrasi/artistik
+      BUKAN foto-realistis - supaya tidak terkesan "ini foto asli kamar/bangunan properti".
+    """
     kw = keyword.lower()
     for needle, path in REAL_PLACE_ASSETS.items():
         if needle in kw:
@@ -367,6 +419,22 @@ async def pick_cover_image(site: str, keyword: str, cluster: str, slug: str) -> 
     if generated_so_far % 3 != 2:  # 2 dari 3 -> aset asli
         pool = SITE_ASSETS.get(site, SHARED_ASSETS)
         return pool[hash(keyword) % len(pool)]
+
+    if site == "pelangi":
+        try:
+            img_bytes = await _fetch_pexels_photo(cluster, keyword)
+        except Exception as e:
+            print(f"  [image agent] gagal ambil foto Pexels, fallback ke aset asli: {e}")
+            pool = SITE_ASSETS.get(site, SHARED_ASSETS)
+            return pool[hash(keyword) % len(pool)]
+        filename = f"{slug}.webp"
+        PEXELS_DIR.mkdir(parents=True, exist_ok=True)
+        webp_bytes = await _resize_to_webp(img_bytes)
+        (PEXELS_DIR / filename).write_bytes(webp_bytes)
+        if PEXELS_DIR_BUILD.parent.exists():
+            PEXELS_DIR_BUILD.mkdir(parents=True, exist_ok=True)
+            (PEXELS_DIR_BUILD / filename).write_bytes(webp_bytes)
+        return f"/assets/pexels/{filename}"
 
     brand = "traditional Balinese cottage" if site == "harmoni" else "mountain homestay"
     prompt = (
