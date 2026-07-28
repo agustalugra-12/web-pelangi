@@ -383,12 +383,10 @@ async def _fetch_pexels_photo(cluster: str, keyword: str) -> bytes:
 
 async def pick_cover_image(site: str, keyword: str, cluster: str, slug: str) -> str:
     """Foto tempat wisata nyata pakai aset asli (akurat, gratis). Selain itu, DIROTASI
-    2:1 (permintaan user 2026-07-26: foto kelihatan terlalu mirip semua kalau dipakai
-    tiap artikel) - 2 dari 3 artikel pakai foto aset asli yang sudah ada (variasi asli
-    dari kamar/properti, sekaligus hemat biaya), 1 dari 3 pakai foto stok GRATIS dari
-    Pexels API (2026-07-28, permintaan user - SEMUA situs berhenti generate AI berbayar
-    sama sekali, awalnya cuma Pelangi lalu diperluas ke Harmoni juga). Foto Pexels generik
-    suasana tropis/pegunungan (bukan properti spesifik), jadi tidak diklaim sbg foto kamar/
+    2:1 kebalikan dari sebelumnya (2026-07-28, permintaan user) - SEKARANG 2 dari 3
+    artikel pakai foto stok GRATIS dari Pexels API (variasi lebih banyak, tetap gratis),
+    1 dari 3 pakai foto aset asli properti yang sudah ada. Foto Pexels generik suasana
+    tropis/pegunungan (bukan properti spesifik), jadi tidak diklaim sbg foto kamar/
     bangunan asli - sama alasannya dengan gaya ilustrasi AI yang dipakai sebelumnya."""
     kw = keyword.lower()
     for needle, path in REAL_PLACE_ASSETS.items():
@@ -396,7 +394,7 @@ async def pick_cover_image(site: str, keyword: str, cluster: str, slug: str) -> 
             return path
 
     generated_so_far = await db.blog_posts.count_documents({"site": site, "seo_keyword": {"$ne": None}})
-    if generated_so_far % 3 != 2:  # 2 dari 3 -> aset asli
+    if generated_so_far % 3 == 2:  # 1 dari 3 -> aset asli
         pool = SITE_ASSETS.get(site, SHARED_ASSETS)
         return pool[hash(keyword) % len(pool)]
 
