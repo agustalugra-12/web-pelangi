@@ -160,6 +160,13 @@ body {
 .reveal-delay-2 { animation-delay: 240ms; }
 .reveal-delay-3 { animation-delay: 360ms; }
 
+/* content-visibility:auto DICOBA 2026-07-28 utk perbaikan performa (Lighthouse TBT
+   ~2.6 detik) - DIBATALKAN setelah tes langsung: innerText/text-extraction jadi
+   tidak lihat konten section yang di-skip render-nya (word count homepage turun
+   dari 1168 ke 495 kata di tes) - risiko nyata mengurangi konten yang terindeks
+   Google, bertentangan dengan kerja perluasan konten SEO yang sudah dilakukan.
+   Tidak dipakai lagi - lihat riwayat git kalau mau coba pendekatan lain nanti. */
+
 /* Hide scrollbar for horizontal filter tabs */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
