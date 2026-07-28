@@ -6,9 +6,20 @@ import api from "@/lib/api";
 import Seo from "@/components/site/Seo";
 import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 
+// Kalau halaman ini datang dari snapshot prerender (2026-07-28, perluas SSR ke Blog -
+// sama seperti window.__PRERENDERED__ punya ContentContext), pakai data yang SAMA
+// PERSIS dipakai saat snapshot dirender - supaya hydrateRoot tidak mismatch. Halaman
+// non-prerender (tidak ada window.__PRERENDERED_BLOG__) tetap mulai dari [] + loading
+// seperti sebelumnya, fetch normal via useEffect.
+function initialBlogList() {
+  if (typeof window === "undefined") return null;
+  return window.__PRERENDERED_BLOG__?.list ?? null;
+}
+
 export default function Blog() {
-  const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const initial = initialBlogList();
+  const [posts, setPosts] = useState(initial || []);
+  const [loading, setLoading] = useState(!initial);
   const { t, lang, pick } = useLang();
 
   useEffect(() => {

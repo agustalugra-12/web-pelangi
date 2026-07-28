@@ -530,6 +530,8 @@ async def admin_create_post(payload: BlogPostCreate, _: dict = Depends(get_curre
     }
     result = await db.blog_posts.insert_one(doc)
     doc["_id"] = result.inserted_id
+    if doc["published"]:
+        _trigger_prerender_blog(site, slug)
     return post_to_out(doc)
 
 
@@ -557,6 +559,8 @@ async def admin_update_post(
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Post not found")
     doc = await db.blog_posts.find_one({"_id": oid})
+    if doc.get("published"):
+        _trigger_prerender_blog(site, doc["slug"])
     return post_to_out(doc)
 
 
@@ -571,6 +575,7 @@ async def admin_delete_post(post_id: str, _: dict = Depends(get_current_user), s
     result = await db.blog_posts.delete_one({"_id": oid, "site": site})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Post not found")
+    _trigger_prerender_blog(site)  # regenerasi listing (artikel yg dihapus hilang dari daftar)
     return {"message": "Deleted"}
 
 
@@ -730,6 +735,54 @@ def _trigger_prerender(site: str):
             logging.getLogger("prerender").error(f"Prerender {site} error: {e}")
         finally:
             _PRERENDER_RUNNING.discard(site)
+
+    asyncio.create_task(_run())
+
+
+# Blog listing/detail (2026-07-28, perluas Priority 3 - prerender Blog) - trigger
+# TERPISAH dari _trigger_prerender di atas krn beda sumber data sepenuhnya: Rooms/
+# Facilities baca dari db.site_content (via update_content_type), Blog baca dari
+# db.blog_posts (endpoint CRUD sendiri, admin_create_post/admin_update_post/
+# admin_delete_post) - tidak pernah lewat update_content_type sama sekali.
+_PRERENDER_BLOG_RUNNING: set = set()
+
+
+def _trigger_prerender_blog(site: str, slug: str = None):
+    """Selalu regenerasi listing "/blog" (daftar artikel berubah tiap create/update/
+    delete). Kalau `slug` diberikan (create/update, BUKAN delete - artikel yang dihapus
+    tidak perlu snapshot baru), regenerasi juga detail artikel itu. Guard per-situs sama
+    seperti _trigger_prerender - key terpisah (_PRERENDER_BLOG_RUNNING) supaya tidak
+    saling tunggu/skip dengan trigger Rooms/Facilities/Home yang independen."""
+    key = site
+    if key in _PRERENDER_BLOG_RUNNING:
+        return
+    _PRERENDER_BLOG_RUNNING.add(key)
+
+    async def _run():
+        try:
+            targets = [["-m", "scripts.prerender_home", site, "blog"]]
+            if slug:
+                targets.append(["-m", "scripts.prerender_home", site, "blog-detail", slug])
+            for args in targets:
+                proc = await asyncio.create_subprocess_exec(
+                    str(ROOT_DIR / "venv" / "bin" / "python"), *args,
+                    cwd=str(ROOT_DIR),
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+                )
+                try:
+                    out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    logging.getLogger("prerender").error(f"Prerender blog {site} {args[-1]} timeout, di-kill")
+                    continue
+                if proc.returncode != 0:
+                    logging.getLogger("prerender").error(
+                        f"Prerender blog {site} {args[-1]} gagal (exit {proc.returncode}): {out.decode(errors='replace')[:500]}"
+                    )
+        except Exception as e:
+            logging.getLogger("prerender").error(f"Prerender blog {site} error: {e}")
+        finally:
+            _PRERENDER_BLOG_RUNNING.discard(key)
 
     asyncio.create_task(_run())
 

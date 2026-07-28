@@ -64,22 +64,44 @@ async def _fetch_content(domain: str) -> dict:
         return r.json()
 
 
+async def _fetch_blog_list(domain: str) -> list:
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(f"https://{domain}/api/blog")
+        r.raise_for_status()
+        return r.json()
+
+
+async def _fetch_blog_detail(domain: str, slug: str) -> dict:
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(f"https://{domain}/api/blog/{slug}")
+        r.raise_for_status()
+        return r.json()
+
+
 # Halaman non-homepage yang didukung prerender (2026-07-28, perluas Priority 3 audit
-# produksi - "Rendering ~27%" krn cuma homepage yang SSR). name -> (path, output_suffix).
-# Rooms/Facilities dipilih dulu krn konten statis murni (sama utk semua pengunjung,
-# tidak ada rute dinamis per-item seperti /blog/:slug) - paling aman & bernilai tinggi.
+# produksi - "Rendering ~27%" krn cuma homepage yang SSR). name -> path. Rooms/
+# Facilities dipilih dulu krn konten statis murni (sama utk semua pengunjung, tidak
+# ada rute dinamis per-item) - paling aman & bernilai tinggi. Blog listing juga statis
+# murni (path tetap "/blog"). Blog DETAIL per-artikel ("/blog/{slug}") beda arsitektur
+# sepenuhnya - lihat prerender_blog_detail(), BUKAN bagian dari dict ini krn pathnya
+# dinamis per-slug, bukan 1 path tetap.
 EXTRA_PAGES = {
     "rooms": "/rooms",
     "facilities": "/facilities",
+    "blog": "/blog",
 }
 
 
-async def _render_ssr(content: dict, lang: str, origin: str, path: str = "/") -> str:
+async def _render_ssr(content: dict, lang: str, origin: str, path: str = "/",
+                       blog_list: list = None, blog_detail: dict = None) -> str:
     """Panggil bundle Node SSR (renderToPipeableStream + onAllReady - lihat
     frontend/ssr/render.jsx, WAJIB nunggu lazy-loaded page component selesai resolve,
     renderToString sinkron biasa tidak bisa) - shim window/localStorage minimal yang
     dipakai. stdin = payload, stdout = HTML."""
-    stdin_payload = json.dumps({"content": content, "lang": lang, "origin": origin, "path": path}).encode()
+    stdin_payload = json.dumps({
+        "content": content, "lang": lang, "origin": origin, "path": path,
+        "blogList": blog_list, "blogDetail": blog_detail,
+    }).encode()
     proc = await asyncio.create_subprocess_exec(
         NODE_BIN, str(SSR_BIN),
         stdin=asyncio.subprocess.PIPE,
@@ -92,20 +114,23 @@ async def _render_ssr(content: dict, lang: str, origin: str, path: str = "/") ->
     return out.decode("utf-8")
 
 
-async def prerender_site(site: str, domain: str, page: str = "") -> None:
-    """page="" -> homepage ("/", output {site}.html). page="rooms"/"facilities"/dst
-    (lihat EXTRA_PAGES) -> path terkait, output {site}__{page}.html."""
-    path = EXTRA_PAGES[page] if page else "/"
-    content = await _fetch_content(domain)
-    lang = "id"
-    origin = f"https://{domain}"
-    ssr_html = await _render_ssr(content, lang, origin, path)
-
+def _assemble_html(ssr_html: str, content: dict, lang: str, path: str, origin: str, site: str,
+                    blog_list: list = None, blog_detail: dict = None) -> str:
+    """Splice hasil SSR + data prerendered ke dalam build/index.html segar - dipakai
+    SEMUA jenis halaman (home/rooms/facilities/blog/blog-detail), bukan cuma ditulis
+    ulang tiap fungsi. __PRERENDERED_BLOG__ selalu disuntik (None/None kalau halaman
+    ini tidak butuh) - Blog.jsx/BlogDetail.jsx cuma baca field ini di halamannya
+    sendiri, tidak mengganggu halaman lain."""
     payload = json.dumps({"content": content, "lang": lang})
-    # Jaga-jaga kalau ada teks CMS yang kebetulan mengandung "</script>" literal - bisa
-    # menutup tag lebih awal dan merusak halaman kalau tidak di-escape.
+    blog_payload = json.dumps({"list": blog_list, "detail": blog_detail})
+    # Jaga-jaga kalau ada teks CMS/artikel yang kebetulan mengandung "</script>" literal
+    # - bisa menutup tag lebih awal dan merusak halaman kalau tidak di-escape.
     payload_safe = payload.replace("</script>", "<\\/script>")
-    script_tag = f"<script>window.__PRERENDERED__={payload_safe}</script>"
+    blog_payload_safe = blog_payload.replace("</script>", "<\\/script>")
+    script_tag = (
+        f"<script>window.__PRERENDERED__={payload_safe};"
+        f"window.__PRERENDERED_BLOG__={blog_payload_safe}</script>"
+    )
 
     # Baca build/index.html SEGAR tiap kali - selalu cocok dengan build yang sedang live
     # (hash JS/CSS berubah tiap deploy), bukan template lama yang bisa basi.
@@ -133,31 +158,92 @@ async def prerender_site(site: str, domain: str, page: str = "") -> None:
     # halaman yang di-prerender (statis, HTML mentah dibaca crawler sebelum JS jalan) butuh
     # versi statisnya juga, path yang benar sesuai halaman (bukan selalu "/").
     html = html.replace("</head>", f'<link rel="canonical" href="{origin}{path}"/></head>', 1)
+    return html
 
+
+def _write_snapshot(html: str, out_name: str) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_name = f"{site}.html" if not page else f"{site}__{page}.html"
     final_path = OUTPUT_DIR / out_name
     tmp_path = OUTPUT_DIR / f".{out_name}.tmp"
     tmp_path.write_text(html, encoding="utf-8")
     os.rename(tmp_path, final_path)  # atomic - nginx never sees a partial write
+    return final_path
+
+
+async def prerender_site(site: str, domain: str, page: str = "") -> None:
+    """page="" -> homepage ("/", output {site}.html). page="rooms"/"facilities"/"blog"
+    (lihat EXTRA_PAGES) -> path terkait, output {site}__{page}.html."""
+    path = EXTRA_PAGES[page] if page else "/"
+    content = await _fetch_content(domain)
+    lang = "id"
+    origin = f"https://{domain}"
+
+    blog_list = await _fetch_blog_list(domain) if page == "blog" else None
+    ssr_html = await _render_ssr(content, lang, origin, path, blog_list=blog_list)
+    html = _assemble_html(ssr_html, content, lang, path, origin, site, blog_list=blog_list)
+
+    out_name = f"{site}.html" if not page else f"{site}__{page}.html"
+    final_path = _write_snapshot(html, out_name)
     print(f"{site} [{page or 'home'}]: snapshot ditulis ke {final_path} ({len(html)} bytes)")
+
+
+async def prerender_blog_detail(site: str, domain: str, slug: str) -> None:
+    """Snapshot PER-ARTIKEL ("/blog/{slug}") - beda dari prerender_site krn path & data
+    dinamis per-slug, bukan 1 path tetap. Dipanggil: (a) seo_agent.py tiap kali artikel
+    baru publish, (b) server.py tiap admin buat/edit artikel manual, (c) bulk utk semua
+    artikel existing (lihat main() --blog-detail-all, backfill/deploy)."""
+    path = f"/blog/{slug}"
+    content = await _fetch_content(domain)
+    lang = "id"
+    origin = f"https://{domain}"
+    blog_detail = await _fetch_blog_detail(domain, slug)
+
+    ssr_html = await _render_ssr(content, lang, origin, path, blog_detail=blog_detail)
+    html = _assemble_html(ssr_html, content, lang, path, origin, site, blog_detail=blog_detail)
+
+    out_name = f"{site}__blog__{slug}.html"
+    final_path = _write_snapshot(html, out_name)
+    print(f"{site} [blog-detail:{slug}]: snapshot ditulis ke {final_path} ({len(html)} bytes)")
 
 
 async def main():
     if len(sys.argv) < 2:
         print("Usage: venv/bin/python -m scripts.prerender_home <site> [page]")
         print(f"  page pilihan: {list(EXTRA_PAGES)} (kosong = homepage)")
+        print("  venv/bin/python -m scripts.prerender_home <site> blog-detail <slug>")
+        print("  venv/bin/python -m scripts.prerender_home <site> blog-detail-all")
         sys.exit(1)
     site = sys.argv[1]
     page = sys.argv[2] if len(sys.argv) > 2 else ""
-    if page and page not in EXTRA_PAGES:
-        print(f"Page '{page}' tidak dikenal. Pilihan: {list(EXTRA_PAGES)}")
-        sys.exit(1)
+
     domains = _site_domains()
     if site not in domains:
         print(f"Situs '{site}' tidak dikenal di SITE_HOST_MAP. Pilihan: {list(domains)}")
         sys.exit(1)
-    await prerender_site(site, domains[site], page)
+    domain = domains[site]
+
+    if page == "blog-detail":
+        if len(sys.argv) < 4:
+            print("Usage: venv/bin/python -m scripts.prerender_home <site> blog-detail <slug>")
+            sys.exit(1)
+        await prerender_blog_detail(site, domain, sys.argv[3])
+        return
+
+    if page == "blog-detail-all":
+        # Bulk regenerate SEMUA artikel existing utk situs ini - dipakai backfill awal
+        # & deploy.sh (kode baru = hash bundle baru, semua snapshot artikel jadi basi).
+        posts = await _fetch_blog_list(domain)
+        for p in posts:
+            try:
+                await prerender_blog_detail(site, domain, p["slug"])
+            except Exception as e:
+                print(f"{site} [blog-detail:{p['slug']}]: GAGAL - {type(e).__name__}: {e}")
+        return
+
+    if page and page not in EXTRA_PAGES:
+        print(f"Page '{page}' tidak dikenal. Pilihan: {list(EXTRA_PAGES)}, blog-detail, blog-detail-all")
+        sys.exit(1)
+    await prerender_site(site, domain, page)
 
 
 if __name__ == "__main__":

@@ -2,13 +2,16 @@
 16-Agent penuh yang dianggap over-engineering untuk 2 properti milik sendiri, bukan SaaS
 multi-tenant komersial). Cakupan yang DIBANGUN: Keyword Agent (dari 100 keyword yang
 diberi user + generate keyword baru kalau pool habis), Writer Agent (grounded ke data
-CMS asli - lihat _fetch_site_facts), Quality Gate (rule-based, BUKAN "AI menilai AI"),
-Internal Link + Schema + Cover Image Agent, Publish (auto, TANPA approval manusia - ini
-keputusan sadar user setelah diberi tahu risiko kebijakan "Scaled Content Abuse" Google).
-Cakupan yang SENGAJA TIDAK dibangun: Trend/Competitor Agent (butuh API berbayar/scraping
-rapuh, ROI rendah utk 2 properti niche), Analytics/Conversion/Learning Agent (perlu GSC/GA4
-wired dulu, belum ada), Autopilot penuh 10.000 artikel sekaligus (mulai 3/hari/situs dulu,
-sesuai kesepakatan user - lihat scripts/run_daily_seo.py untuk penjadwalannya).
+CMS asli - lihat _fetch_site_facts), Competitor Analysis Agent (2026-07-28, lihat
+analyze_competitors - awalnya "sengaja tidak dibangun", ditambahkan belakangan begitu
+user minta), Quality Gate (rule-based, BUKAN "AI menilai AI"), Internal Link + Schema +
+Cover Image Agent, Publish (auto, TANPA approval manusia - ini keputusan sadar user
+setelah diberi tahu risiko kebijakan "Scaled Content Abuse" Google).
+Cakupan yang SENGAJA TIDAK dibangun: Analytics/Conversion/Learning Agent (SEBAGIAN
+sudah ada - lihat GET /admin/gsc/summary di server.py, GSC Integration + Analytics
+Dashboard 2026-07-28), Autopilot penuh 10.000 artikel sekaligus. Volume naik bertahap:
+3/hari/situs (2026-07-26) -> 7/hari/situs (2026-07-28, permintaan user) - lihat
+scripts/run_daily_seo.sh utk penjadwalan cron aktual.
 
 Jalankan manual: `venv/bin/python -m scripts.seo_agent --site pelangi --count 1`
 """
@@ -28,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import httpx  # noqa: E402
 from bs4 import BeautifulSoup  # noqa: E402
 from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
+from scripts import prerender_home as _prerender  # noqa: E402
 
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
@@ -235,11 +239,16 @@ async def _fetch_site_facts(site: str) -> str:
 # dgn API sederhana, jauh lebih murah & tanpa syarat billing GCP.
 #
 # Budget kredit (2026-07-28, permintaan user) - user cuma punya 2400 kredit Serper
-# SEKALI PAKAI (bukan kuota bulanan yang reset), diminta dijaga bertahan 2 tahun.
-# Dengan sampai 6 artikel/hari (2 situs x 3x cron/hari), cap 3 kredit/hari cukup
-# utk 730 hari (2190 dari 2400 kredit, sisa buffer 210) - kira-kira separuh artikel
-# per hari dapat analisis kompetitor, sisanya tetap ditulis normal TANPA analisis
-# (bukan gagal, cuma skip - graceful degradation yang sama seperti kalau API down).
+# SEKALI PAKAI (bukan kuota bulanan yang reset), diminta dijaga bertahan 2 tahun,
+# TERLEPAS dari berapa pun volume artikel (naik dari 6/hari ke 14/hari - 7 situs x
+# 2 - per permintaan user 2026-07-28, kemungkinan naik lagi ke depan). Cap 3
+# kredit/hari (BUKAN 3 dari total artikel per hari, tapi hard limit harian yang
+# SAMA berapa pun jumlah artikel) cukup utk 730 hari (2190 dari 2400 kredit, sisa
+# buffer 210) - di volume 14/hari, ~21% artikel dapat analisis kompetitor; kalau
+# naik ke 20+/hari, proporsinya makin kecil tapi kredit tetap bertahan 2 tahun sama
+# persis (lihat perhitungan yg sudah dijelaskan ke user). Artikel yang tidak
+# kebagian slot TETAP ditulis normal TANPA analisis kompetitor (bukan gagal, cuma
+# skip - graceful degradation yang sama seperti kalau API down).
 SERPER_TOTAL_CREDITS = 2400
 SERPER_TARGET_DAYS = 2 * 365
 SERPER_DAILY_CAP = SERPER_TOTAL_CREDITS // SERPER_TARGET_DAYS  # = 3/hari
@@ -631,6 +640,19 @@ async def generate_one(site: str) -> dict:
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {
         "status": "sudah_dibuat", "artikel_slug": slug, "updated_at": now,
     }})
+
+    # Prerender listing + detail artikel baru ini (2026-07-28, perluas SSR ke Blog) -
+    # jalur INI beda dari admin_create_post di server.py (insert langsung ke DB, bukan
+    # lewat endpoint HTTP), jadi trigger-nya dipanggil terpisah di sini juga. Best-effort
+    # (try/except) - kegagalan prerender TIDAK BOLEH menggagalkan publish artikel yang
+    # sudah berhasil (artikel tetap live via CSR biasa sampai prerender berhasil lain kali).
+    try:
+        domain = SITE_DOMAIN[site]
+        await _prerender.prerender_site(site, domain, "blog")
+        await _prerender.prerender_blog_detail(site, domain, slug)
+    except Exception as e:
+        print(f"[prerender] gagal utk artikel baru {slug}: {type(e).__name__}: {e}")
+
     return {"ok": True, "keyword": keyword_doc["keyword"], "slug": slug, "word_count": len(content_final.split())}
 
 

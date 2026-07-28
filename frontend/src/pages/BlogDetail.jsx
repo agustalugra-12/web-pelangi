@@ -5,10 +5,21 @@ import api from "@/lib/api";
 import Seo from "@/components/site/Seo";
 import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 
+// Sama seperti Blog.jsx (2026-07-28, perluas SSR) - snapshot BlogDetail spesifik utk
+// 1 slug tertentu, jadi cocokkan slug URL saat ini dgn slug yang dipakai saat prerender
+// (harusnya SELALU sama krn nginx serve snapshot yang benar per-slug, tapi jaga-jaga
+// kalau ada mismatch, jangan pakai data slug yang salah - fallback ke fetch normal).
+function initialBlogDetail(slug) {
+  if (typeof window === "undefined") return null;
+  const detail = window.__PRERENDERED_BLOG__?.detail;
+  return detail && detail.slug === slug ? detail : null;
+}
+
 export default function BlogDetail() {
   const { slug } = useParams();
-  const [post, setPost] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const initial = initialBlogDetail(slug);
+  const [post, setPost] = useState(initial);
+  const [loading, setLoading] = useState(!initial);
   const [notFound, setNotFound] = useState(false);
   const { t, lang, pick } = useLang();
 

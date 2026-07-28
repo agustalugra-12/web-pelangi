@@ -28,7 +28,7 @@ import { AppRoutes } from "@/App";
 // perluas prerender ke /rooms. renderToPipeableStream + onAllReady (bukan
 // onShellReady) menunggu SEMUA Suspense boundary - termasuk lazy-loaded page
 // component - selesai resolve dulu sebelum di-pipe, baru benar2 lengkap.
-export function renderHome({ content, lang, origin, path = "/" }) {
+export function renderHome({ content, lang, origin, path = "/", blogList = null, blogDetail = null }) {
   // Minimal window/localStorage shim - only what the tree actually touches
   // synchronously during render (confirmed via source audit):
   //   - AuthContext.jsx reads bare `localStorage.getItem(...)` synchronously in useState
@@ -52,6 +52,13 @@ export function renderHome({ content, lang, origin, path = "/" }) {
     // must match what prerender_home.py later embeds as the literal <script> tag, or
     // the client's hydration pass would mismatch against THIS render's output.
     __PRERENDERED__: { content, lang },
+    // Blog.jsx/BlogDetail.jsx (2026-07-28) - beda dari Home/Rooms/Facilities, halaman
+    // blog TIDAK baca dari ContentContext, tapi fetch sendiri via useEffect+axios ke
+    // /api/blog(/:slug). useEffect TIDAK PERNAH jalan saat SSR (React by design) -
+    // tanpa ini, renderToPipeableStream akan render state awal kosong ("Memuat...")
+    // krn Suspense tidak terlibat sama sekali di pola fetch ini (beda dari lazy-load
+    // component yg diperbaiki sebelumnya - itu soal Suspense, ini soal useEffect).
+    __PRERENDERED_BLOG__: { list: blogList, detail: blogDetail },
   };
 
   const queryClient = new QueryClient({
