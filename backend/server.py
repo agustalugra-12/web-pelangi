@@ -870,7 +870,9 @@ async def get_media(file_id: str):
     if not record:
         raise HTTPException(status_code=404, detail="Media not found")
     try:
-        data, ct = get_object(record["storage_path"])
+        # get_object pakai requests.get sync (timeout 60s) ke Cloudinary - to_thread
+        # supaya tidak blokir event loop tunggal sampai 60 detik (2026-07-28, audit performa).
+        data, ct = await asyncio.to_thread(get_object, record["storage_path"])
     except Exception as e:
         logger.exception("Storage fetch failed")
         raise HTTPException(status_code=500, detail=f"Fetch failed: {e}")
