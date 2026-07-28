@@ -77,17 +77,27 @@ CLUSTER_CATEGORY = {
 # Setiap query WAJIB eksplisit "bali"/"tropical" (2026-07-28, ditemukan lewat uji visual -
 # query generik seperti "cozy cottage interior" tanpa kata itu sering nyasar ke hasil kabin
 # gaya Eropa/alpine, bukan tropis Bali - tidak sesuai suasana properti sama sekali).
+#
+# DIROMBAK TOTAL (2026-07-28, permintaan user) - versi sebelumnya banyak query
+# "guesthouse/resort/cottage/veranda" yang hasilnya foto KAMAR/KOLAM RENANG/INTERIOR
+# penginapan generik (bukan milik Pelangi/Harmoni asli, tapi tetap MENYESATKAN kalau
+# terlihat seperti "penginapan" - bisa disangka klaim visual properti yang tidak
+# benar). Sekarang SEMUA query murni pemandangan PUBLIK area Bedugul yang nyata &
+# bisa diverifikasi (danau/pura Ulun Danu Beratan, Kebun Raya Bali, sawah/kebun
+# dataran tinggi, pasar/kebun stroberi Candikuning, jalan pegunungan berkabut) -
+# TIDAK ADA lagi kata resort/guesthouse/cottage/veranda/vacation/homestay di query
+# manapun, supaya Pexels tidak pernah balikin foto kamar/kolam renang/interior.
 CLUSTER_PEXELS_QUERY = {
-    "Utama": ["tropical bali garden cottage", "bali mountain homestay"],
-    "Harga": ["tropical bali guesthouse", "affordable bali tropical resort"],
-    "Lokasi Wisata": ["bali mountain lake", "tropical bali highland scenery"],
-    "View": ["misty bali mountain lake", "tropical bali garden view"],
-    "Keluarga": ["bali family tropical vacation", "tropical family garden outdoor"],
-    "Pasangan": ["romantic bali tropical getaway", "bali couple garden veranda"],
-    "Fasilitas": ["tropical bali guesthouse interior", "bali resort veranda"],
-    "Aktivitas": ["bali tropical nature walk", "tropical bali garden path"],
-    "Booking": ["tropical bali resort relaxing", "bali vacation cottage tropical"],
-    "Long Tail": ["tropical bali mountain cottage", "bali highland tropical garden"],
+    "Utama": ["ulun danu temple lake bali", "bali highland mountain lake"],
+    "Harga": ["bali highland mountain scenery", "bali lake temple misty morning"],
+    "Lokasi Wisata": ["ulun danu beratan temple bali", "bali botanical garden tropical"],
+    "View": ["misty lake temple bali mountain", "bali highland lake sunrise"],
+    "Keluarga": ["bali botanical garden tropical", "bali rice terrace mountain"],
+    "Pasangan": ["misty bali mountain lake sunset", "bali temple lake reflection"],
+    "Fasilitas": ["bali highland garden path public", "bali tropical mountain scenery"],
+    "Aktivitas": ["bali mountain nature trail", "bali strawberry farm highland"],
+    "Booking": ["bali highland lake temple scenery", "bali mountain village travel"],
+    "Long Tail": ["bali highland garden mountain", "bali lake temple misty morning"],
 }
 
 
@@ -368,13 +378,33 @@ async def write_article(site: str, keyword_doc: dict) -> dict:
     keyword = keyword_doc["keyword"]
     competitor_result = await analyze_competitors(keyword)
 
+    # Editorial Writing Standard (2026-07-28, permintaan user, diringkas dari pedoman
+    # panjang yang diberikan) - target BUKAN "supaya tidak terdeteksi AI detector"
+    # (tidak pernah jadi tujuan di sistem ini sejak awal), tapi standar editorial
+    # riil: akurat, dapat diverifikasi, jujur soal ketidakpastian, enak dibaca manusia.
+    # Prinsip anti-mengarang di paragraf 2 SUDAH ada sejak awal - bagian BARU murni
+    # soal gaya tulisan (variasi kalimat, hindari frasa generik AI, direct/aktif).
     system = (
-        "Kamu content writer SEO Bahasa Indonesia untuk penginapan di Bedugul, Bali. "
-        "ATURAN KERAS: HANYA gunakan fakta yang diberikan di 'DATA ASLI' - JANGAN PERNAH mengarang "
-        "fasilitas, harga, kebijakan, atau nama tempat yang tidak disebutkan di sana atau tidak "
-        "umum diketahui publik (mis. nama tempat wisata terkenal boleh, tapi jangan mengarang "
-        "klaim spesifik soal tempat itu). Kalau ragu suatu fakta, jangan disebutkan sama sekali "
-        "daripada mengarang. Tulis natural, tidak keyword stuffing, gaya sapaan 'Kakak'."
+        "Kamu editor konten profesional Bahasa Indonesia untuk penginapan di Bedugul, Bali - "
+        "bukan sekadar 'menulis artikel', tapi menghasilkan konten yang akurat, jujur, dan "
+        "enak dibaca seperti ditulis penulis berpengalaman.\n\n"
+        "ATURAN KERAS SOAL FAKTA: HANYA gunakan fakta yang diberikan di 'DATA ASLI' - JANGAN PERNAH "
+        "mengarang fasilitas, harga, kebijakan, statistik, atau nama tempat yang tidak disebutkan di "
+        "sana atau tidak umum diketahui publik (mis. nama tempat wisata terkenal boleh, tapi jangan "
+        "mengarang klaim spesifik soal tempat itu - jam buka, harga tiket, dll kalau tidak yakin). "
+        "Kalau ragu suatu fakta, jangan disebutkan sama sekali daripada mengarang. Jangan mengarang "
+        "pengalaman pribadi/kunjungan yang tidak pernah terjadi.\n\n"
+        "GAYA TULISAN: Tulis natural, variasikan panjang kalimat & struktur paragraf (jangan semua "
+        "paragraf polanya sama), gunakan kalimat aktif, bahasa yang mudah dipahami, sapaan 'Kakak'. "
+        "Paragraf pendek (2-5 kalimat), setiap paragraf punya tujuan jelas - jangan bertele-tele atau "
+        "mengulang poin yang sama. HINDARI frasa generik/klise seperti 'di era digital ini', 'tidak "
+        "dapat dipungkiri', 'perlu diketahui bahwa', 'pada dasarnya', 'kesimpulannya', atau daftar "
+        "'pertama...kedua...selain itu...oleh karena itu' yang kaku - pakai transisi yang mengalir "
+        "sesuai konteks, bukan template. Tidak keyword stuffing - keyword masuk natural, prioritaskan "
+        "kenyamanan baca.\n\n"
+        "SEBELUM MENJAWAB, cek draftmu sendiri: apakah ada kalimat yang berulang-ulang? Apakah "
+        "pembuka menarik & penutup memberi nilai tambah (bukan cuma ringkasan)? Apakah tiap sub-judul "
+        "benar-benar menjawab pertanyaan yang relevan? Kalau ada yang kurang, revisi dulu sebelum kirim."
     )
     competitor_block = (
         f"\n\nANALISIS KOMPETITOR (dari hasil pencarian Google nyata):\n{competitor_result['prompt_text']}"
