@@ -21,8 +21,14 @@ export default function BlogDetail() {
 
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-teal-deep">{t("common.loading")}</div>;
   if (notFound) {
+    // noindex (2026-07-28, audit SEO teknis) - slug artikel yang tidak ada TETAP dapat
+    // index.html 200 dari nginx (regex /blog/:slug tidak bisa tahu slug asli/palsu tanpa
+    // query DB), jadi harus tegas noindex di sini supaya tidak ikut ke-index sbg halaman
+    // kosong "Artikel tidak ditemukan" - sebelumnya <Seo> tidak pernah dipasang sama sekali
+    // di state ini, jadi tidak ada sinyal apa pun (bukan cuma "tidak noindex", tapi kosong).
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <Seo title={t("blog.notFound")} noindex />
         <p className="font-display italic text-3xl text-teal-deep">{t("blog.notFound")}</p>
         <Link to="/blog" className="rounded-full bg-leaf text-white px-5 py-2 font-semibold">{t("common.backToBlog")}</Link>
       </div>

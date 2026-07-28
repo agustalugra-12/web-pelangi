@@ -28,7 +28,7 @@ function upsertLink(rel, href) {
   el.setAttribute("href", href);
 }
 
-export default function Seo({ title, description, image, jsonLd }) {
+export default function Seo({ title, description, image, jsonLd, noindex = false }) {
   const location = useLocation();
   const { site, _site } = useContent();
   const { lang, pick } = useLang();
@@ -58,7 +58,12 @@ export default function Seo({ title, description, image, jsonLd }) {
     upsertMeta('meta[name="twitter:title"]', { name: "twitter:title", content: t });
     upsertMeta('meta[name="twitter:description"]', { name: "twitter:description", content: d });
     upsertMeta('meta[name="twitter:image"]', { name: "twitter:image", content: img });
-    upsertMeta('meta[name="robots"]', { name: "robots", content: "index,follow" });
+    // noindex (2026-07-28, audit SEO teknis) - dipakai halaman 404/error yang memang
+    // sengaja TIDAK boleh masuk index Google, beda dari halaman biasa yang selalu
+    // "index,follow". Lapis pengaman KEDUA (lapis pertama: nginx 404 asli utk URL tak
+    // dikenal) - kalau suatu saat React Router ter-mount utk path aneh, tetap ada sinyal
+    // eksplisit "jangan index" di sini, bukan diam-diam ikut ke-index seperti sebelumnya.
+    upsertMeta('meta[name="robots"]', { name: "robots", content: noindex ? "noindex,nofollow" : "index,follow" });
     upsertLink("canonical", url);
 
     // JSON-LD structured data (breadcrumbs / LodgingBusiness / etc.)
@@ -72,7 +77,7 @@ export default function Seo({ title, description, image, jsonLd }) {
       script.textContent = JSON.stringify(jsonLd);
       document.head.appendChild(script);
     }
-  }, [title, description, image, jsonLd, location.pathname, site, _site, lang, pick]);
+  }, [title, description, image, jsonLd, noindex, location.pathname, site, _site, lang, pick]);
 
   return null;
 }

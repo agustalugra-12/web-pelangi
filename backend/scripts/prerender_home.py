@@ -110,6 +110,15 @@ async def prerender_site(site: str, domain: str) -> None:
             1,
         )
 
+    # Canonical STATIS di HTML mentah (2026-07-28, audit SEO teknis - ditemukan lewat
+    # laporan user 57rb+ URL sampah ter-index GSC, salah satu penyebabnya: crawler yang
+    # baca HTML mentah/belum-render-JS sama sekali tidak lihat sinyal canonical apa pun di
+    # homepage, jadi variasi query string acak di "/" (mis. "/?m=123456") berisiko dianggap
+    # URL terpisah. Seo.jsx SUDAH pasang canonical dinamis lewat JS utk semua halaman lain,
+    # ini khusus tambahan utk homepage yang di-prerender (satu-satunya yang perlu versi
+    # statis - hanya path "/" persis yang dapat perlakuan prerender ini).
+    html = html.replace("</head>", f'<link rel="canonical" href="{origin}/"/></head>', 1)
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     final_path = OUTPUT_DIR / f"{site}.html"
     tmp_path = OUTPUT_DIR / f".{site}.html.tmp"

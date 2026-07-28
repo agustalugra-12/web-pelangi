@@ -217,6 +217,12 @@ export const DICTIONARY = {
       subtitle: "Panduan wisata, itinerary, dan cerita dari Bedugul.",
       notFound: "Artikel tidak ditemukan.",
     },
+    notFoundPage: {
+      eyebrow: "404",
+      title: "Halaman tidak ditemukan",
+      body: "Halaman yang Anda cari sudah dipindahkan atau memang tidak pernah ada.",
+      cta: "Kembali ke Beranda",
+    },
     footer: {
       taglineSuffix:
         "— kabut pagi, kopi lokal, dan pelayanan tulus sejak 2012.",
@@ -471,6 +477,12 @@ export const DICTIONARY = {
       italic: "tips",
       subtitle: "Travel guides, itineraries, and stories from Bedugul.",
       notFound: "Article not found.",
+    },
+    notFoundPage: {
+      eyebrow: "404",
+      title: "Page not found",
+      body: "The page you're looking for has moved or never existed.",
+      cta: "Back to Home",
     },
     footer: {
       taglineSuffix:

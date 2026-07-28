@@ -28,6 +28,7 @@ const CancellationPolicy = lazy(() => import("@/pages/CancellationPolicy"));
 const RefundPolicy = lazy(() => import("@/pages/RefundPolicy"));
 const HouseRules = lazy(() => import("@/pages/HouseRules"));
 const PaymentInformation = lazy(() => import("@/pages/PaymentInformation"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const AdminLogin = lazy(() => import("@/pages/admin/Login"));
 const AdminLayout = lazy(() => import("@/pages/admin/AdminLayout"));
@@ -79,6 +80,7 @@ export function AppRoutes() {
           <Route path="/refund-policy" element={<RefundPolicy />} />
           <Route path="/house-rules" element={<HouseRules />} />
           <Route path="/payment-information" element={<PaymentInformation />} />
+          <Route path="*" element={<NotFound />} />
         </Route>
 
         {/* Admin */}
