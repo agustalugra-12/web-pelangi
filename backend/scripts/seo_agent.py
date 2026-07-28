@@ -22,15 +22,19 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import httpx  # noqa: E402
+from bs4 import BeautifulSoup  # noqa: E402
 from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
+GOOGLE_CSE_API_KEY = os.environ.get("GOOGLE_CSE_API_KEY", "")
+GOOGLE_CSE_CX = os.environ.get("GOOGLE_CSE_CX", "")
 CHAT_MODEL = "gpt-4.1-mini"
 EMBED_MODEL = "text-embedding-3-small"
 
@@ -217,11 +221,93 @@ async def _fetch_site_facts(site: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 2.5 Competitor Analysis Agent (2026-07-28) - cari artikel top-ranking Google utk
+# keyword yang sama, analisis panjang/struktur heading/FAQ, supaya Writer Agent
+# bisa menulis artikel yang LEBIH LENGKAP daripada kompetitor (bukan cuma sama
+# panjang). Best-effort penuh: kalau Custom Search API/fetch kompetitor gagal
+# (quota habis, situs kompetitor block scraping, dll), fungsi ini return None dan
+# write_article() lanjut TANPA analisis kompetitor - tidak pernah menggagalkan
+# generate artikel gara-gara langkah tambahan ini.
+# ---------------------------------------------------------------------------
+async def _search_competitors(keyword: str) -> list:
+    if not GOOGLE_CSE_API_KEY or not GOOGLE_CSE_CX:
+        return []
+    async with httpx.AsyncClient(timeout=15) as http:
+        resp = await http.get("https://www.googleapis.com/customsearch/v1", params={
+            "key": GOOGLE_CSE_API_KEY, "cx": GOOGLE_CSE_CX, "q": keyword, "num": 5,
+        })
+        resp.raise_for_status()
+        return resp.json().get("items", [])
+
+
+async def _fetch_competitor_page(url: str) -> dict:
+    # Timeout pendek (10s) & User-Agent browser biasa - banyak situs block request
+    # tanpa User-Agent yang wajar. Kegagalan per-URL (timeout/403/dll) DIBIARKAN
+    # naik ke caller supaya bisa di-skip satu-satu (bukan menggagalkan semua).
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True, headers={
+        "User-Agent": "Mozilla/5.0 (compatible; PelangiSeoAgent/1.0)"
+    }) as http:
+        resp = await http.get(url)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style", "nav", "footer"]):
+            tag.decompose()
+        text = soup.get_text(separator=" ", strip=True)
+        word_count = len(text.split())
+        headings = [h.get_text(strip=True) for h in soup.find_all(["h1", "h2", "h3"]) if h.get_text(strip=True)]
+        return {"url": url, "word_count": word_count, "headings": headings[:15]}
+
+
+async def analyze_competitors(keyword: str) -> Optional[str]:
+    """Return ringkasan teks siap-pakai utk disisipkan ke prompt Writer Agent, atau
+    None kalau analisis kompetitor gagal total (search API down/tidak dikonfigurasi)."""
+    try:
+        results = await _search_competitors(keyword)
+    except Exception as e:
+        print(f"[competitor-analysis] search gagal: {type(e).__name__}: {e}")
+        return None
+    if not results:
+        return None
+
+    pages = []
+    for item in results[:5]:
+        link = item.get("link")
+        if not link:
+            continue
+        try:
+            pages.append(await _fetch_competitor_page(link))
+        except Exception:
+            continue  # 1 kompetitor gagal di-fetch bukan masalah, lanjut yang lain
+
+    if not pages:
+        return None
+
+    avg_words = round(sum(p["word_count"] for p in pages) / len(pages))
+    all_headings = [h for p in pages for h in p["headings"]]
+    sample_headings = all_headings[:20]
+
+    lines = [
+        f"{len(pages)} artikel kompetitor teratas ditemukan untuk keyword ini, rata-rata "
+        f"panjang {avg_words} kata.",
+        "Contoh sub-judul/topik yang mereka bahas (jangan ditiru kata-per-kata, tapi "
+        "pastikan artikelmu MENCAKUP topik senada + tambahkan yang belum mereka bahas):",
+    ]
+    for h in sample_headings:
+        lines.append(f"- {h}")
+    lines.append(
+        f"Tulis artikel MINIMAL sepanjang rata-rata kompetitor ({avg_words} kata) dan "
+        "usahakan lebih lengkap (bahas 1-2 topik relevan yang tidak ada di daftar di atas)."
+    )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # 3. Writer Agent
 # ---------------------------------------------------------------------------
 async def write_article(site: str, keyword_doc: dict) -> dict:
     facts = await _fetch_site_facts(site)
     keyword = keyword_doc["keyword"]
+    competitor_analysis = await analyze_competitors(keyword)
 
     system = (
         "Kamu content writer SEO Bahasa Indonesia untuk penginapan di Bedugul, Bali. "
@@ -231,8 +317,13 @@ async def write_article(site: str, keyword_doc: dict) -> dict:
         "klaim spesifik soal tempat itu). Kalau ragu suatu fakta, jangan disebutkan sama sekali "
         "daripada mengarang. Tulis natural, tidak keyword stuffing, gaya sapaan 'Kakak'."
     )
+    competitor_block = (
+        f"\n\nANALISIS KOMPETITOR (dari hasil pencarian Google nyata):\n{competitor_analysis}"
+        if competitor_analysis else ""
+    )
     user = f"""DATA ASLI ({site}):
 {facts}
+{competitor_block}
 
 Tulis artikel SEO untuk target keyword: "{keyword}"
 
