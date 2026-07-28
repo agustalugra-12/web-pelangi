@@ -58,6 +58,15 @@ export default function Seo({ title, description, image, jsonLd, noindex = false
     upsertMeta('meta[name="twitter:title"]', { name: "twitter:title", content: t });
     upsertMeta('meta[name="twitter:description"]', { name: "twitter:description", content: d });
     upsertMeta('meta[name="twitter:image"]', { name: "twitter:image", content: img });
+    // Favicon tab browser (2026-07-28, ditemukan lewat laporan user - Harmoni masih
+    // tampil logo Pelangi di tab) - index.html HARDCODE pelangi-logo.png krn dipakai
+    // bersama utk semua situs (sama seperti masalah hero image sebelumnya), tapi link
+    // <icon>-nya TIDAK PERNAH diperbarui dinamis di mana pun (beda dari og:image yang
+    // sudah pakai faviconPath sejak awal) - baru cuma dipakai utk social preview,
+    // bukan utk icon tab asli. Reuse upsertLink yang sudah ada, cocokkan pola query
+    // selector persis dgn <link rel="icon"> yang sudah ada di index.html.
+    upsertLink("icon", `${origin}${faviconPath(_site)}`);
+    upsertLink("apple-touch-icon", `${origin}${faviconPath(_site)}`);
     // noindex (2026-07-28, audit SEO teknis) - dipakai halaman 404/error yang memang
     // sengaja TIDAK boleh masuk index Google, beda dari halaman biasa yang selalu
     // "index,follow". Lapis pengaman KEDUA (lapis pertama: nginx 404 asli utk URL tak
