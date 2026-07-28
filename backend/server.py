@@ -11,7 +11,7 @@ import uuid
 import re
 import tempfile
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Annotated
+from typing import Dict, List, Optional, Annotated
 
 import bcrypt
 import jwt
@@ -283,9 +283,39 @@ async def root():
     return {"message": "Pelangi Homestay API", "status": "ok"}
 
 
+# ---------- Rate limiting (2026-07-27, audit keamanan - /auth/login sebelumnya tidak ada
+# penghalang percobaan berulang sama sekali). In-memory sliding window per-proses, pola sama
+# persis dengan yang sudah dipakai di PMS/ai-chat-bot - cukup untuk skala 1 proses backend. ----
+import time as _time
+_rate_limit_buckets: Dict[str, List[float]] = {}
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limiter(max_requests: int, window_seconds: int):
+    async def _check(request: Request) -> None:
+        key = f"{request.url.path}:{_client_ip(request)}"
+        now = _time.time()
+        cutoff = now - window_seconds
+        bucket = [t for t in _rate_limit_buckets.get(key, []) if t >= cutoff]
+        if len(bucket) >= max_requests:
+            _rate_limit_buckets[key] = bucket
+            raise HTTPException(429, "Terlalu banyak percobaan, coba lagi sebentar lagi")
+        bucket.append(now)
+        _rate_limit_buckets[key] = bucket
+        if len(_rate_limit_buckets) > 20000:
+            _rate_limit_buckets.clear()
+    return _check
+
+
 # ---------- Routes: Auth ----------
 @api_router.post("/auth/login")
-async def login(payload: LoginRequest, response: Response):
+async def login(payload: LoginRequest, response: Response, _rl: None = Depends(rate_limiter(10, 60))):
     email = payload.email.lower().strip()
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user["password_hash"]):
@@ -421,9 +451,11 @@ async def admin_list_posts(_: dict = Depends(get_current_user), site: str = Depe
 
 
 @api_router.get("/admin/blog/{post_id}", response_model=BlogPostOut)
-async def admin_get_post(post_id: str, _: dict = Depends(get_current_user)):
+async def admin_get_post(post_id: str, _: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     try:
-        doc = await db.blog_posts.find_one({"_id": ObjectId(post_id)})
+        # site di-filter langsung di query (2026-07-27, audit keamanan) - sebelumnya admin
+        # situs manapun bisa lihat/edit/hapus post situs LAIN cukup tahu post_id.
+        doc = await db.blog_posts.find_one({"_id": ObjectId(post_id), "site": site})
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid post id")
     if not doc:
@@ -461,7 +493,8 @@ async def admin_create_post(payload: BlogPostCreate, _: dict = Depends(get_curre
 
 @api_router.put("/admin/blog/{post_id}", response_model=BlogPostOut)
 async def admin_update_post(
-    post_id: str, payload: BlogPostUpdate, _: dict = Depends(get_current_user)
+    post_id: str, payload: BlogPostUpdate, _: dict = Depends(get_current_user),
+    site: str = Depends(get_current_site_admin),
 ):
     try:
         oid = ObjectId(post_id)
@@ -476,7 +509,9 @@ async def admin_update_post(
         else:
             updates["slug"] = new_slug_base
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.blog_posts.update_one({"_id": oid}, {"$set": updates})
+    # site di-filter langsung di query (2026-07-27, audit keamanan) - cegah admin situs lain
+    # edit post situs ini cukup tahu post_id.
+    result = await db.blog_posts.update_one({"_id": oid, "site": site}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Post not found")
     doc = await db.blog_posts.find_one({"_id": oid})
@@ -484,12 +519,14 @@ async def admin_update_post(
 
 
 @api_router.delete("/admin/blog/{post_id}")
-async def admin_delete_post(post_id: str, _: dict = Depends(get_current_user)):
+async def admin_delete_post(post_id: str, _: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     try:
         oid = ObjectId(post_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid post id")
-    result = await db.blog_posts.delete_one({"_id": oid})
+    # site di-filter langsung di query (2026-07-27, audit keamanan) - cegah admin situs lain
+    # hapus post situs ini cukup tahu post_id.
+    result = await db.blog_posts.delete_one({"_id": oid, "site": site})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Post not found")
     return {"message": "Deleted"}

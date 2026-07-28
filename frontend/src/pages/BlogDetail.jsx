@@ -159,11 +159,18 @@ function renderInline(text) {
       const label = match[3];
       const href = match[4];
       const isInternal = href.startsWith("/");
+      // Whitelist skema URL (2026-07-27, audit keamanan) - konten artikel dibuat AI TANPA
+      // review manusia, jadi kalau AI pernah generate href seperti "javascript:..." (sengaja
+      // atau tidak), itu TIDAK BOLEH jadi link yang bisa diklik. Cuma internal (/...),
+      // http(s), atau mailto yang dirender sebagai link asli - selain itu tampil sbg teks biasa.
+      const isSafeExternal = /^(https?:|mailto:)/i.test(href);
       parts.push(
         isInternal ? (
           <Link key={key++} to={href} className="text-mustard-deep underline hover:text-mustard">{label}</Link>
-        ) : (
+        ) : isSafeExternal ? (
           <a key={key++} href={href} target="_blank" rel="noopener noreferrer" className="text-mustard-deep underline hover:text-mustard">{label}</a>
+        ) : (
+          <span key={key++}>{label}</span>
         )
       );
     }

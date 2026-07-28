@@ -98,10 +98,18 @@ export default function LodgingSchema() {
     ...(confirmed.geo ? { geo: { "@type": "GeoCoordinates", ...confirmed.geo } } : {}),
   };
 
+  // JSON.stringify TIDAK meng-escape literal "</script>" (2026-07-27, audit keamanan) - kalau
+  // field manapun di schema (mis. seoDescription, brand - bisa diedit admin/AI SEO agent)
+  // pernah mengandung string itu, tag <script> ini tertutup prematur & HTML/JS sesudahnya
+  // bisa dieksekusi nyata di browser pengunjung. < aman krn JSON tetap valid (unicode
+  // escape), browser tetap parse "<" seperti biasa saat JSON.parse, tapi HTML parser TIDAK
+  // pernah lihat karakter "<" mentah jadi tidak bisa menutup tag lebih awal.
+  const schemaJson = JSON.stringify(schema).replace(/</g, "\\u003c");
+
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: schemaJson }}
     />
   );
 }
