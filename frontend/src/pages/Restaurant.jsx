@@ -2,6 +2,7 @@ import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
 import SectionHeading from "@/components/site/SectionHeading";
 import Seo from "@/components/site/Seo";
+import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 
 const byCat = (arr, c) => arr.find((g) => g.category === c) || arr[0] || { src: "", category: c };
 
@@ -10,7 +11,7 @@ export default function Restaurant() {
   const { t, pick } = useLang();
   return (
     <div className="pt-14 pb-24">
-      <Seo title={t("restaurant.title")} description={pick(site, "restaurantIntro")} />
+      <Seo title={t("restaurant.title")} description={pick(site, "restaurantIntro")} jsonLd={schemaGraph(breadcrumbNode([{ label: t("restaurant.title") }]))} />
       <section className="max-w-7xl mx-auto px-5 md:px-8">
         <SectionHeading
           eyebrow={t("restaurant.eyebrow")}

@@ -2,13 +2,14 @@ import { useLang } from "@/context/LanguageContext";
 import { DICTIONARY } from "@/i18n/dictionary";
 import SectionHeading from "@/components/site/SectionHeading";
 import Seo from "@/components/site/Seo";
+import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 
 export default function Facilities() {
   const { t, lang } = useLang();
   const facs = DICTIONARY[lang]?.facilityData || DICTIONARY.id.facilityData;
   return (
     <div className="pt-14 pb-24">
-      <Seo title={t("facilities.title")} description={t("facilities.subtitle")} />
+      <Seo title={t("facilities.title")} description={t("facilities.subtitle")} jsonLd={schemaGraph(breadcrumbNode([{ label: t("facilities.title") }]))} />
       <section className="max-w-7xl mx-auto px-5 md:px-8">
         <SectionHeading
           eyebrow={t("facilities.eyebrow")}

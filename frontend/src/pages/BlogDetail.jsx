@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useLang } from "@/context/LanguageContext";
 import api from "@/lib/api";
 import Seo from "@/components/site/Seo";
+import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 
 export default function BlogDetail() {
   const { slug } = useParams();
@@ -37,7 +38,7 @@ export default function BlogDetail() {
 
   const locale = lang === "en" ? "en-GB" : "id-ID";
   const content = pick(post, "content") || post.content;
-  const jsonLd = buildArticleSchema(post, content);
+  const jsonLd = buildArticleSchema(post, content, t("blog.title"));
 
   return (
     <article className="max-w-3xl mx-auto px-5 md:px-8 pt-14 pb-24" data-testid={`blog-detail-${post.slug}`}>
@@ -107,10 +108,11 @@ export default function BlogDetail() {
   );
 }
 
-// Bangun JSON-LD Article + (kalau ada) FAQPage langsung dari data post yang sudah
-// tersedia lewat API - server.py (post_to_out) cuma meneruskan field tertentu, jadi
-// field schema terpisah tidak akan pernah sampai ke sini kalau disimpan di backend.
-function buildArticleSchema(post, content) {
+// Bangun JSON-LD Article + (kalau ada) FAQPage + BreadcrumbList langsung dari data
+// post yang sudah tersedia lewat API - server.py (post_to_out) cuma meneruskan field
+// tertentu, jadi field schema terpisah tidak akan pernah sampai ke sini kalau
+// disimpan di backend.
+function buildArticleSchema(post, content, blogLabel) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   // 2 pola didukung: (a) "**Pertanyaan asli?**" diikuti 1 ATAU 2 baris baru lalu
   // jawaban - AI kadang pakai \n kadang \n\n meski diminta \n\n persis, jadi regex
@@ -122,17 +124,32 @@ function buildArticleSchema(post, content) {
     ...content.matchAll(/\*\*([^*]+\?)\*\*\n+([^\n]+)/g),
     ...content.matchAll(/\*\*Pertanyaan\?\*\*\n\*([^*]+)\*\n([^\n]+)/g),
   ];
-  const graph = [{
-    "@type": "Article",
-    headline: post.title,
-    description: post.excerpt,
-    image: post.cover_image ? `${origin}${post.cover_image}` : undefined,
-    datePublished: post.created_at,
-    dateModified: post.updated_at,
-    url: `${origin}/blog/${post.slug}`,
-  }];
+  // publisher/author (2026-07-28, lengkapi Schema Generator) - Google mewajibkan
+  // Article punya publisher Organization+logo utk rich result. Direferensikan lewat
+  // @id ke LodgingBusiness yang sama (dirender site-wide di SiteLayout/LodgingSchema.jsx,
+  // co-exist di halaman yang sama) - bukan duplikat entity baru, cuma nunjuk ke entity
+  // bisnis yang sudah ada. Artikel tanpa byline manusia (AI SEO Agent) - Organization
+  // sebagai author juga pola yang lazim & didukung Google utk blog brand tanpa penulis.
+  const publisherRef = { "@id": `${origin}/#lodgingbusiness` };
+  const nodes = [
+    {
+      "@type": "Article",
+      headline: post.title,
+      description: post.excerpt,
+      image: post.cover_image ? `${origin}${post.cover_image}` : undefined,
+      datePublished: post.created_at,
+      dateModified: post.updated_at,
+      url: `${origin}/blog/${post.slug}`,
+      author: publisherRef,
+      publisher: publisherRef,
+    },
+    breadcrumbNode([
+      { label: blogLabel, to: "/blog" },
+      { label: post.title },
+    ]),
+  ];
   if (faqPairs.length) {
-    graph.push({
+    nodes.push({
       "@type": "FAQPage",
       mainEntity: faqPairs.map(([, q, a]) => ({
         "@type": "Question", name: q,
@@ -140,7 +157,7 @@ function buildArticleSchema(post, content) {
       })),
     });
   }
-  return { "@context": "https://schema.org", "@graph": graph };
+  return schemaGraph(...nodes);
 }
 
 // Parser ringan untuk markdown dasar di dalam paragraf artikel - **bold** dan

@@ -6,6 +6,7 @@ import { CONTACT } from "@/constants/testIds";
 import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import Seo from "@/components/site/Seo";
+import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 
 export default function Contact() {
   const { site } = useContent();
@@ -31,7 +32,7 @@ export default function Contact() {
 
   return (
     <div className="pt-14 pb-24">
-      <Seo title={t("contact.title")} description={t("contact.subtitle")} />
+      <Seo title={t("contact.title")} description={t("contact.subtitle")} jsonLd={schemaGraph(breadcrumbNode([{ label: t("contact.title") }]))} />
       <section className="max-w-7xl mx-auto px-5 md:px-8">
         <SectionHeading
           eyebrow={t("contact.eyebrow")}

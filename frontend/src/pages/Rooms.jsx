@@ -3,6 +3,7 @@ import { useLang } from "@/context/LanguageContext";
 import RoomCard from "@/components/site/RoomCard";
 import SectionHeading from "@/components/site/SectionHeading";
 import Seo from "@/components/site/Seo";
+import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 
 export default function Rooms() {
   const { site, rooms } = useContent();
@@ -11,7 +12,7 @@ export default function Rooms() {
   const subtitle = rooms.length === 1 ? t("rooms.subtitleSingle") : t("rooms.subtitle");
   return (
     <div className="pt-14 pb-24">
-      <Seo title={t("rooms.title")} description={subtitle} />
+      <Seo title={t("rooms.title")} description={subtitle} jsonLd={schemaGraph(breadcrumbNode([{ label: t("rooms.title") }]))} />
       <section className="max-w-7xl mx-auto px-5 md:px-8">
         <SectionHeading
           eyebrow={t("rooms.eyebrow")}

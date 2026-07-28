@@ -2,6 +2,7 @@ import { useContent } from "@/context/ContentContext";
 import { useLang } from "@/context/LanguageContext";
 import SectionHeading from "@/components/site/SectionHeading";
 import Seo from "@/components/site/Seo";
+import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 import {
   Accordion,
   AccordionContent,
@@ -15,15 +16,17 @@ export default function FAQ() {
   // FAQPage schema (2026-07-28, audit SEO teknis) - berpotensi dapat rich snippet
   // accordion langsung di hasil pencarian Google. Dibangun dari data FAQ ASLI yang sama
   // yang dirender di halaman (bukan teks terpisah) - tidak pernah bisa menyimpang.
-  const faqJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: faqs.map((f) => ({
-      "@type": "Question",
-      name: pick(f, "q"),
-      acceptedAnswer: { "@type": "Answer", text: pick(f, "a") },
-    })),
-  };
+  const faqJsonLd = schemaGraph(
+    breadcrumbNode([{ label: t("faq.title") }]),
+    {
+      "@type": "FAQPage",
+      mainEntity: faqs.map((f) => ({
+        "@type": "Question",
+        name: pick(f, "q"),
+        acceptedAnswer: { "@type": "Answer", text: pick(f, "a") },
+      })),
+    },
+  );
   return (
     <div className="pt-14 pb-24">
       <Seo title={t("faq.title")} description={t("faq.subtitle")} jsonLd={faqJsonLd} />

@@ -4,6 +4,7 @@ import { useLang } from "@/context/LanguageContext";
 import Seo from "@/components/site/Seo";
 import Breadcrumb from "@/components/site/Breadcrumb";
 import RainbowAccent from "@/components/site/RainbowAccent";
+import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 
 // Wrapper for legal / info pages. Provides:
 //  - SEO metadata (title, description, JSON-LD BreadcrumbList)
@@ -20,19 +21,7 @@ export default function LegalLayout({
 }) {
   const { site } = useContent();
   const { t } = useLang();
-  const bcJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: (typeof window !== "undefined" ? window.location.origin : "") + "/" },
-      ...breadcrumb.map((b, i) => ({
-        "@type": "ListItem",
-        position: i + 2,
-        name: b.label,
-        ...(b.to ? { item: (typeof window !== "undefined" ? window.location.origin : "") + b.to } : {}),
-      })),
-    ],
-  };
+  const bcJsonLd = schemaGraph(breadcrumbNode(breadcrumb));
 
   return (
     <div className="pt-14 pb-24">

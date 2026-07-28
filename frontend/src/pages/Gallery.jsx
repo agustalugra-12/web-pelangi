@@ -4,6 +4,7 @@ import { useLang } from "@/context/LanguageContext";
 import { galleryCategoriesAll } from "@/data/content";
 import SectionHeading from "@/components/site/SectionHeading";
 import Seo from "@/components/site/Seo";
+import { breadcrumbNode, schemaGraph } from "@/lib/schema";
 
 export default function Gallery() {
   const { gallery } = useContent();
@@ -17,7 +18,7 @@ export default function Gallery() {
 
   return (
     <div className="pt-14 pb-24">
-      <Seo title={t("gallery.title")} description={t("gallery.subtitle")} />
+      <Seo title={t("gallery.title")} description={t("gallery.subtitle")} jsonLd={schemaGraph(breadcrumbNode([{ label: t("gallery.title") }]))} />
       <section className="max-w-7xl mx-auto px-5 md:px-8">
         <SectionHeading
           eyebrow={t("gallery.eyebrow")}
