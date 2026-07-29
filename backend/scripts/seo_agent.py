@@ -418,6 +418,32 @@ async def _fetch_editorial_rules() -> list:
     return doc["rules"] if doc else DEFAULT_EDITORIAL_RULES
 
 
+# Freshness Check (2026-07-29, roadmap AI Grow item 4) - HANYA cek data KITA SENDIRI
+# (harga kamar di CMS site_content, punya field `updated_at` yang bisa dipercaya),
+# BUKAN pantau perubahan pihak ketiga (cafe baru buka/objek wisata tutup) - itu butuh
+# sumber data eksternal yang tidak reliabel diverifikasi otomatis utk skala 2 properti
+# ini (disarankan jadi reminder manual triwulanan ke staf, bukan sistem monitoring
+# otomatis - lihat diskusi roadmap 2026-07-29). Artikel yang MENYEBUT harga ("Rp") tapi
+# diterbitkan SEBELUM data rooms terakhir diubah = kandidat perlu ditinjau ulang - staf
+# yang putuskan, TIDAK auto-update kontennya (beda dari expand_top_articles yang memang
+# sengaja auto-rewrite, freshness ini lebih ke deteksi risiko, bukan aksi otomatis).
+async def cek_artikel_basi(site: str) -> list:
+    rooms_doc = await db.site_content.find_one({"site": site, "type": "rooms"})
+    if not rooms_doc or not rooms_doc.get("updated_at"):
+        return []
+    rooms_updated_at = rooms_doc["updated_at"]
+    stale = []
+    async for post in db.blog_posts.find(
+        {"site": site, "published": True, "created_at": {"$lt": rooms_updated_at}},
+        {"slug": 1, "title": 1, "content": 1, "created_at": 1},
+    ):
+        if "rp" in post["content"].lower():
+            stale.append({
+                "slug": post["slug"], "title": post["title"], "created_at": post["created_at"],
+            })
+    return stale
+
+
 # ---------------------------------------------------------------------------
 # 2.5 Competitor Analysis Agent (2026-07-28) - cari artikel top-ranking Google utk
 # keyword yang sama, analisis panjang/struktur heading/FAQ, supaya Writer Agent

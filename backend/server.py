@@ -530,6 +530,18 @@ async def admin_editorial_rules_update(body: dict, _: dict = Depends(get_current
     return {"rules": rules}
 
 
+@api_router.get("/admin/seo-agent/basi")
+async def admin_seo_agent_basi(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
+    """Freshness check (2026-07-29) - artikel yang menyebut harga (Rp) tapi diterbitkan
+    SEBELUM data harga kamar terakhir diubah di CMS - kandidat perlu ditinjau ulang staf
+    (bukan auto-update). Import lokal (bukan di top-level) supaya scripts.seo_agent (modul
+    besar, dipakai cron) tidak ikut ter-load penuh saat server.py start kalau tidak
+    dibutuhkan endpoint lain."""
+    from scripts.seo_agent import cek_artikel_basi
+    stale = await cek_artikel_basi(site)
+    return {"total": len(stale), "items": stale[:10]}
+
+
 @api_router.get("/admin/gsc/summary")
 async def admin_gsc_summary(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     """Analytics Dashboard (2026-07-28) - performa artikel dari Google Search Console

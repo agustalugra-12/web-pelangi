@@ -14,17 +14,19 @@ export default function CmsBlog() {
   const [rules, setRules] = useState(null);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [rulesSaving, setRulesSaving] = useState(false);
+  const [basi, setBasi] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data }, { data: statsData }, { data: gscData }, { data: queueData }, { data: dilewatiData }, { data: rulesData }] = await Promise.all([
+      const [{ data }, { data: statsData }, { data: gscData }, { data: queueData }, { data: dilewatiData }, { data: rulesData }, { data: basiData }] = await Promise.all([
         api.get("/admin/blog"),
         api.get("/admin/seo-agent/stats").catch(() => ({ data: null })),
         api.get("/admin/gsc/summary").catch(() => ({ data: null })),
         api.get("/admin/seo-agent/queue").catch(() => ({ data: null })),
         api.get("/admin/seo-agent/dilewati").catch(() => ({ data: null })),
         api.get("/admin/editorial-rules").catch(() => ({ data: null })),
+        api.get("/admin/seo-agent/basi").catch(() => ({ data: null })),
       ]);
       setPosts(data);
       setStats(statsData);
@@ -32,6 +34,7 @@ export default function CmsBlog() {
       setQueue(queueData);
       setDilewati(dilewatiData);
       setRules(rulesData?.rules || []);
+      setBasi(basiData);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
@@ -322,6 +325,31 @@ export default function CmsBlog() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {basi && basi.total > 0 && (
+        <div className="bg-paper rounded-2xl border border-ink/10 p-5 mb-6" data-testid="seo-agent-basi">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">
+              🕐 Kandidat Artikel Perlu Ditinjau Ulang (Freshness)
+            </p>
+            <p className="text-xs text-teal-deep/60">{basi.total} artikel</p>
+          </div>
+          <p className="text-xs text-teal-deep/50 mb-3">
+            Artikel ini menyebut harga tapi diterbitkan SEBELUM harga kamar terakhir diubah
+            di CMS - cek apakah angka di dalamnya masih sesuai harga terbaru. Tidak
+            di-update otomatis, ini cuma daftar kandidat buat ditinjau staf.
+          </p>
+          <ol className="space-y-1.5">
+            {basi.items.map((a, i) => (
+              <li key={a.slug} className="flex items-center gap-3 text-sm">
+                <span className="w-5 text-right text-teal-deep/40 font-mono text-xs shrink-0">{i + 1}.</span>
+                <span className="flex-1 text-teal-deep truncate">{a.title}</span>
+                <span className="text-xs text-teal-deep/50 shrink-0">{new Date(a.created_at).toLocaleDateString("id-ID")}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
 
