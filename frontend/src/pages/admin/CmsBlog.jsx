@@ -15,11 +15,12 @@ export default function CmsBlog() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [rulesSaving, setRulesSaving] = useState(false);
   const [basi, setBasi] = useState(null);
+  const [cakupan, setCakupan] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data }, { data: statsData }, { data: gscData }, { data: queueData }, { data: dilewatiData }, { data: rulesData }, { data: basiData }] = await Promise.all([
+      const [{ data }, { data: statsData }, { data: gscData }, { data: queueData }, { data: dilewatiData }, { data: rulesData }, { data: basiData }, { data: cakupanData }] = await Promise.all([
         api.get("/admin/blog"),
         api.get("/admin/seo-agent/stats").catch(() => ({ data: null })),
         api.get("/admin/gsc/summary").catch(() => ({ data: null })),
@@ -27,6 +28,7 @@ export default function CmsBlog() {
         api.get("/admin/seo-agent/dilewati").catch(() => ({ data: null })),
         api.get("/admin/editorial-rules").catch(() => ({ data: null })),
         api.get("/admin/seo-agent/basi").catch(() => ({ data: null })),
+        api.get("/admin/seo-agent/cakupan").catch(() => ({ data: null })),
       ]);
       setPosts(data);
       setStats(statsData);
@@ -35,6 +37,7 @@ export default function CmsBlog() {
       setDilewati(dilewatiData);
       setRules(rulesData?.rules || []);
       setBasi(basiData);
+      setCakupan(cakupanData);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
@@ -350,6 +353,35 @@ export default function CmsBlog() {
               </li>
             ))}
           </ol>
+        </div>
+      )}
+
+      {cakupan && cakupan.clusters.length > 0 && (
+        <div className="bg-paper rounded-2xl border border-ink/10 p-5 mb-6" data-testid="seo-agent-cakupan">
+          <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mb-1">
+            📊 Cakupan Rencana Keyword per Cluster
+          </p>
+          <p className="text-xs text-teal-deep/50 mb-3">
+            % keyword per cluster yang sudah ditulis dari 100 keyword awal - bukan skor
+            "topical authority" beneran (itu perlu data kompetitif yang mahal diukur akurat),
+            cuma sinyal cluster mana yang masih kosong.
+          </p>
+          <div className="space-y-2">
+            {cakupan.clusters.map((c) => (
+              <div key={c.cluster} className="flex items-center gap-3 text-sm">
+                <span className="w-28 shrink-0 text-teal-deep/80 truncate">{c.cluster}</span>
+                <div className="flex-1 h-2.5 rounded-full bg-ink/10 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${c.persen >= 60 ? "bg-leaf" : c.persen >= 30 ? "bg-mustard-deep" : "bg-red-400"}`}
+                    style={{ width: `${c.persen}%` }}
+                  />
+                </div>
+                <span className="w-24 shrink-0 text-xs text-teal-deep/60 text-right">
+                  {c.sudah_dibuat}/{c.total} ({c.persen}%)
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

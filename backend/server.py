@@ -542,6 +542,16 @@ async def admin_seo_agent_basi(_: dict = Depends(get_current_user), site: str = 
     return {"total": len(stale), "items": stale[:10]}
 
 
+@api_router.get("/admin/seo-agent/cakupan")
+async def admin_seo_agent_cakupan(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
+    """Cakupan rencana keyword per cluster (2026-07-29) - % keyword per cluster yang
+    sudah ditulis dari 100 keyword awal. BUKAN "topical authority" beneran (lihat
+    catatan di cakupan_keyword_per_cluster) - label jujur soal apa yang diukur."""
+    from scripts.seo_agent import cakupan_keyword_per_cluster
+    rows = await cakupan_keyword_per_cluster(site)
+    return {"clusters": rows}
+
+
 @api_router.get("/admin/gsc/summary")
 async def admin_gsc_summary(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     """Analytics Dashboard (2026-07-28) - performa artikel dari Google Search Console

@@ -444,6 +444,33 @@ async def cek_artikel_basi(site: str) -> list:
     return stale
 
 
+# Cakupan Rencana Keyword per Cluster (2026-07-29, roadmap AI Grow item 5, versi jujur) -
+# BUKAN "topical authority" beneran (itu perlu data kompetitif skala besar yang mahal utk
+# diukur akurat, dibahas & ditolak di roadmap krn budget Serper mepet) - ini murni %
+# keyword per cluster yang SUDAH ditulis dari rencana 100 keyword awal, dihitung dari data
+# yang sudah ada tanpa API tambahan. Label sengaja "cakupan rencana keyword", bukan
+# "topical authority", supaya tidak mengklaim lebih dari yang sebenarnya diukur.
+async def cakupan_keyword_per_cluster(site: str) -> list:
+    pipeline = [
+        {"$match": {"site": site}},
+        {"$group": {
+            "_id": "$cluster",
+            "total": {"$sum": 1},
+            "sudah_dibuat": {"$sum": {"$cond": [{"$eq": ["$status", "sudah_dibuat"]}, 1, 0]}},
+        }},
+    ]
+    result = []
+    async for row in db.seo_keywords.aggregate(pipeline):
+        total = row["total"]
+        sudah = row["sudah_dibuat"]
+        result.append({
+            "cluster": row["_id"], "total": total, "sudah_dibuat": sudah,
+            "persen": round(sudah / total * 100) if total else 0,
+        })
+    result.sort(key=lambda r: r["persen"])
+    return result
+
+
 # ---------------------------------------------------------------------------
 # 2.5 Competitor Analysis Agent (2026-07-28) - cari artikel top-ranking Google utk
 # keyword yang sama, analisis panjang/struktur heading/FAQ, supaya Writer Agent
