@@ -445,6 +445,21 @@ BEDUGUL_FACTS = (
     "17-24°C (lebih sejuk dibanding Bali selatan). Jarak dari Bandara Ngurah Rai: sekitar "
     "63-65 km, kira-kira 1,5-2 jam berkendara tergantung lalu lintas."
 )
+# Fakta jarak/waktu ANTAR landmark wisata spesifik (2026-07-30, revisi manual user artikel
+# Handara Gate - butuh jarak/waktu SPESIFIK dari kawasan Bedugul, bukan cuma "dekat").
+# Diverifikasi via web search 2026-07-30, sama disiplinnya dgn BEDUGUL_FACTS di atas - bukan
+# ditebak dari training data, angka dibulatkan ke rentang konsisten antar sumber.
+LANDMARK_FACTS = (
+    "Jarak Handara Gate (Bali Handara Iconic Gate) dari kawasan Danau Beratan/Candikuning "
+    "(area yang sama dgn lokasi Pelangi Homestay): sekitar 7 km, kira-kira 20 menit "
+    "berkendara. Waktu terbaik kunjungi Handara Gate utk foto tanpa antre panjang: pagi "
+    "06.00-09.00 WITA (sebelum jam 8 cahaya masih bagus & belum ramai) ATAU sore "
+    "16.00-18.00 WITA - HINDARI sekitar jam 12 siang (paling ramai, banyak antre gantian "
+    "foto). Hari kerja jauh lebih sepi drpd akhir pekan. Di Danau Beratan tersedia "
+    "penyewaan sampan/perahu dayung & sepeda bebek air utk berkeliling danau (harga "
+    "dibayar on-site langsung ke penyedia, BUKAN bagian dari layanan properti - jangan "
+    "sebut harga pasti krn bisa berubah)."
+)
 # Jumlah kamar FISIK total (2026-07-29, dicek manual ke database PMS - CMS web-pelangi
 # sendiri cuma simpan jumlah TIPE kamar (2 utk pelangi), bukan jumlah kamar fisik) - update
 # manual angka ini kalau jumlah kamar di PMS berubah (jarang, bukan data yang perlu live-sync).
@@ -464,6 +479,8 @@ async def _fetch_site_facts(site: str) -> str:
         f"Total kamar tersedia: {SITE_ROOM_COUNT.get(site, '-')} kamar",
         f"Fakta area Bedugul (boleh dikutip - ini fakta geografis umum area, BUKAN klaim "
         f"khusus milik properti ini): {BEDUGUL_FACTS}",
+        f"Fakta jarak & waktu kunjungan landmark wisata sekitar (boleh dikutip, fakta publik "
+        f"area, BUKAN milik properti): {LANDMARK_FACTS}",
     ]
     for r in rooms_doc:
         # Day Use & Menginap SENGAJA dipisah (2026-07-29, revisi manual user menemukan Day
@@ -477,11 +494,19 @@ async def _fetch_site_facts(site: str) -> str:
     for f in faqs_doc:
         lines.append(f"FAQ - {f.get('q')}: {f.get('a')}")
     if testimonials_doc:
-        # 1 testimoni ASLI (bukan dikarang) disediakan sbg opsi kutipan - BUKAN wajib dipakai
-        # tiap artikel (lihat instruksi system prompt: "kutip HANYA kalau relevan & JANGAN
-        # PERNAH karang testimoni baru").
-        t = testimonials_doc[0]
-        lines.append(f"Testimoni tamu asli (boleh dikutip kalau relevan): \"{t.get('text')}\" - {t.get('name')}, {t.get('origin')}")
+        # SEMUA testimoni ASLI disediakan, bukan cuma testimonials_doc[0] (2026-07-30, bug
+        # nyata ditemukan: sebelumnya SELALU cuma testimoni pertama yang dikirim ke Writer
+        # Agent, jadi SEMUA artikel yang pernah kutip testimoni pasti kutip "Rina & Aldo" yang
+        # sama persis - itu sendiri jadi konten berulang di seluruh blog, masalah yang sama
+        # dgn duplicate-content yang sedang diperbaiki). Kutip PALING BANYAK 1 yang paling
+        # relevan per artikel (lihat instruksi system prompt), JANGAN semua sekaligus.
+        quotes = "; ".join(
+            f"\"{t.get('text')}\" - {t.get('name')}, {t.get('origin')}" for t in testimonials_doc
+        )
+        lines.append(
+            f"Testimoni tamu asli (pilih SATU yang paling relevan dgn topik artikel ini utk "
+            f"dikutip, JANGAN pakai lebih dari satu, JANGAN selalu pilih yang pertama): {quotes}"
+        )
     return "\n".join(lines)
 
 
