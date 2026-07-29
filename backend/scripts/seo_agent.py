@@ -38,6 +38,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -437,6 +438,34 @@ async def _fetch_competitor_page(url: str) -> dict:
         return {"url": url, "word_count": word_count, "headings": headings[:15]}
 
 
+# OTA/booking besar yang beroperasi di Indonesia (2026-07-29, permintaan user - "tingkat
+# persaingan kata kunci") - dipakai sbg sinyal proxy, BUKAN skor "Keyword Difficulty"
+# presisi ala Ahrefs/SEMrush (itu butuh data backlink/domain authority berbayar yang tidak
+# kita punya aksesnya). Kalau salah satu domain besar ini muncul di hasil pencarian nyata
+# utk sebuah keyword, itu sinyal kuat situs kecil kita akan sulit menembus halaman 1.
+MAJOR_OTA_DOMAINS = {
+    "booking.com", "traveloka.com", "agoda.com", "tripadvisor.com", "tripadvisor.co.id",
+    "trivago.co.id", "trivago.com", "airbnb.com", "tiket.com", "pegipegi.com",
+    "expedia.com", "hotels.com", "klook.com", "nusatrip.com", "oyorooms.com", "oyo.com",
+    "reddoorz.com",
+}
+
+
+def _klasifikasi_persaingan(urls: list) -> str:
+    """"Tinggi" kalau ada OTA besar (lihat MAJOR_OTA_DOMAINS) di hasil pencarian nyata utk
+    keyword ini - sinyal kuat sulit ditembus. "Rendah" kalau kompetitor yang ditemukan
+    SANGAT SEDIKIT (<=1) - sinyal keyword yang jarang dibahas siapa pun. Selain itu
+    "Sedang" (bukan default diam-diam tanpa dasar - murni krn tidak terdeteksi sinyal
+    tinggi maupun rendah dari data yang ada)."""
+    if len(urls) <= 1:
+        return "Rendah"
+    for url in urls:
+        domain = urlparse(url).netloc.lower().replace("www.", "")
+        if any(ota in domain for ota in MAJOR_OTA_DOMAINS):
+            return "Tinggi"
+    return "Sedang"
+
+
 async def analyze_competitors(keyword: str) -> Optional[dict]:
     """Return {"prompt_text": ..., "data": {...}} - prompt_text siap disisipkan ke
     Writer Agent, data = hasil mentah (url/word_count/heading per kompetitor) UTK
@@ -514,6 +543,7 @@ async def analyze_competitors(keyword: str) -> Optional[dict]:
             "competitors": [{"url": p["url"], "word_count": p["word_count"], "headings": p["headings"]} for p in pages],
             "avg_word_count": avg_words,
             "question_headings": question_headings,
+            "tingkat_persaingan": _klasifikasi_persaingan([p["url"] for p in pages]),
             "analyzed_at": datetime.now(timezone.utc).isoformat(),
         },
     }

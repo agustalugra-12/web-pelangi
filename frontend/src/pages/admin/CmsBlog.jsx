@@ -192,8 +192,9 @@ export default function CmsBlog() {
               {posts.map((p) => (
                 <tr key={p.id} className="border-t border-ink/10" data-testid={`admin-post-row-${p.slug}`}>
                   <td className="px-5 py-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-start gap-1.5">
                       <p className="font-semibold text-teal-deep">{p.title}</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
                       {p.seo_keyword && (
                         <span
                           className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-mustard-soft/30 text-mustard-deep shrink-0"
@@ -214,6 +215,24 @@ export default function CmsBlog() {
                           🔍 {p.competitor_analysis.competitors.length} Kompetitor
                         </span>
                       )}
+                      {p.competitor_analysis?.tingkat_persaingan && (
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 shrink-0 ${
+                            p.competitor_analysis.tingkat_persaingan === "Tinggi" ? "bg-red-100 text-red-700"
+                              : p.competitor_analysis.tingkat_persaingan === "Rendah" ? "bg-leaf/15 text-leaf"
+                              : "bg-mustard-soft/30 text-mustard-deep"
+                          }`}
+                          title={
+                            p.competitor_analysis.tingkat_persaingan === "Tinggi"
+                              ? "Persaingan Tinggi - ada OTA besar (Booking.com/Traveloka/Agoda/dst) di hasil pencarian nyata utk keyword ini, sulit ditembus"
+                              : p.competitor_analysis.tingkat_persaingan === "Rendah"
+                              ? "Persaingan Rendah - kompetitor yang ditemukan sangat sedikit, keyword jarang dibahas"
+                              : "Persaingan Sedang - tidak ada OTA besar terdeteksi, kompetitor cukup banyak"
+                          }
+                        >
+                          Persaingan {p.competitor_analysis.tingkat_persaingan}
+                        </span>
+                      )}
                       {p.expanded_at && (
                         <span
                           className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-leaf/15 text-leaf shrink-0"
@@ -222,6 +241,7 @@ export default function CmsBlog() {
                           📈 Diperluas
                         </span>
                       )}
+                      </div>
                     </div>
                     <p className="text-xs text-teal-deep/60 md:hidden">{p.category}</p>
                   </td>
