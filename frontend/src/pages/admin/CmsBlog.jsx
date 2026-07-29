@@ -478,6 +478,23 @@ export default function CmsBlog() {
                           📈 Diperluas
                         </span>
                       )}
+                      {(() => {
+                        const wordCount = (p.content || "").trim().split(/\s+/).filter(Boolean).length;
+                        // Alert cuma utk artikel AI (p.seo_keyword ada) - konten manual boleh
+                        // pendek sengaja (2026-07-29, ditemukan saat backfill expand: blurb tips
+                        // 45 kata itu memang sengaja singkat, bukan kegagalan kualitas).
+                        const kurangDariSeribu = p.seo_keyword && wordCount < 1000;
+                        return (
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 shrink-0 ${
+                              kurangDariSeribu ? "bg-red-100 text-red-700" : "bg-ink/5 text-teal-deep/60"
+                            }`}
+                            title={kurangDariSeribu ? "Di bawah 1000 kata - akan diperbaharui ke 1100-1200 kata di run mingguan berikutnya" : undefined}
+                          >
+                            {kurangDariSeribu && "⚠️ "}{wordCount} kata
+                          </span>
+                        );
+                      })()}
                       </div>
                     </div>
                     <p className="text-xs text-teal-deep/60 md:hidden">{p.category}</p>
