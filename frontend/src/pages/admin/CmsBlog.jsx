@@ -10,20 +10,23 @@ export default function CmsBlog() {
   const [stats, setStats] = useState(null);
   const [gsc, setGsc] = useState(null);
   const [queue, setQueue] = useState(null);
+  const [dilewati, setDilewati] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data }, { data: statsData }, { data: gscData }, { data: queueData }] = await Promise.all([
+      const [{ data }, { data: statsData }, { data: gscData }, { data: queueData }, { data: dilewatiData }] = await Promise.all([
         api.get("/admin/blog"),
         api.get("/admin/seo-agent/stats").catch(() => ({ data: null })),
         api.get("/admin/gsc/summary").catch(() => ({ data: null })),
         api.get("/admin/seo-agent/queue").catch(() => ({ data: null })),
+        api.get("/admin/seo-agent/dilewati").catch(() => ({ data: null })),
       ]);
       setPosts(data);
       setStats(statsData);
       setGsc(gscData);
       setQueue(queueData);
+      setDilewati(dilewatiData);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
@@ -134,6 +137,54 @@ export default function CmsBlog() {
               Terakhir sinkron: {new Date(gsc.last_synced_at).toLocaleString("id-ID")}
             </p>
           )}
+          {/* Papan performa (2026-07-29, permintaan user) - gsc.articles SUDAH lengkap &
+              terurut (clicks desc, lihat admin_gsc_summary di server.py), sebelumnya cuma
+              dipakai utk ambil best_article - sisanya belum pernah ditampilkan sama sekali.
+              2 daftar: performa terbaik (clicks>0, biar tidak penuh nol di situs yg masih
+              baru) & "kandidat perlu perbaikan" (SUDAH dapat impresi tapi 0 klik - sinyal
+              judul/meta description kurang menarik utk di-klik, beda dari artikel yang
+              memang belum pernah muncul di pencarian sama sekali). */}
+          {gsc.articles && gsc.articles.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-ink/10 grid md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mb-2">
+                  🏆 Performa Terbaik
+                </p>
+                {gsc.articles.filter((a) => a.clicks > 0).length === 0 ? (
+                  <p className="text-xs text-teal-deep/50">Belum ada artikel yang dapat klik.</p>
+                ) : (
+                  <ol className="space-y-1.5">
+                    {gsc.articles.filter((a) => a.clicks > 0).slice(0, 5).map((a, i) => (
+                      <li key={a.slug} className="flex items-center gap-2 text-sm">
+                        <span className="w-4 text-right text-teal-deep/40 font-mono text-xs shrink-0">{i + 1}.</span>
+                        <span className="flex-1 text-teal-deep truncate">{a.title}</span>
+                        <span className="text-xs font-semibold text-leaf shrink-0">{a.clicks} klik</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mb-2">
+                  ⚠️ Kandidat Perlu Perbaikan
+                </p>
+                {gsc.articles.filter((a) => a.impressions > 0 && a.clicks === 0).length === 0 ? (
+                  <p className="text-xs text-teal-deep/50">Tidak ada - semua artikel yang dapat impresi juga dapat klik.</p>
+                ) : (
+                  <ol className="space-y-1.5">
+                    {gsc.articles.filter((a) => a.impressions > 0 && a.clicks === 0)
+                      .sort((a, b) => b.impressions - a.impressions).slice(0, 5).map((a, i) => (
+                      <li key={a.slug} className="flex items-center gap-2 text-sm" title="Sudah tampil di pencarian Google tapi belum ada yang klik - coba perbaiki judul/deskripsi">
+                        <span className="w-4 text-right text-teal-deep/40 font-mono text-xs shrink-0">{i + 1}.</span>
+                        <span className="flex-1 text-teal-deep truncate">{a.title}</span>
+                        <span className="text-xs font-semibold text-amber-600 shrink-0">{a.impressions} impresi, 0 klik</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -158,6 +209,38 @@ export default function CmsBlog() {
                 }`}>
                   {k.priority}
                 </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {dilewati && dilewati.items.length > 0 && (
+        <div className="bg-paper rounded-2xl border border-ink/10 p-5 mb-6" data-testid="seo-agent-dilewati">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">
+              ⚠️ Keyword Dilewati Otomatis (Risiko Cannibalization)
+            </p>
+            <p className="text-xs text-teal-deep/60">{dilewati.total} keyword</p>
+          </div>
+          <p className="text-xs text-teal-deep/50 mb-3">
+            Keyword ini di-skip otomatis karena topiknya dianggap terlalu mirip artikel yang
+            sudah ditulis (cek sesama cluster). Review manual kalau menurutmu sebenarnya beda
+            angle - keyword bisa direset ke "belum_dibuat" lewat database kalau perlu ditulis.
+          </p>
+          <ol className="space-y-2">
+            {dilewati.items.slice(0, 8).map((k, i) => (
+              <li key={k.keyword} className="flex items-start gap-3 text-sm">
+                <span className="w-5 text-right text-teal-deep/40 font-mono text-xs shrink-0 mt-0.5">{i + 1}.</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-teal-deep font-medium truncate">{k.keyword}</span>
+                    <span className="text-xs text-teal-deep/60 shrink-0">{k.cluster}</span>
+                  </div>
+                  {k.cannibalization_note && (
+                    <p className="text-xs text-teal-deep/50 truncate" title={k.cannibalization_note}>{k.cannibalization_note}</p>
+                  )}
+                </div>
               </li>
             ))}
           </ol>

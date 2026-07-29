@@ -480,6 +480,22 @@ async def admin_seo_agent_queue(
     return {"total_belum_dibuat": total_belum_dibuat, "next_up": pool[:limit]}
 
 
+@api_router.get("/admin/seo-agent/dilewati")
+async def admin_seo_agent_dilewati(
+    limit: int = 20, _: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin),
+):
+    """Keyword yang OTOMATIS di-skip krn dianggap cannibalize topik yang sudah ditulis
+    (2026-07-29, permintaan user - tampil di dashboard CMS supaya staf bisa review manual,
+    bukan diam-diam hilang tanpa jejak). Diurutkan dari yang paling baru di-skip - keyword
+    yang lama biasanya sudah pernah ditinjau."""
+    docs = await db.seo_keywords.find(
+        {"site": site, "status": "dilewati_mirip"},
+        {"_id": 0, "keyword": 1, "cluster": 1, "priority": 1, "cannibalization_note": 1, "updated_at": 1},
+    ).sort("updated_at", -1).to_list(limit)
+    total = await db.seo_keywords.count_documents({"site": site, "status": "dilewati_mirip"})
+    return {"total": total, "items": docs}
+
+
 @api_router.get("/admin/gsc/summary")
 async def admin_gsc_summary(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     """Analytics Dashboard (2026-07-28) - performa artikel dari Google Search Console
