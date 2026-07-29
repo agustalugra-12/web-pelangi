@@ -59,6 +59,18 @@ export default function BlogDetail() {
       <h1 className="font-display text-4xl md:text-5xl text-teal-deep leading-tight mt-2">{pick(post, "title")}</h1>
       <p className="mt-3 text-sm text-teal-deep/60">
         {new Date(post.created_at).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}
+        {/* "Terakhir diperbarui" (2026-07-29, Editorial Standard v2) - sinyal freshness/EEAT
+            nyata utk PEMBACA, sebelumnya updated_at cuma ada di JSON-LD (dateModified) utk
+            crawler, manusia tidak pernah lihat. Cuma tampil kalau BENAR-BENAR pernah direvisi
+            (selisih >1 hari dari created_at) - artikel yang belum pernah diperbarui punya
+            updated_at nyaris sama dgn created_at (beda hitungan detik saat insert), jangan
+            tampilkan "diperbarui" yang menyesatkan utk itu. */}
+        {post.updated_at && (new Date(post.updated_at) - new Date(post.created_at)) > 86400000 && (
+          <span className="text-teal-deep/45">
+            {" · "}
+            {lang === "en" ? "Updated" : "Diperbarui"} {new Date(post.updated_at).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}
+          </span>
+        )}
       </p>
       {post.cover_image && (
         <img

@@ -410,6 +410,11 @@ DEFAULT_EDITORIAL_RULES = [
     "Selalu selipkan 1-2 link internal natural ke artikel lain yang relevan",
     "Hindari judul/pembuka clickbait - klaim harus bisa dibuktikan isi artikel",
     "Gunakan tone konsisten: hangat, jujur, seperti penulis travel berpengalaman - bukan iklan",
+    # Ditambahkan 2026-07-29 (Editorial Standard v2, permintaan user)
+    "Artikel harus menjawab pertanyaan lanjutan yang wajar muncul - pembaca tidak perlu kembali ke Google cari info tambahan",
+    "Prioritaskan detail lokal spesifik dari data asli (nama fasilitas, kebijakan, jarak/rute asli) - hindari generalisasi umum yang bisa ditemukan di web manapun",
+    "Cuaca/iklim: hanya pola umum sepanjang tahun, JANGAN tulis ramalan cuaca atau kondisi hari ini",
+    "Sisipkan itinerary/budget/checklist/waktu terbaik berkunjung HANYA kalau relevan dgn keyword-nya, jangan dipaksakan ke semua artikel",
 ]
 
 
@@ -699,7 +704,27 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "kenyamanan baca.\n\n"
         "SEBELUM MENJAWAB, cek draftmu sendiri: apakah ada kalimat yang berulang-ulang? Apakah "
         "pembuka menarik & penutup memberi nilai tambah (bukan cuma ringkasan)? Apakah tiap sub-judul "
-        "benar-benar menjawab pertanyaan yang relevan? Kalau ada yang kurang, revisi dulu sebelum kirim."
+        "benar-benar menjawab pertanyaan yang relevan? Kalau ada yang kurang, revisi dulu sebelum kirim.\n\n"
+        # Editorial Standard v2 (2026-07-29, permintaan user) - target artikel jadi "halaman
+        # referensi terbaik utk topik ini", bukan sekadar berhasil masuk index Google. Ditulis
+        # sbg MENU pilihan (bukan wajib semua di tiap artikel) krn tidak semua elemen relevan
+        # utk tiap keyword - mis. keyword "harga kamar cottage" tidak butuh itinerary, tapi
+        # keyword "liburan ke bedugul" cocok. Model yang menilai relevansi per keyword, bukan
+        # dipaksa checklist kaku (konsisten dgn ALUR yg sudah ada: PERSIS 6 sub-judul, topiknya
+        # model yang pilih - menu ini cuma memperluas PILIHAN topik yg tersedia).
+        "NILAI UNIK (pilih yang RELEVAN dgn keyword ini, isi ke 1-2 dari 6 sub-judul, JANGAN "
+        "paksakan semua ke satu artikel): itinerary/contoh rencana kunjungan singkat, estimasi "
+        "budget total (kamar + makan + aktivitas, dari DATA ASLI - jangan mengarang harga "
+        "makanan/aktivitas yang tidak ada di data), checklist barang bawaan, waktu terbaik "
+        "berkunjung (musim/jam/hari), perbandingan (mis. tipe kamar) KALAU keyword memang "
+        "membandingkan sesuatu. Soal CUACA: HANYA pola iklim UMUM yang selalu benar sepanjang "
+        "tahun (mis. \"Bedugul dataran tinggi, umumnya sejuk & kadang berkabut\") - JANGAN "
+        "PERNAH menulis cuaca/suhu HARI INI atau ramalan cuaca, itu akan langsung basi & bisa "
+        "salah total begitu dibaca kapan pun setelah ditulis.\n\n"
+        "PENGALAMAN LOKAL SPESIFIK: hindari generalisasi yang bisa ditemukan di web mana pun "
+        "(\"Bali terkenal dengan keindahan alamnya\") - prioritaskan detail SPESIFIK dari DATA "
+        "ASLI (nama fasilitas asli, kebijakan asli, jarak/rute asli) yang membuat artikel ini "
+        "beda dari kompetitor, bukan cuma versi lain dari artikel yang sama."
     )
     editorial_rules = await _fetch_editorial_rules()
     if editorial_rules:

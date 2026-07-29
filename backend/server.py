@@ -512,6 +512,12 @@ DEFAULT_EDITORIAL_RULES = [
     "Selalu selipkan 1-2 link internal natural ke artikel lain yang relevan",
     "Hindari judul/pembuka clickbait - klaim harus bisa dibuktikan isi artikel",
     "Gunakan tone konsisten: hangat, jujur, seperti penulis travel berpengalaman - bukan iklan",
+    # Ditambahkan 2026-07-29 (Editorial Standard v2, permintaan user) - SAMA PERSIS dgn
+    # DEFAULT_EDITORIAL_RULES di scripts/seo_agent.py, jangan diubah salah satu tanpa yang lain.
+    "Artikel harus menjawab pertanyaan lanjutan yang wajar muncul - pembaca tidak perlu kembali ke Google cari info tambahan",
+    "Prioritaskan detail lokal spesifik dari data asli (nama fasilitas, kebijakan, jarak/rute asli) - hindari generalisasi umum yang bisa ditemukan di web manapun",
+    "Cuaca/iklim: hanya pola umum sepanjang tahun, JANGAN tulis ramalan cuaca atau kondisi hari ini",
+    "Sisipkan itinerary/budget/checklist/waktu terbaik berkunjung HANYA kalau relevan dgn keyword-nya, jangan dipaksakan ke semua artikel",
 ]
 
 
