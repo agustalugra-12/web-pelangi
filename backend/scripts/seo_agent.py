@@ -85,6 +85,64 @@ CLUSTER_CATEGORY = {
     "Booking": "Tips", "Long Tail": "General",
 }
 
+# Angle per cluster (2026-07-29, revisi manual user - akar masalah "3 artikel isinya hampir
+# identik": SEBELUM ini, SATU system prompt yang SAMA dipakai utk semua cluster, jadi model
+# cenderung menjelaskan ULANG semua kebijakan/fasilitas/pembayaran di SETIAP artikel apa pun
+# angle-nya - Google anggap ini duplicate content, bisa menurunkan ranking SEMUA artikel
+# terkait sekaligus. Fix-nya: tiap cluster dikasih FOKUS BERBEDA & instruksi eksplisit apa
+# yang HARUS diringkas/dihindari, supaya tiap artikel benar-benar punya angle sendiri,
+# bukan versi lain dari artikel yang sama.
+CLUSTER_ANGLE = {
+    "Utama": (
+        "Fokus GAMBARAN UMUM properti - siapa yang paling cocok menginap di sini & kenapa. "
+        "JANGAN uraikan SEMUA kebijakan (parkir/pembayaran/kebijakan anak) panjang lebar - "
+        "itu bikin artikel jadi mirip artikel cluster lain. Cukup 1 kalimat singkat per "
+        "kebijakan kalau memang perlu disebut, sisanya cukup di FAQ."
+    ),
+    "Harga": (
+        "Fokus RINCIAN HARGA & value-for-money - bandingkan opsi (Day Use vs Menginap, "
+        "dengan/tanpa sarapan), estimasi budget total (kamar + perkiraan makan/aktivitas dari "
+        "DATA ASLI saja, jangan mengarang harga di luar itu), kenapa harganya sepadan."
+    ),
+    "Lokasi Wisata": (
+        "Fokus LOKASI & JARAK ke destinasi wisata spesifik di keyword - beri estimasi jarak/"
+        "waktu tempuh dari properti (kalau ada di DATA ASLI, kalau tidak ada JANGAN mengarang "
+        "angka pasti - tulis 'dekat'/'tidak jauh' saja), mini itinerary 1 hari kalau relevan, "
+        "tips kunjungi destinasi itu (waktu terbaik, hindari antrean). Deskripsi kamar CUKUP "
+        "1-2 kalimat, jangan diuraikan panjang seperti artikel ttg kamar itu sendiri."
+    ),
+    "View": (
+        "Fokus PENGALAMAN VISUAL/SENSORIK - apa yang benar-benar dilihat/dirasakan dari kamar "
+        "atau teras (kabut pagi, hijau pegunungan, dst), bukan sekadar daftar fasilitas."
+    ),
+    "Keluarga": (
+        "Fokus LOGISTIK KELUARGA - kebijakan anak/extra bed, keamanan, aktivitas ramah anak. "
+        "JANGAN sisipkan konten romantis/honeymoon di sini - beda cluster, beda pembaca."
+    ),
+    "Pasangan": (
+        "Fokus PENGALAMAN ROMANTIS utk PASANGAN - suasana intim, aktivitas berdua, momen "
+        "berkesan. JANGAN sebut kebijakan anak/extra bed SAMA SEKALI (tidak relevan utk "
+        "honeymoon/pasangan) kecuali keyword eksplisit menyebut anak."
+    ),
+    "Fasilitas": (
+        "Fokus DETAIL FASILITAS spesifik yang disebut keyword - jelaskan KENAPA fasilitas itu "
+        "berguna dgn detail konkret/sensorik, bukan cuma menyalin daftar fasilitas mentah."
+    ),
+    "Aktivitas": (
+        "Fokus AKTIVITAS yang bisa dilakukan tamu (di properti atau sekitar) - detail konkret "
+        "ttg aktivitas itu sendiri, bukan deskripsi umum penginapan."
+    ),
+    "Booking": (
+        "Fokus PROSES BOOKING & PEMBAYARAN - cara pesan, metode bayar, kebijakan DP/pelunasan, "
+        "kebijakan pembatalan. Cluster INI yang wajar menjelaskan detail pembayaran/kebijakan "
+        "secara lengkap (cluster lain cukup singkat + rujuk FAQ)."
+    ),
+    "Long Tail": (
+        "Keyword ini sangat spesifik - jawab LANGSUNG ke inti pertanyaannya di paragraf "
+        "pembuka, jangan muter-muter dgn info umum properti dulu."
+    ),
+}
+
 # Query pencarian Pexels (2026-07-28) - Pexels cuma cari bagus dalam Bahasa Inggris, jadi
 # dipetakan per cluster (bukan pakai keyword Indonesia mentah) - beberapa varian per cluster
 # supaya tidak selalu dapat foto yang sama persis utk cluster yang sama.
@@ -377,23 +435,53 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
 # ---------------------------------------------------------------------------
 # 2. Grounding - fakta ASLI dari CMS, supaya Writer Agent tidak mengarang
 # ---------------------------------------------------------------------------
+# Fakta area Bedugul (2026-07-29, permintaan user via revisi manual - "data spesifik yang
+# membuat artikel terasa kredibel") - DIVERIFIKASI via web search 2026-07-29 ke beberapa
+# sumber (Wikipedia + situs travel Bali), BUKAN ditebak/dihafal dari training data. Angka
+# dibulatkan ke rentang yang konsisten di semua sumber (bukan angka presisi palsu). SAMA
+# utk kedua situs (fakta geografis area, bukan klaim spesifik milik properti).
+BEDUGUL_FACTS = (
+    "Ketinggian kawasan Bedugul: sekitar 1.200-1.500 mdpl. Suhu udara rata-rata: sekitar "
+    "17-24°C (lebih sejuk dibanding Bali selatan). Jarak dari Bandara Ngurah Rai: sekitar "
+    "63-65 km, kira-kira 1,5-2 jam berkendara tergantung lalu lintas."
+)
+# Jumlah kamar FISIK total (2026-07-29, dicek manual ke database PMS - CMS web-pelangi
+# sendiri cuma simpan jumlah TIPE kamar (2 utk pelangi), bukan jumlah kamar fisik) - update
+# manual angka ini kalau jumlah kamar di PMS berubah (jarang, bukan data yang perlu live-sync).
+SITE_ROOM_COUNT = {"pelangi": 18, "harmoni": 5}
+
+
 async def _fetch_site_facts(site: str) -> str:
     site_doc = (await db.site_content.find_one({"site": site, "type": "site"}) or {}).get("data", {})
     rooms_doc = (await db.site_content.find_one({"site": site, "type": "rooms"}) or {}).get("data", [])
     faqs_doc = (await db.site_content.find_one({"site": site, "type": "faqs"}) or {}).get("data", [])
+    testimonials_doc = (await db.site_content.find_one({"site": site, "type": "testimonials"}) or {}).get("data", [])
 
     lines = [
         f"Nama brand: {site_doc.get('brand', '')}",
         f"Alamat: {site_doc.get('address', '')}",
         f"WhatsApp: {site_doc.get('whatsappDisplay', '')}",
+        f"Total kamar tersedia: {SITE_ROOM_COUNT.get(site, '-')} kamar",
+        f"Fakta area Bedugul (boleh dikutip - ini fakta geografis umum area, BUKAN klaim "
+        f"khusus milik properti ini): {BEDUGUL_FACTS}",
     ]
     for r in rooms_doc:
+        # Day Use & Menginap SENGAJA dipisah (2026-07-29, revisi manual user menemukan Day
+        # Use disebut-sebut di artikel tapi TIDAK PERNAH dijelaskan harga/jamnya krn memang
+        # tidak pernah ada di data ini sebelumnya) - priceFromDayUse baru ditambahkan ke CMS.
         lines.append(
             f"Tipe kamar: {r.get('name')} | ukuran {r.get('size')} | kapasitas {r.get('capacity')} | "
-            f"harga mulai {r.get('priceFrom')} | fasilitas: {', '.join(r.get('facilities', []))}"
+            f"harga Menginap mulai {r.get('priceFrom')}/malam | harga Day Use (6 jam) mulai "
+            f"{r.get('priceFromDayUse', '-')} | fasilitas: {', '.join(r.get('facilities', []))}"
         )
     for f in faqs_doc:
         lines.append(f"FAQ - {f.get('q')}: {f.get('a')}")
+    if testimonials_doc:
+        # 1 testimoni ASLI (bukan dikarang) disediakan sbg opsi kutipan - BUKAN wajib dipakai
+        # tiap artikel (lihat instruksi system prompt: "kutip HANYA kalau relevan & JANGAN
+        # PERNAH karang testimoni baru").
+        t = testimonials_doc[0]
+        lines.append(f"Testimoni tamu asli (boleh dikutip kalau relevan): \"{t.get('text')}\" - {t.get('name')}, {t.get('origin')}")
     return "\n".join(lines)
 
 
@@ -695,13 +783,18 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "Kalau ragu suatu fakta, jangan disebutkan sama sekali daripada mengarang. Jangan mengarang "
         "pengalaman pribadi/kunjungan yang tidak pernah terjadi.\n\n"
         "GAYA TULISAN: Tulis natural, variasikan panjang kalimat & struktur paragraf (jangan semua "
-        "paragraf polanya sama), gunakan kalimat aktif, bahasa yang mudah dipahami, sapaan 'Kakak'. "
-        "Paragraf pendek (2-5 kalimat), setiap paragraf punya tujuan jelas - jangan bertele-tele atau "
-        "mengulang poin yang sama. HINDARI frasa generik/klise seperti 'di era digital ini', 'tidak "
-        "dapat dipungkiri', 'perlu diketahui bahwa', 'pada dasarnya', 'kesimpulannya', atau daftar "
-        "'pertama...kedua...selain itu...oleh karena itu' yang kaku - pakai transisi yang mengalir "
-        "sesuai konteks, bukan template. Tidak keyword stuffing - keyword masuk natural, prioritaskan "
-        "kenyamanan baca.\n\n"
+        "paragraf polanya sama), gunakan kalimat aktif, bahasa yang mudah dipahami. Sapaan 'Kakak' "
+        "MAKSIMAL 5-7 kali di SELURUH artikel (2026-07-29, revisi manual user - sebelumnya muncul "
+        ">15 kali/artikel, terasa dipaksakan) - variasikan dgn 'Anda'/'tamu'/langsung tanpa sapaan "
+        "di kalimat lain. Paragraf pendek (2-5 kalimat), setiap paragraf punya tujuan jelas - jangan "
+        "bertele-tele atau mengulang poin yang sama. HINDARI frasa generik/klise seperti 'di era "
+        "digital ini', 'tidak dapat dipungkiri', 'perlu diketahui bahwa', 'pada dasarnya', "
+        "'kesimpulannya', 'udara sejuk yang menyegarkan', 'nyaman dan menyenangkan', 'kenyamanan "
+        "maksimal', 'tanpa harus khawatir', atau daftar 'pertama...kedua...selain itu...oleh karena "
+        "itu' yang kaku - pakai transisi yang mengalir sesuai konteks. GANTI pujian generik dgn "
+        "detail SPESIFIK: alih-alih 'udara sejuk yang menyegarkan', tulis mis. 'suhu 17-24°C yang "
+        "bikin selimut terasa pas di malam hari' (pakai angka dari DATA ASLI/fakta area kalau ada). "
+        "Tidak keyword stuffing - keyword masuk natural, prioritaskan kenyamanan baca.\n\n"
         "SEBELUM MENJAWAB, cek draftmu sendiri: apakah ada kalimat yang berulang-ulang? Apakah "
         "pembuka menarik & penutup memberi nilai tambah (bukan cuma ringkasan)? Apakah tiap sub-judul "
         "benar-benar menjawab pertanyaan yang relevan? Kalau ada yang kurang, revisi dulu sebelum kirim.\n\n"
@@ -724,7 +817,33 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "PENGALAMAN LOKAL SPESIFIK: hindari generalisasi yang bisa ditemukan di web mana pun "
         "(\"Bali terkenal dengan keindahan alamnya\") - prioritaskan detail SPESIFIK dari DATA "
         "ASLI (nama fasilitas asli, kebijakan asli, jarak/rute asli) yang membuat artikel ini "
-        "beda dari kompetitor, bukan cuma versi lain dari artikel yang sama."
+        "beda dari kompetitor, bukan cuma versi lain dari artikel yang sama.\n\n"
+        # Anti-duplicate-content (2026-07-29, revisi manual user - masalah TERBESAR yang
+        # ditemukan: 3 artikel isinya hampir identik krn semua menjelaskan ulang SEMUA
+        # kebijakan/fasilitas/pembayaran dgn kalimat beda tipis - Google anggap ini duplicate
+        # content, bisa menurunkan ranking SEMUA artikel terkait sekaligus). ANGLE_BLOCK di
+        # bawah (diisi per cluster keyword ini) memberi FOKUS BERBEDA tiap cluster - WAJIB
+        # diikuti, bukan cuma saran.
+        f"FOKUS ARTIKEL INI (WAJIB diikuti, cluster \"{keyword_doc['cluster']}\"): "
+        f"{CLUSTER_ANGLE.get(keyword_doc['cluster'], '')}\n\n"
+        + ("" if keyword_doc["cluster"] in ("Booking", "Keluarga") else (
+            "ATURAN TAMBAHAN krn cluster ini BUKAN Booking/Keluarga: JANGAN buat sub-judul apa "
+            "pun yang isinya kebijakan/fasilitas umum (contoh judul yang DILARANG: 'Kemudahan "
+            "Akses dan Fasilitas Pendukung Lainnya', 'Kebijakan Menginap', 'Fasilitas Pendukung', "
+            "atau sejenisnya yang membahas parkir/jam check-in/check-out/kebijakan anak/metode "
+            "pembayaran). Kalau salah satu topik itu MEMANG perlu disebut, selipkan sebagai "
+            "MAKSIMAL 1 kalimat pendek di DALAM salah satu sub-judul FOKUS ARTIKEL (bukan "
+            "sub-judul terpisah) - keenam sub-judul WAJIB seluruhnya tentang FOKUS ARTIKEL di "
+            "atas, BUKAN kebijakan/fasilitas umum. Ini krn menjelaskan ulang kebijakan yang sama "
+            "persis di SETIAP artikel adalah akar masalah duplicate content nyata yang harus "
+            "dihindari.\n\n"
+        )) +
+        "CTA: tutup artikel dengan ajakan SPESIFIK & natural (mis. \"Tanya langsung ketersediaan "
+        "kamar untuk tanggal liburan Kakak\"), BUKAN kalimat generik seperti \"Chat sekarang lewat "
+        "WhatsApp\" saja.\n\n"
+        "TESTIMONI: kalau ada \"Testimoni tamu asli\" di DATA ASLI DAN relevan dgn topik artikel "
+        "ini, boleh dikutip singkat sbg social proof - JANGAN PERNAH mengarang testimoni baru yang "
+        "tidak ada di DATA ASLI."
     )
     editorial_rules = await _fetch_editorial_rules()
     if editorial_rules:
@@ -766,7 +885,7 @@ Format balasan HARUS JSON valid dengan struktur persis ini (tanpa markdown code 
 {{
   "title": "judul menarik & mengandung keyword, maks 70 karakter",
   "excerpt": "ringkasan 1-2 kalimat, maks 160 karakter",
-  "content": "isi artikel WAJIB 900-1300 kata (ini batas keras, hitung sendiri sebelum menjawab - kalau draftmu kurang dari 900 kata, perpanjang tiap bagian dengan detail/contoh lebih dulu sebelum dikirim). Struktur WAJIB: 1 paragraf pembuka (~80-120 kata), lalu PERSIS 6 sub-judul **Sub Judul** (masing-masing paragraf tersendiri, tiap sub-judul diikuti isi 100-150 kata - JANGAN ada sub-judul dengan isi di bawah 100 kata), lalu WAJIB 4 FAQ di bagian akhir, ditutup 1 paragraf penutup singkat. Paragraf dipisah \\n\\n. UNTUK FAQ: kalau di atas ada daftar 'PERTANYAAN NYATA dari kompetitor', UTAMAKAN pertanyaan itu (boleh diparafrase, wajib tetap bisa dijawab jujur dari DATA ASLI) - baru tambahkan pertanyaan relevan lain kalau kurang dari 4 atau tidak ada yang cocok. ATURAN FORMAT FAQ (WAJIB DIIKUTI PERSIS, JANGAN pakai kata literal 'Pertanyaan' sebagai label, JANGAN pakai *tanda-bintang-tunggal* untuk pertanyaan): tulis TEKS PERTANYAAN ASLI langsung di dalam **dua bintang**, contoh PERSIS begini -> **Apakah sarapan sudah termasuk di kamar ini?**\\n\\nYa, sarapan sudah termasuk untuk 2 orang di semua tipe kamar. <- lihat, pertanyaan aslinya ADA di dalam ** **, bukan diganti kata 'Pertanyaan' lalu pertanyaan aslinya ditaruh terpisah.",
+  "content": "isi artikel WAJIB 900-1300 kata (ini batas keras, hitung sendiri sebelum menjawab - kalau draftmu kurang dari 900 kata, perpanjang tiap bagian dengan detail/contoh lebih dulu sebelum dikirim). Struktur WAJIB: 1 paragraf pembuka (~80-120 kata), lalu PERSIS 6 sub-judul **Sub Judul** (masing-masing paragraf tersendiri, tiap sub-judul diikuti isi 100-150 kata - JANGAN ada sub-judul dengan isi di bawah 100 kata), lalu WAJIB 4 FAQ di bagian akhir, ditutup 1 paragraf penutup singkat. Paragraf dipisah \\n\\n. UNTUK FAQ: kalau di atas ada daftar 'PERTANYAAN NYATA dari kompetitor', UTAMAKAN pertanyaan itu (boleh diparafrase, wajib tetap bisa dijawab jujur dari DATA ASLI) - baru tambahkan pertanyaan relevan lain kalau kurang dari 4 atau tidak ada yang cocok. KHUSUS kalau cluster keyword ini BUKAN Booking/Keluarga: dari 4 FAQ, MAKSIMAL 1 boleh soal kebijakan umum (check-in/check-out/parkir/anak/pembayaran) - MINIMAL 3 FAQ WAJIB pertanyaan yang relevan dgn FOKUS ARTIKEL INI (lihat instruksi FOKUS ARTIKEL di atas), supaya bagian FAQ tidak jadi salinan generik yang sama persis di semua artikel - ini kelanjutan aturan anti-duplicate-content yang sama. ATURAN FORMAT FAQ (WAJIB DIIKUTI PERSIS, JANGAN pakai kata literal 'Pertanyaan' sebagai label, JANGAN pakai *tanda-bintang-tunggal* untuk pertanyaan): tulis TEKS PERTANYAAN ASLI langsung di dalam **dua bintang**, contoh PERSIS begini -> **Apakah sarapan sudah termasuk di kamar ini?**\\n\\nYa, sarapan sudah termasuk untuk 2 orang di semua tipe kamar. <- lihat, pertanyaan aslinya ADA di dalam ** **, bukan diganti kata 'Pertanyaan' lalu pertanyaan aslinya ditaruh terpisah.",
   "tags": ["tag1", "tag2", "tag3"]
 }}"""
 
