@@ -11,26 +11,44 @@ export default function CmsBlog() {
   const [gsc, setGsc] = useState(null);
   const [queue, setQueue] = useState(null);
   const [dilewati, setDilewati] = useState(null);
+  const [rules, setRules] = useState(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [rulesSaving, setRulesSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data }, { data: statsData }, { data: gscData }, { data: queueData }, { data: dilewatiData }] = await Promise.all([
+      const [{ data }, { data: statsData }, { data: gscData }, { data: queueData }, { data: dilewatiData }, { data: rulesData }] = await Promise.all([
         api.get("/admin/blog"),
         api.get("/admin/seo-agent/stats").catch(() => ({ data: null })),
         api.get("/admin/gsc/summary").catch(() => ({ data: null })),
         api.get("/admin/seo-agent/queue").catch(() => ({ data: null })),
         api.get("/admin/seo-agent/dilewati").catch(() => ({ data: null })),
+        api.get("/admin/editorial-rules").catch(() => ({ data: null })),
       ]);
       setPosts(data);
       setStats(statsData);
       setGsc(gscData);
       setQueue(queueData);
       setDilewati(dilewatiData);
+      setRules(rulesData?.rules || []);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveRules = async (nextRules) => {
+    setRulesSaving(true);
+    try {
+      const { data } = await api.put("/admin/editorial-rules", { rules: nextRules });
+      setRules(data.rules);
+      toast.success("Aturan editorial disimpan");
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setRulesSaving(false);
     }
   };
 
@@ -244,6 +262,66 @@ export default function CmsBlog() {
               </li>
             ))}
           </ol>
+        </div>
+      )}
+
+      {rules && (
+        <div className="bg-paper rounded-2xl border border-ink/10 p-5 mb-6" data-testid="editorial-rules">
+          <button
+            type="button"
+            className="w-full flex items-center justify-between"
+            onClick={() => setRulesOpen((o) => !o)}
+          >
+            <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">
+              📋 Aturan Editorial AI ({rules.length})
+            </p>
+            <span className="text-xs text-teal-deep/60">{rulesOpen ? "Tutup ▲" : "Buka ▼"}</span>
+          </button>
+          {rulesOpen && (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-teal-deep/50 mb-2">
+                Aturan ini disuntikkan ke prompt AI setiap kali menulis artikel baru - edit di
+                sini, tidak perlu ubah kode.
+              </p>
+              {rules.map((r, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    className="flex-1 text-sm border border-ink/15 rounded-lg px-3 py-1.5 bg-white"
+                    value={r}
+                    onChange={(e) => {
+                      const next = [...rules];
+                      next[i] = e.target.value;
+                      setRules(next);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="text-xs text-red-600 shrink-0"
+                    onClick={() => setRules(rules.filter((_, k) => k !== i))}
+                  >
+                    Hapus
+                  </button>
+                </div>
+              ))}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-teal-deep border border-teal-deep/20 rounded-full px-3 py-1"
+                  onClick={() => setRules([...rules, ""])}
+                >
+                  + Tambah Aturan
+                </button>
+                <button
+                  type="button"
+                  disabled={rulesSaving}
+                  className="text-xs font-semibold text-white bg-leaf rounded-full px-3 py-1 disabled:opacity-50"
+                  onClick={() => saveRules(rules)}
+                >
+                  {rulesSaving ? "Menyimpan..." : "Simpan"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

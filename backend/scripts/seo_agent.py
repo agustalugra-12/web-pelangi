@@ -36,7 +36,7 @@ import os
 import re
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Optional
@@ -249,19 +249,61 @@ async def _cluster_demand_scores(site: str) -> dict:
     return scores
 
 
+# Seasonal Planner (2026-07-29, permintaan user) - kalender resmi hari libur/cuti bersama
+# Indonesia 2026 (dicek via web search ke sumber berita asli tanggal 2026-07-29, BUKAN
+# ditebak/dihafal dari training data - libur nasional bisa bergeser tiap tahun krn hilal/
+# SKB 3 menteri). PENTING: kalender ini WAJIB diperbarui tiap tahun (angka tahun di nama
+# variabel sengaja eksplisit 2026 supaya ketahuan kalau lupa update). Window "boost" =
+# 21 hari SEBELUM tanggal mulai musim (bukan selama musimnya) - tujuannya artikel sudah
+# terbit & ter-index Google SEBELUM volume pencarian naik, bukan pas musimnya sudah lewat.
+SEASONAL_WINDOWS_2026 = [
+    (date(2026, 1, 1), date(2026, 1, 1), "Tahun Baru Masehi"),
+    (date(2026, 1, 29), date(2026, 1, 29), "Imlek"),
+    (date(2026, 3, 20), date(2026, 3, 24), "Nyepi + Lebaran (Idul Fitri 1447H)"),
+    (date(2026, 4, 3), date(2026, 4, 3), "Wafat Isa Almasih"),
+    (date(2026, 5, 1), date(2026, 5, 1), "Hari Buruh"),
+    (date(2026, 5, 14), date(2026, 5, 14), "Kenaikan Isa Almasih"),
+    (date(2026, 5, 26), date(2026, 5, 26), "Waisak"),
+    (date(2026, 6, 1), date(2026, 6, 1), "Hari Lahir Pancasila"),
+    (date(2026, 6, 20), date(2026, 7, 15), "Libur Sekolah Pertengahan Tahun"),
+    (date(2026, 7, 7), date(2026, 7, 7), "Idul Adha"),
+    (date(2026, 7, 27), date(2026, 7, 27), "Tahun Baru Islam"),
+    (date(2026, 8, 17), date(2026, 8, 17), "Hari Kemerdekaan RI"),
+    (date(2026, 10, 5), date(2026, 10, 5), "Maulid Nabi"),
+    (date(2026, 12, 15), date(2027, 1, 5), "Libur Natal, Tahun Baru & Libur Sekolah Akhir Tahun"),
+]
+SEASONAL_LEAD_DAYS = 21
+
+
+def _musim_mendekat(today: Optional[date] = None) -> Optional[str]:
+    """Return nama musim kalau HARI INI berada di window boost (21 hari sebelum musim
+    mulai, sampai musim itu berakhir) - None kalau sedang tidak mendekati musim apa pun."""
+    today = today or datetime.now(timezone.utc).date()
+    for start, end, label in SEASONAL_WINDOWS_2026:
+        if start - timedelta(days=SEASONAL_LEAD_DAYS) <= today <= end:
+            return label
+    return None
+
+
 async def get_next_keyword(site: str) -> dict:
     """Ambil keyword prioritas tertinggi yang statusnya 'belum_dibuat' DAN belum
     cannibalize topik yang sudah pernah ditulis. Di antara keyword dgn priority sama,
-    dahulukan cluster yang terbukti dapat impression GSC nyata (lihat
+    dahulukan (1) keyword musiman kalau lagi mendekati musim (lihat _musim_mendekat),
+    lalu (2) cluster yang terbukti dapat impression GSC nyata (lihat
     _cluster_demand_scores). Kalau pool habis (atau semua kandidat ternyata
     cannibalizing), generate keyword baru dulu (cek duplikat semantik ke keyword+judul
     artikel yang sudah ada) sebelum diambil."""
     order = {"High": 0, "Medium": 1, "Low": 2}
     cluster_scores = await _cluster_demand_scores(site)
+    musim_aktif = _musim_mendekat()
 
     async def _pick_from_pool() -> Optional[dict]:
         pool = await db.seo_keywords.find({"site": site, "status": "belum_dibuat"}).to_list(500)
-        pool.sort(key=lambda k: (order.get(k["priority"], 9), -cluster_scores.get(k.get("cluster"), 0)))
+        pool.sort(key=lambda k: (
+            order.get(k["priority"], 9),
+            0 if (musim_aktif and k.get("musiman")) else 1,
+            -cluster_scores.get(k.get("cluster"), 0),
+        ))
         now = datetime.now(timezone.utc).isoformat()
         for kw_doc in pool:
             dupe_kw = await _keyword_cannibalizes_existing(site, kw_doc["keyword"], kw_doc["cluster"])
@@ -353,6 +395,27 @@ async def _fetch_site_facts(site: str) -> str:
     for f in faqs_doc:
         lines.append(f"FAQ - {f.get('q')}: {f.get('a')}")
     return "\n".join(lines)
+
+
+# Editorial Knowledge Base (2026-07-29, permintaan user) - aturan editorial permanen yang
+# bisa diedit staf via CMS (db.editorial_rules, 1 dokumen shared - bukan per-situs, krn
+# standar sama utk Pelangi & Harmoni), BUKAN cuma hardcode di system prompt. Meniru pola
+# guardrail_rules yang sudah terbukti jalan di ai-chat-bot (server.py punya endpoint
+# GET/PUT-nya jg, seed default SAMA PERSIS - satu sumber kebenaran, jangan diubah salah
+# satu tanpa yang lain).
+DEFAULT_EDITORIAL_RULES = [
+    "Selalu sertakan link Google Maps kalau relevan (lokasi/arah ke tempat)",
+    "Selalu tampilkan harga dalam Rupiah kalau datanya tersedia, jangan pernah mengarang angka",
+    "Selalu tutup artikel dengan bagian FAQ",
+    "Selalu selipkan 1-2 link internal natural ke artikel lain yang relevan",
+    "Hindari judul/pembuka clickbait - klaim harus bisa dibuktikan isi artikel",
+    "Gunakan tone konsisten: hangat, jujur, seperti penulis travel berpengalaman - bukan iklan",
+]
+
+
+async def _fetch_editorial_rules() -> list:
+    doc = await db.editorial_rules.find_one({"_id": "singleton"})
+    return doc["rules"] if doc else DEFAULT_EDITORIAL_RULES
 
 
 # ---------------------------------------------------------------------------
@@ -585,6 +648,9 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "pembuka menarik & penutup memberi nilai tambah (bukan cuma ringkasan)? Apakah tiap sub-judul "
         "benar-benar menjawab pertanyaan yang relevan? Kalau ada yang kurang, revisi dulu sebelum kirim."
     )
+    editorial_rules = await _fetch_editorial_rules()
+    if editorial_rules:
+        system += "\n\nATURAN EDITORIAL TAMBAHAN (wajib dipatuhi):\n" + "\n".join(f"- {r}" for r in editorial_rules)
     competitor_block = (
         f"\n\nANALISIS KOMPETITOR (dari hasil pencarian Google nyata):\n{competitor_result['prompt_text']}"
         if competitor_result else ""

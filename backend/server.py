@@ -496,6 +496,36 @@ async def admin_seo_agent_dilewati(
     return {"total": total, "items": docs}
 
 
+# Editorial Knowledge Base (2026-07-29, permintaan user - "aturan editorial jadi knowledge
+# system, bukan cuma prompt"). Meniru persis pola guardrail_rules yang SUDAH ada & terbukti
+# jalan di ai-chat-bot (list string di 1 dokumen, diedit staf via textarea, disuntik ke
+# system prompt Writer Agent) - bukan bangun sistem rules-engine baru dari nol. Satu
+# dokumen SHARED (bukan per-situs) krn standar editorial memang sama utk Pelangi & Harmoni.
+DEFAULT_EDITORIAL_RULES = [
+    "Selalu sertakan link Google Maps kalau relevan (lokasi/arah ke tempat)",
+    "Selalu tampilkan harga dalam Rupiah kalau datanya tersedia, jangan pernah mengarang angka",
+    "Selalu tutup artikel dengan bagian FAQ",
+    "Selalu selipkan 1-2 link internal natural ke artikel lain yang relevan",
+    "Hindari judul/pembuka clickbait - klaim harus bisa dibuktikan isi artikel",
+    "Gunakan tone konsisten: hangat, jujur, seperti penulis travel berpengalaman - bukan iklan",
+]
+
+
+@api_router.get("/admin/editorial-rules")
+async def admin_editorial_rules_get(_: dict = Depends(get_current_user)):
+    doc = await db.editorial_rules.find_one({"_id": "singleton"})
+    return {"rules": doc["rules"] if doc else DEFAULT_EDITORIAL_RULES}
+
+
+@api_router.put("/admin/editorial-rules")
+async def admin_editorial_rules_update(body: dict, _: dict = Depends(get_current_user)):
+    rules = [r.strip() for r in (body.get("rules") or []) if r and r.strip()]
+    await db.editorial_rules.update_one(
+        {"_id": "singleton"}, {"$set": {"rules": rules}}, upsert=True,
+    )
+    return {"rules": rules}
+
+
 @api_router.get("/admin/gsc/summary")
 async def admin_gsc_summary(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     """Analytics Dashboard (2026-07-28) - performa artikel dari Google Search Console
