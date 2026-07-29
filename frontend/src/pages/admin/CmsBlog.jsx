@@ -394,6 +394,22 @@ export default function CmsBlog() {
                           Persaingan {p.competitor_analysis.tingkat_persaingan}
                         </span>
                       )}
+                      {p.intent_coverage && (
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 shrink-0 ${
+                            p.intent_coverage.skor_persen >= 80 ? "bg-leaf/15 text-leaf"
+                              : p.intent_coverage.skor_persen >= 50 ? "bg-mustard-soft/30 text-mustard-deep"
+                              : "bg-red-100 text-red-700"
+                          }`}
+                          title={
+                            p.intent_coverage.kurang.length > 0
+                              ? `Belum mencakup: ${p.intent_coverage.kurang.join(", ")}`
+                              : "Semua kategori intent tercakup"
+                          }
+                        >
+                          Intent {p.intent_coverage.skor_persen}%
+                        </span>
+                      )}
                       {p.expanded_at && (
                         <span
                           className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-leaf/15 text-leaf shrink-0"

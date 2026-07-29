@@ -938,6 +938,83 @@ def quality_check(article: dict, content_with_links: str) -> list:
     return problems
 
 
+# Intent Coverage Score (2026-07-29, roadmap AI Grow item 3) - checklist DETERMINISTIK
+# (regex/keyword), BUKAN minta LLM menilai draftnya sendiri 0-100% - itu pola "AI menilai
+# AI" yang sengaja DIHINDARI di Quality Gate sejak awal (lihat quality_check() - rule-
+# based, bukan kebetulan). LLM yang diminta menilai tulisannya sendiri cenderung selalu
+# bilang "sudah lengkap" walau sebenarnya belum, sama tidak reliable-nya dgn hallucination.
+# Skor ini INFORMASIONAL (tampil di dashboard CMS utk staf), TIDAK memblokir publish -
+# beda dari duplicate/stuffing di bawah yang memang genuine tanda kualitas buruk.
+INTENT_PATTERNS = {
+    "harga": r"rp\s?[\d.,]+|harga",
+    "jam/check-in": r"jam\s?\d|check-?in|check-?out|wita|buka\s",
+    "parkir": r"parkir",
+    "maps/lokasi": r"google\.com/maps|maps\.app|peta\b|lokasi",
+    "tips": r"\btips\b",
+    "faq": r"\*\*[^*]+\?\*\*",
+    "sekitar/nearby": r"dekat\b|sekitar\b|berjarak",
+    "kontak/booking": r"wa\.me|whatsapp",
+}
+
+
+def intent_coverage_score(content: str) -> dict:
+    lower = content.lower()
+    tercakup, kurang = [], []
+    for label, pattern in INTENT_PATTERNS.items():
+        (tercakup if re.search(pattern, lower) else kurang).append(label)
+    skor = round(len(tercakup) / len(INTENT_PATTERNS) * 100)
+    return {"skor_persen": skor, "tercakup": tercakup, "kurang": kurang}
+
+
+def _keyword_stuffing_terdeteksi(content: str, keyword: str) -> bool:
+    """Kepadatan keyword >3% (per 100 kata) - ambang umum industri SEO utk "over-
+    optimization", di atas ini justru dianggap Google sbg sinyal spam bukan relevansi."""
+    words = content.lower().split()
+    if len(words) < 50:
+        return False
+    kw_words = keyword.lower().split()
+    n = len(kw_words)
+    count = sum(1 for i in range(len(words) - n + 1) if words[i:i + n] == kw_words)
+    density = count / len(words) * 100
+    return density > 3.0
+
+
+async def _duplicate_section_terdeteksi(content: str) -> bool:
+    """Reuse embedding yang SAMA dipakai cannibalization check (_embed/_cosine) - cek
+    antar SUB-JUDUL dalam 1 artikel yang sama (bukan lintas artikel), tangkap kasus model
+    menulis ulang poin yang sama dgn kata beda di 2 sub-judul berbeda (nyata pernah
+    disinggung di prompt "jangan mengulang poin yang sama" - ini verifikasi otomatisnya,
+    bukan cuma andalkan instruksi prompt)."""
+    paras = [p.strip() for p in re.split(r"\n\n+", content) if len(p.strip()) > 80]
+    if len(paras) < 2:
+        return False
+    try:
+        embeds = await _embed(paras)
+    except Exception:
+        return False  # gagal embed (mis. rate limit) - jangan blokir publish krn ini
+    for i in range(len(embeds)):
+        for j in range(i + 1, len(embeds)):
+            if _cosine(embeds[i], embeds[j]) > 0.92:
+                return True
+    return False
+
+
+async def editor_review(content: str, keyword: str) -> list:
+    """AI Editor (2026-07-29, roadmap AI Grow item 6) - bagian yang genuinely BISA
+    dijadikan pemeriksaan deterministik (duplicate section via embedding yang sudah ada,
+    keyword stuffing via hitung frekuensi) DIJADIKAN jaring pengaman keras (masuk
+    `problems`, reject-&-requeue spt quality_check). "Trust"/"helpfulness"/"originality"
+    dari daftar asli user SENGAJA tidak dibuatkan pemeriksaan terpisah - itu subjektif,
+    sudah tercakup instruksi Editorial Writing Standard di system prompt, membuat
+    "AI menilai trust-nya sendiri" cuma nambah lapis "AI menilai AI" yang sudah dihindari."""
+    problems = []
+    if _keyword_stuffing_terdeteksi(content, keyword):
+        problems.append("kepadatan keyword berlebihan (>3%, terindikasi keyword stuffing)")
+    if await _duplicate_section_terdeteksi(content):
+        problems.append("ada 2 sub-judul yang isinya terlalu mirip (kemungkinan mengulang poin yang sama)")
+    return problems
+
+
 async def fact_check(site: str, content: str) -> list:
     """Verifikasi draft FINAL terhadap DATA ASLI SEBELUM publish (2026-07-28, jawaban
     konkret utk "AI melakukan fact-check sebelum publikasi") - lapis KEDUA, lapis
@@ -1001,6 +1078,9 @@ async def generate_one(site: str) -> dict:
         fact_issues = await fact_check(site, content_final)
         if fact_issues:
             problems.append("fact-check: " + "; ".join(fact_issues))
+        editor_issues = await editor_review(content_final, keyword_doc["keyword"])
+        if editor_issues:
+            problems.append("editor: " + "; ".join(editor_issues))
     except Exception:
         # Reset ke "belum_dibuat" - JANGAN biarkan macet permanen di "draft" kalau ada
         # error TAK TERDUGA (2026-07-28, ditemukan nyata: httpx.ReadTimeout dari OpenAI
@@ -1036,6 +1116,10 @@ async def generate_one(site: str) -> dict:
         # tampil di dashboard CMS) - None kalau analisis di-skip (budget Serper habis
         # hari itu/API down) - lihat analyze_competitors().
         "competitor_analysis": article.get("_competitor_data"),
+        # Intent Coverage Score (2026-07-29, roadmap AI Grow item 3) - informasional,
+        # TIDAK memblokir publish (lihat catatan di intent_coverage_score) - tampil di
+        # dashboard CMS supaya staf tahu artikel mana yang masih kurang lengkap intent-nya.
+        "intent_coverage": intent_coverage_score(content_final),
     }
     await db.blog_posts.insert_one(doc)
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {

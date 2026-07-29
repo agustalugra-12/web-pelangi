@@ -246,6 +246,9 @@ class BlogPostOut(BaseModel):
     # Kapan artikel ini terakhir diperdalam AI krn terbukti dapat impression GSC riil
     # (2026-07-28, lihat scripts/expand_top_articles.py) - None kalau belum pernah.
     expanded_at: Optional[str] = None
+    # Intent Coverage Score (2026-07-29) - {skor_persen, tercakup, kurang}. None utk
+    # artikel lama sebelum fitur ini ada, atau artikel yang ditulis manual.
+    intent_coverage: Optional[dict] = None
 
 
 class ContactMessageCreate(BaseModel):
@@ -288,6 +291,7 @@ def post_to_out(doc: dict) -> BlogPostOut:
         seo_keyword=doc.get("seo_keyword"),
         competitor_analysis=doc.get("competitor_analysis"),
         expanded_at=doc.get("expanded_at"),
+        intent_coverage=doc.get("intent_coverage"),
     )
 
 
