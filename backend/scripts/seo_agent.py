@@ -778,13 +778,56 @@ def _parse_json_response(raw: str) -> dict:
 # ---------------------------------------------------------------------------
 # 4. Internal Link Agent
 # ---------------------------------------------------------------------------
-async def pick_internal_links(site: str, cluster: str, exclude_slug: str = "") -> list:
+# Entity Map ringan (2026-07-29, roadmap AI Grow item 2) - dievaluasi dulu: graph database
+# (Neo4j dkk) itu solusi utk ribuan node dgn query multi-hop kompleks. Area Bedugul cuma
+# ada ~15 entity nyata (danau, pura, kebun raya, dst) - graph DB jauh lebih rumit drpd
+# masalahnya. Cukup dict statis kecil {entity: [entity terkait]}, dicocokkan ke KEYWORD
+# (bukan cuma cluster) supaya internal-link candidate lebih tepat topical-nya - mis.
+# keyword ttg "ulun danu" akan disarankan link ke artikel ttg "danau beratan" (kompleks
+# yang sama), bukan cuma "artikel lain di cluster yang sama" spt sebelumnya.
+ENTITY_MAP = {
+    "danau beratan": ["ulun danu", "kebun raya", "candikuning"],
+    "ulun danu": ["danau beratan", "candikuning"],
+    "kebun raya": ["danau beratan", "candikuning", "strawberry"],
+    "handara": ["kebun raya", "danau beratan"],
+    "candikuning": ["danau beratan", "ulun danu", "kebun raya", "strawberry"],
+    "strawberry": ["kebun raya", "candikuning"],
+    "bedugul": ["danau beratan", "ulun danu", "kebun raya", "candikuning", "handara"],
+}
+
+
+def _entity_terkait(keyword: str) -> list:
+    lower = keyword.lower()
+    terkait = set()
+    for entity, related in ENTITY_MAP.items():
+        if entity in lower:
+            terkait.update(related)
+    return list(terkait)
+
+
+async def pick_internal_links(site: str, cluster: str, keyword: str = "", exclude_slug: str = "") -> list:
     candidates = await db.blog_posts.find(
         {"site": site, "published": True, "slug": {"$ne": exclude_slug}},
-        {"slug": 1, "title": 1, "category": 1},
+        {"slug": 1, "title": 1, "category": 1, "seo_keyword": 1},
     ).sort("created_at", -1).to_list(50)
+
+    # Entity match diprioritaskan DULUAN (lebih tepat topical drpd sekadar sesama cluster) -
+    # cek apakah judul/keyword artikel lain menyebut entity yang TERKAIT dgn keyword ini.
+    entity_pool = []
+    if keyword:
+        terkait = _entity_terkait(keyword)
+        if terkait:
+            entity_pool = [
+                c for c in candidates
+                if any(e in (c.get("title", "") + " " + (c.get("seo_keyword") or "")).lower() for e in terkait)
+            ]
+
     same_category = [c for c in candidates if c["category"] == CLUSTER_CATEGORY.get(cluster)]
-    pool = same_category if len(same_category) >= 2 else candidates
+    # Gabung: entity match dulu, lalu isi sisanya dari same_category (dedup by slug),
+    # fallback ke seluruh candidates kalau keduanya kurang dari 2.
+    pool = entity_pool + [c for c in same_category if c["slug"] not in {e["slug"] for e in entity_pool}]
+    if len(pool) < 2:
+        pool = candidates
     return pool[:3]
 
 
@@ -1096,7 +1139,7 @@ async def generate_one(site: str) -> dict:
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "draft", "updated_at": datetime.now(timezone.utc).isoformat()}})
 
     try:
-        links = await pick_internal_links(site, keyword_doc["cluster"])
+        links = await pick_internal_links(site, keyword_doc["cluster"], keyword=keyword_doc["keyword"])
         article = await write_article(site, keyword_doc, link_candidates=links)
         content_final = _inject_links(article["content"], links, WA_BY_SITE[site])
 
