@@ -470,6 +470,21 @@ export default function CmsBlog() {
                           Intent {p.intent_coverage.skor_persen}%
                         </span>
                       )}
+                      {p.content_health && (
+                        // Content Health (2026-07-31, PRD "AI Blog V2" modul 15) - angka REAL
+                        // & bisa diverifikasi, SENGAJA BUKAN "AI Detection %" (tidak ada metode
+                        // AI-detection yang reliable, apalagi utk Bahasa Indonesia).
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 shrink-0 ${
+                            p.content_health.slop_word_max_count >= 2 || (p.content_health.sentence_variance_cv != null && p.content_health.sentence_variance_cv < 0.32)
+                              ? "bg-mustard-soft/30 text-mustard-deep"
+                              : "bg-leaf/15 text-leaf"
+                          }`}
+                          title={`Kata hampa (menghadirkan/memberikan/menawarkan/memanjakan) muncul maks ${p.content_health.slop_word_max_count}x di artikel ini (batas blokir 3x). Variasi panjang kalimat (CV): ${p.content_health.sentence_variance_cv != null ? p.content_health.sentence_variance_cv.toFixed(2) : "-"} (makin tinggi makin bervariasi/manusiawi).`}
+                        >
+                          Health: Slop {p.content_health.slop_word_max_count}x · CV {p.content_health.sentence_variance_cv != null ? p.content_health.sentence_variance_cv.toFixed(2) : "-"}
+                        </span>
+                      )}
                       {p.expanded_at && (
                         <span
                           className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-leaf/15 text-leaf shrink-0"

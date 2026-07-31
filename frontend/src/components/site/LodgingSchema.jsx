@@ -17,6 +17,13 @@ const CONFIRMED_FACTS = {
     numberOfRooms: 18,
     geo: { latitude: -8.276, longitude: 115.164 },
   },
+  // Dikonfirmasi 2026-07-31 - Agus kirim embed Google Maps asli Harmoni Hills Village
+  // (koordinat + Place ID langsung dari embed-nya), dicocokkan via reverse-geocode OSM
+  // Nominatim - lihat memory proyek. numberOfRooms dari SITE_ROOM_COUNT di seo_agent.py.
+  harmoni: {
+    numberOfRooms: 5,
+    geo: { latitude: -8.2598629, longitude: 115.1631686 },
+  },
 };
 
 // Raw facility strings (as entered in CMS) → schema.org LocationFeatureSpecification name.

@@ -34,11 +34,12 @@ import json
 import math
 import os
 import re
+import statistics
 import sys
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -466,6 +467,36 @@ LANDMARK_FACTS = (
 SITE_ROOM_COUNT = {"pelangi": 18, "harmoni": 5}
 
 
+def _maps_url_from_embed(map_embed: str) -> Optional[str]:
+    """External Link Agent (2026-07-31, PRD "AI Blog V2" Agus, modul 12 - sebelumnya TIDAK
+    ADA sama sekali, cuma instruksi teks di editorial rule "sertakan link Maps kalau
+    relevan" yg mengandalkan LLM menebak/mengingat link dari training data - risiko nyata
+    link salah/halusinasi). `db.site_content.type=site.mapEmbed` SUDAH ADA per situs
+    (dipakai iframe kontak), diubah di sini jadi link yang bisa diklik tamu & dijamin
+    BENAR krn diambil dari data asli, bukan ditulis ulang oleh model. Dukung 2 format
+    embed yang ada di data: (a) format "pb=" dgn koordinat+Place ID (Pelangi & Harmoni
+    versi baru), (b) format "?q=Nama+Tempat" polos (fallback situs yg belum py koordinat)."""
+    if not map_embed:
+        return None
+    m_lat = re.search(r"!3d(-?[\d.]+)", map_embed)
+    m_lng = re.search(r"!2d(-?[\d.]+)", map_embed)
+    m_place = re.search(r"!1s(0x[0-9a-f]+%3A0x[0-9a-f]+)", map_embed)
+    if m_lat and m_lng:
+        url = f"https://www.google.com/maps/search/?api=1&query={m_lat.group(1)},{m_lng.group(1)}"
+        if m_place:
+            url += f"&query_place_id={m_place.group(1).replace('%3A', ':')}"
+        return url
+    m_q = re.search(r"[?&]q=([^&]+)", map_embed)
+    if m_q:
+        return f"https://www.google.com/maps/search/?api=1&query={unquote(m_q.group(1))}"
+    return None
+
+
+async def _maps_url_for_site(site: str) -> Optional[str]:
+    site_doc = (await db.site_content.find_one({"site": site, "type": "site"}) or {}).get("data", {})
+    return _maps_url_from_embed(site_doc.get("mapEmbed", ""))
+
+
 async def _fetch_site_facts(site: str) -> str:
     site_doc = (await db.site_content.find_one({"site": site, "type": "site"}) or {}).get("data", {})
     rooms_doc = (await db.site_content.find_one({"site": site, "type": "rooms"}) or {}).get("data", [])
@@ -790,6 +821,7 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
     facts = await _fetch_site_facts(site)
     keyword = keyword_doc["keyword"]
     competitor_result = await analyze_competitors(keyword)
+    maps_url = await _maps_url_for_site(site)
 
     # Editorial Writing Standard (2026-07-28, permintaan user, diringkas dari pedoman
     # panjang yang diberikan) - target BUKAN "supaya tidak terdeteksi AI detector"
@@ -819,7 +851,12 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "itu' yang kaku - pakai transisi yang mengalir sesuai konteks. GANTI pujian generik dgn "
         "detail SPESIFIK: alih-alih 'udara sejuk yang menyegarkan', tulis mis. 'suhu 17-24°C yang "
         "bikin selimut terasa pas di malam hari' (pakai angka dari DATA ASLI/fakta area kalau ada). "
-        "Tidak keyword stuffing - keyword masuk natural, prioritaskan kenyamanan baca.\n\n"
+        "Tidak keyword stuffing - keyword masuk natural, prioritaskan kenyamanan baca. BATASI kata "
+        "'menghadirkan', 'memberikan', 'menawarkan', 'memanjakan' MAKSIMAL 2 kali TOTAL di seluruh "
+        "artikel (2026-07-31, ditemukan lewat pengecekan otomatis - kata ini sering dipakai berulang "
+        "jadi terasa seperti template AI generik) - ganti dgn kata kerja/kalimat aktif yang lebih "
+        "spesifik, mis. bukan 'kamar ini menawarkan pemandangan gunung' tapi 'dari jendela kamar, "
+        "pegunungan terlihat jelas setiap pagi'.\n\n"
         "SEBELUM MENJAWAB, cek draftmu sendiri: apakah ada kalimat yang berulang-ulang? Apakah "
         "pembuka menarik & penutup memberi nilai tambah (bukan cuma ringkasan)? Apakah tiap sub-judul "
         "benar-benar menjawab pertanyaan yang relevan? Kalau ada yang kurang, revisi dulu sebelum kirim.\n\n"
@@ -899,10 +936,21 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
             "(/blog/slug-asli)...'). Maksimal 1-2 link total, JANGAN dipaksakan kalau "
             "tidak ada kalimat yang cocok secara alami, JANGAN ubah path slug-nya."
         )
+    external_block = ""
+    if maps_url:
+        external_block = (
+            f"\n\nLINK GOOGLE MAPS ASLI properti ini (kalau artikel menyebut lokasi/arah/"
+            f"rute ke properti, WAJIB pakai link INI - JANGAN menebak/mengingat link lain "
+            f"dari pengetahuanmu sendiri, itu bisa salah): {maps_url}\n"
+            "Selipkan sbg link markdown natural kalau relevan, mis. '...lokasinya bisa "
+            "langsung dicek lewat [Google Maps](URL)...'. Tidak wajib dipakai kalau "
+            "artikel ini memang tidak membahas lokasi/arah sama sekali."
+        )
     user = f"""DATA ASLI ({site}):
 {facts}
 {competitor_block}
 {links_block}
+{external_block}
 
 Tulis artikel SEO untuk target keyword: "{keyword}"
 
@@ -960,6 +1008,7 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
     # Disisipkan ke doc artikel oleh generate_one() (2026-07-28, permintaan user - tampil
     # di dashboard CMS "data kompetitor yang dibaca") - None kalau analisis di-skip/gagal.
     data["_competitor_data"] = competitor_result["data"] if competitor_result else None
+    data["_maps_url"] = maps_url
     return data
 
 
@@ -1027,7 +1076,7 @@ async def pick_internal_links(site: str, cluster: str, keyword: str = "", exclud
     return pool[:3]
 
 
-def _inject_links(content: str, links: list, wa_url: str) -> str:
+def _inject_links(content: str, links: list, wa_url: str, maps_url: Optional[str] = None) -> str:
     """Selipkan link booking WA (SELALU, bahkan kalau belum ada artikel lain utk
     disarankan - mis. situs baru) SEBELUM SELURUH bagian FAQ, bukan ditempel asal di
     akhir. Kerja di level daftar paragraf (bukan potong string mentah dgn regex posisi).
@@ -1047,12 +1096,20 @@ def _inject_links(content: str, links: list, wa_url: str) -> str:
     menyelipkan link natural sendiri di dalam isi (lihat links_block di write_article).
     Fallback JARING PENGAMAN di bawah: kalau TIDAK SATUPUN slug kandidat ternyata muncul
     di isi (model mengabaikan instruksi), baru tempel daftar mekanis spt sebelumnya -
-    supaya internal linking tidak pernah nol, cuma tidak jadi jalur utama lagi."""
+    supaya internal linking tidak pernah nol, cuma tidak jadi jalur utama lagi.
+
+    `maps_url` (2026-07-31, External Link Agent) - jaring pengaman yang sama utk link Maps
+    ASLI: kalau model tidak menyelipkan link itu sendiri (lihat external_block di
+    write_article), tempel 1 baris di sini juga - supaya artikel yang membahas lokasi tidak
+    pernah kehilangan link Maps yang benar sama sekali."""
     baca_juga = ""
     if links and not any(f"/blog/{l['slug']}" in content for l in links):
         link_lines = " ".join(f"[{l['title']}](/blog/{l['slug']})" for l in links)
         baca_juga = f"Baca juga: {link_lines}.\n\n"
-    insert_para = f"{baca_juga}Siap booking? [Chat sekarang lewat WhatsApp]({wa_url})."
+    maps_line = ""
+    if maps_url and maps_url not in content:
+        maps_line = f"Lihat lokasi lengkap di [Google Maps]({maps_url}).\n\n"
+    insert_para = f"{baca_juga}{maps_line}Siap booking? [Chat sekarang lewat WhatsApp]({wa_url})."
 
     paras = re.split(r"\n\n+", content)
     faq_label_idx = next((i for i, p in enumerate(paras) if p.strip().lower() == "**faq**"), None)
@@ -1231,6 +1288,74 @@ def intent_coverage_score(content: str) -> dict:
     return {"skor_persen": skor, "tercakup": tercakup, "kurang": kurang}
 
 
+# AI Slop Detector (2026-07-31, PRD "AI Blog V2" Agus - modul 4/6) - SEBELUM ini, larangan
+# frasa klise & instruksi variasi kalimat HANYA ada sbg teks di system prompt (lihat
+# `write_article` di atas) - TIDAK ADA kode apa pun yang memverifikasi model benar-benar
+# mematuhinya. Ini implementasi kode nyata pertama, dijadikan hard-block yg sama spt
+# keyword-stuffing/duplicate-section di bawah (bukan cuma informasional) - kalau model
+# mengabaikan instruksi prompt, publish sekarang DITOLAK, bukan lolos diam-diam.
+SLOP_PHRASES_DILARANG = [
+    "di era digital ini", "tidak dapat dipungkiri", "perlu diketahui bahwa", "pada dasarnya",
+    "kesimpulannya", "udara sejuk yang menyegarkan", "nyaman dan menyenangkan",
+    "kenyamanan maksimal", "tanpa harus khawatir",
+]
+# Kata generik/hampa yg BOLEH muncul sesekali (bukan klise terlarang spt di atas), tapi
+# kalau berulang jadi ciri khas "AI slop" - ambang 3x per artikel (sama spt cap "Kakak"
+# maks 5-7x yg sudah ada di prompt, prinsip yg sama: kata netral jadi mencolok kalau
+# dipaksakan berulang-ulang).
+SLOP_WORDS_MAX_3X = ["menghadirkan", "memberikan", "menawarkan", "memanjakan"]
+
+
+def _slop_word_counts(content: str) -> dict:
+    """Hitung mentah tiap kata di SLOP_WORDS_MAX_3X - dipisah dari fungsi deteksi supaya
+    angkanya (bukan cuma lolos/tidak) bisa disimpan di blog_posts utk Content Health
+    scorecard di CMS (lihat generate_one), termasuk artikel yang LOLOS gate (mis. 2x,
+    masih di bawah ambang blokir 3x tapi tetap informatif ditampilkan ke staf)."""
+    lower = content.lower()
+    return {kata: len(re.findall(rf"\b{re.escape(kata)}\b", lower)) for kata in SLOP_WORDS_MAX_3X}
+
+
+def _slop_phrases_terdeteksi(content: str) -> list:
+    lower = content.lower()
+    hits = [frasa for frasa in SLOP_PHRASES_DILARANG if frasa in lower]
+    hits += [f"{kata} ({count}x)" for kata, count in _slop_word_counts(content).items() if count >= 3]
+    return hits
+
+
+def _sentence_cv(content: str) -> Optional[float]:
+    """Coefficient of variation (stdev/mean) panjang kalimat (kata) - dipisah dari fungsi
+    deteksi supaya angkanya sendiri (bukan cuma lolos/tidak) bisa disimpan utk Content
+    Health scorecard. None kalau kalimat terlalu sedikit utk statistik yang berarti."""
+    paras = [
+        p.strip() for p in re.split(r"\n\n+", content)
+        if len(p.strip()) > 80 and not p.strip().startswith("**")
+    ]
+    panjang_kalimat = []
+    for p in paras:
+        for kalimat in re.split(r"(?<=[.!?])\s+", p):
+            n_kata = len(kalimat.split())
+            if n_kata >= 4:
+                panjang_kalimat.append(n_kata)
+    if len(panjang_kalimat) < 8:
+        return None
+    mean = statistics.mean(panjang_kalimat)
+    if mean <= 0:
+        return None
+    return statistics.pstdev(panjang_kalimat) / mean
+
+
+def _variasi_kalimat_kurang(content: str) -> bool:
+    """Deteksi NYATA (bukan cuma instruksi prompt "variasikan panjang kalimat") kalau
+    kalimat artikel seragam panjangnya - ciri khas tulisan AI generik (mis. semua kalimat
+    ~35-40 kata). Threshold 0.25 dipilih konservatif (tulisan manusia natural biasanya CV
+    jauh di atas ini) supaya tidak banyak false positive - bisa disesuaikan lagi setelah
+    lihat data artikel nyata pasca-deploy."""
+    cv = _sentence_cv(content)
+    if cv is None:
+        return False  # kurang data utk statistik yang berarti, jangan menebak
+    return cv < 0.25
+
+
 def _keyword_stuffing_terdeteksi(content: str, keyword: str) -> bool:
     """Kepadatan keyword >3% (per 100 kata) - ambang umum industri SEO utk "over-
     optimization", di atas ini justru dianggap Google sbg sinyal spam bukan relevansi."""
@@ -1277,6 +1402,11 @@ async def editor_review(content: str, keyword: str) -> list:
         problems.append("kepadatan keyword berlebihan (>3%, terindikasi keyword stuffing)")
     if await _duplicate_section_terdeteksi(content):
         problems.append("ada 2 sub-judul yang isinya terlalu mirip (kemungkinan mengulang poin yang sama)")
+    slop = _slop_phrases_terdeteksi(content)
+    if slop:
+        problems.append(f"AI slop terdeteksi (frasa klise/kata berulang): {', '.join(slop)}")
+    if _variasi_kalimat_kurang(content):
+        problems.append("variasi panjang kalimat terlalu rendah (kalimat cenderung seragam, ciri khas AI generik)")
     return problems
 
 
@@ -1294,9 +1424,13 @@ async def fact_check(site: str, content: str) -> list:
     baru. temperature rendah (0.2, beda dari Writer Agent 0.6) krn ini tugas verifikasi
     presisi, bukan tugas kreatif - variasi jawaban tidak diinginkan di sini.
 
-    Gagal parse/API dari fact-checker sendiri TIDAK memblokir publish (return [] diam-diam,
-    dicatat ke stderr) - bug di lapis verifikasi tidak boleh menghentikan seluruh pipeline,
-    beda dari kalau fact-checker BERHASIL jalan & memang menemukan klaim tidak didukung."""
+    Gagal parse/API dari fact-checker sendiri SEKARANG JUGA memblokir publish (2026-07-31,
+    bug nyata ditemukan lewat audit PRD "AI Blog V2" - sebelumnya return [] diam-diam kalau
+    error, artinya "fact-checker error" dan "fact-checker jalan & tidak temukan masalah"
+    TIDAK BISA DIBEDAKAN di artikel yang terbit - outage diam-diam berarti nol verifikasi
+    fakta tanpa jejak sama sekali. Sekarang error menghasilkan 1 issue sintetis yang
+    memblokir publish (sama spt kalau fact-checker beneran menemukan klaim tak didukung) -
+    lebih aman menunda publish drpd terbit tanpa verifikasi."""
     facts = await _fetch_site_facts(site)
     system = (
         "Kamu fact-checker konten editorial yang teliti & skeptis. Tugasmu HANYA "
@@ -1320,8 +1454,8 @@ Array "issues" KOSONG kalau semua klaim spesifik di draft sudah sesuai/didukung 
         result = _parse_json_response(raw)
         return [i for i in result.get("issues", []) if i]
     except Exception as e:
-        print(f"[fact-check] gagal (tidak memblokir publish): {type(e).__name__}: {e}")
-        return []
+        print(f"[fact-check] gagal, publish DITUNDA demi keamanan: {type(e).__name__}: {e}")
+        return ["fact-check gagal dijalankan (error API/parse) - publish ditunda demi keamanan"]
 
 
 # ---------------------------------------------------------------------------
@@ -1337,7 +1471,7 @@ async def generate_one(site: str) -> dict:
     try:
         links = await pick_internal_links(site, keyword_doc["cluster"], keyword=keyword_doc["keyword"])
         article = await write_article(site, keyword_doc, link_candidates=links)
-        content_final = _inject_links(article["content"], links, WA_BY_SITE[site])
+        content_final = _inject_links(article["content"], links, WA_BY_SITE[site], article.get("_maps_url"))
 
         problems = quality_check(article, content_final)
         fact_issues = await fact_check(site, content_final)
@@ -1385,6 +1519,17 @@ async def generate_one(site: str) -> dict:
         # TIDAK memblokir publish (lihat catatan di intent_coverage_score) - tampil di
         # dashboard CMS supaya staf tahu artikel mana yang masih kurang lengkap intent-nya.
         "intent_coverage": intent_coverage_score(content_final),
+        # Content Health (2026-07-31, PRD "AI Blog V2" modul 15) - SENGAJA BUKAN skor
+        # "AI Detection %" (tidak ada metode AI-detection yang reliable, apalagi utk
+        # Bahasa Indonesia - lihat catatan di write_article). Angka REAL & bisa
+        # diverifikasi: berapa kali kata hampa (menghadirkan/memberikan/menawarkan/
+        # memanjakan) muncul (0-2, krn >=3 sudah diblokir editor_review), dan coefficient
+        # of variation panjang kalimat (makin tinggi = makin bervariasi/manusiawi,
+        # None kalau artikel terlalu pendek utk dihitung).
+        "content_health": {
+            "slop_word_max_count": max(_slop_word_counts(content_final).values(), default=0),
+            "sentence_variance_cv": _sentence_cv(content_final),
+        },
     }
     await db.blog_posts.insert_one(doc)
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {

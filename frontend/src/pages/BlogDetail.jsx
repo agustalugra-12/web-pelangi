@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useLang } from "@/context/LanguageContext";
+import { useContent } from "@/context/ContentContext";
 import api from "@/lib/api";
 import Seo from "@/components/site/Seo";
 import { breadcrumbNode, schemaGraph } from "@/lib/schema";
@@ -22,6 +23,7 @@ export default function BlogDetail() {
   const [loading, setLoading] = useState(!initial);
   const [notFound, setNotFound] = useState(false);
   const { t, lang, pick } = useLang();
+  const { testimonials } = useContent();
 
   useEffect(() => {
     api
@@ -49,7 +51,7 @@ export default function BlogDetail() {
 
   const locale = lang === "en" ? "en-GB" : "id-ID";
   const content = pick(post, "content") || post.content;
-  const jsonLd = buildArticleSchema(post, content, t("blog.title"));
+  const jsonLd = buildArticleSchema(post, content, t("blog.title"), testimonials);
 
   return (
     <article className="max-w-3xl mx-auto px-5 md:px-8 pt-14 pb-24" data-testid={`blog-detail-${post.slug}`}>
@@ -135,7 +137,7 @@ export default function BlogDetail() {
 // post yang sudah tersedia lewat API - server.py (post_to_out) cuma meneruskan field
 // tertentu, jadi field schema terpisah tidak akan pernah sampai ke sini kalau
 // disimpan di backend.
-function buildArticleSchema(post, content, blogLabel) {
+function buildArticleSchema(post, content, blogLabel, testimonials) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   // 2 pola didukung: (a) "**Pertanyaan asli?**" diikuti 1 ATAU 2 baris baru lalu
   // jawaban - AI kadang pakai \n kadang \n\n meski diminta \n\n persis, jadi regex
@@ -179,6 +181,26 @@ function buildArticleSchema(post, content, blogLabel) {
         acceptedAnswer: { "@type": "Answer", text: a },
       })),
     });
+  }
+  // Review (2026-07-31, PRD "AI Blog V2" modul 9) - dari testimoni ASLI tamu
+  // (site_content.type=testimonials, sama yang dipakai artikel & halaman utama), BUKAN
+  // data buatan. SENGAJA TIDAK menyertakan `reviewRating`/`AggregateRating` - tidak ada
+  // rating numerik asli yang dikumpulkan sistem ini (cuma kutipan teks), jadi jujur
+  // dihilangkan drpd mengarang angka bintang. Rotasi deterministik per-slug (bukan selalu
+  // testimoni pertama - pelajaran yang sama dgn bug "Rina & Aldo selalu dikutip" yang
+  // sudah diperbaiki di seo_agent.py) supaya tidak semua artikel kutip testimoni yang sama.
+  if (Array.isArray(testimonials) && testimonials.length) {
+    let hash = 0;
+    for (const ch of post.slug || "") hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    const tm = testimonials[hash % testimonials.length];
+    if (tm?.text) {
+      nodes.push({
+        "@type": "Review",
+        itemReviewed: publisherRef,
+        author: { "@type": "Person", name: tm.name || "Tamu" },
+        reviewBody: tm.text,
+      });
+    }
   }
   return schemaGraph(...nodes);
 }
