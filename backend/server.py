@@ -11,6 +11,7 @@ import uuid
 import re
 import tempfile
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Dict, List, Optional, Annotated
 
 import bcrypt
@@ -25,6 +26,14 @@ from pydantic import BaseModel, Field, ConfigDict, BeforeValidator, EmailStr
 from storage import init_storage, put_object, get_object, MIME_TYPES
 from seed_content import SEED_CONTENT
 
+
+# Zona waktu bisnis (Bedugul/Bali = WITA, UTC+8) - dipakai utk batas "hari ini" di
+# dashboard CMS (bukan UTC) supaya angka "Dibuat AI hari ini" cocok dgn kalender hari
+# yang dialami Agus, bukan reset 8 jam lebih awal (2026-07-31, bug nyata: user lapor
+# "7 artikel terbit kemarin tapi dashboard cuma tertulis 5" - root cause: batas UTC
+# midnight membuat artikel yg terbit dini hari WITA (00:00-08:00) masih terhitung hari
+# SEBELUMNYA di UTC, jadi counter "hari ini" kehilangan beberapa artikel tiap hari).
+BALI_TZ = ZoneInfo("Asia/Makassar")
 
 # ---------- MongoDB ----------
 mongo_url = os.environ["MONGO_URL"]
@@ -431,7 +440,12 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
     AI SEO Agent dari dalam CMS sama sekali, semua laporan cuma manual). Dihitung
     langsung dari db.blog_posts (field seo_keyword = ditulis AI) & db.seo_keywords,
     bukan log terpisah - satu sumber kebenaran yang sama dipakai scripts/seo_agent.py."""
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    # Batas hari pakai WITA lokal (lihat BALI_TZ), lalu dikonversi balik ke UTC utk
+    # dibandingkan ke created_at yg disimpan sbg string ISO UTC (format sama persis jadi
+    # perbandingan string $gte tetap valid kronologis).
+    today_start = (
+        datetime.now(BALI_TZ).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
+    )
 
     generated_today = await db.blog_posts.count_documents({
         "site": site, "seo_keyword": {"$ne": None}, "created_at": {"$gte": today_start},
