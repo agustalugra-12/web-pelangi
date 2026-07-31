@@ -53,7 +53,7 @@ DB_NAME = os.environ["DB_NAME"]
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "")
-CHAT_MODEL = "gpt-4.1-mini"
+CHAT_MODEL = "gpt-5-mini"
 EMBED_MODEL = "text-embedding-3-small"
 
 client = AsyncIOMotorClient(MONGO_URL)
@@ -187,6 +187,13 @@ def slugify(text: str) -> str:
 async def _chat(system: str, user: str, temperature: float = 0.7) -> str:
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY belum diisi di backend/.env")
+    # Keluarga GPT-5 (gpt-5, gpt-5-mini, gpt-5.4-mini, dst) CUMA terima temperature=1 -
+    # ditemukan lewat tes live 2026-07-31 (bug yang sama juga ditemukan & diperbaiki di
+    # ai-chat-bot) - API OpenAI menolak keras temperature lain utk model ini. Diklem di
+    # SINI (bukan di tiap pemanggil _chat) supaya seluruh pipeline (Writer Agent 0.6,
+    # fact-check 0.2, expand loop, dst) otomatis aman tanpa perlu ubah tiap call site.
+    if CHAT_MODEL.lower().startswith("gpt-5"):
+        temperature = 1
     async with httpx.AsyncClient(timeout=90) as http:
         resp = await http.post(
             "https://api.openai.com/v1/chat/completions",
@@ -513,6 +520,15 @@ async def _fetch_site_facts(site: str) -> str:
         f"Fakta jarak & waktu kunjungan landmark wisata sekitar (boleh dikutip, fakta publik "
         f"area, BUKAN milik properti): {LANDMARK_FACTS}",
     ]
+    # Link Maps ASLI (2026-07-31, bug nyata ditemukan lewat tes gpt-5-mini) - write_article()
+    # sudah dikasih link ini via external_block (lihat _maps_url_for_site), tapi fact_check()
+    # SEBELUM ini pakai fungsi INI (_fetch_site_facts) sbg DATA ASLI-nya - tanpa link di sini,
+    # model yang BENAR mengutip koordinat/place_id asli dari external_block malah ditolak
+    # fact-checker sbg "klaim tidak didukung" (fact-checker tidak tahu data itu ASLI). Satu
+    # sumber kebenaran sekarang - baik prompt Writer maupun fact-checker baca dari sini.
+    maps_url_site = _maps_url_from_embed(site_doc.get("mapEmbed", ""))
+    if maps_url_site:
+        lines.append(f"Link Google Maps ASLI properti ini (boleh dikutip persis, termasuk koordinat/place_id di dalamnya): {maps_url_site}")
     for r in rooms_doc:
         # Day Use & Menginap SENGAJA dipisah (2026-07-29, revisi manual user menemukan Day
         # Use disebut-sebut di artikel tapi TIDAK PERNAH dijelaskan harga/jamnya krn memang
@@ -958,7 +974,7 @@ Format balasan HARUS JSON valid dengan struktur persis ini (tanpa markdown code 
 {{
   "title": "judul menarik & mengandung keyword, maks 70 karakter",
   "excerpt": "ringkasan 1-2 kalimat, maks 160 karakter",
-  "content": "isi artikel WAJIB 900-1300 kata (ini batas keras, hitung sendiri sebelum menjawab - kalau draftmu kurang dari 900 kata, perpanjang tiap bagian dengan detail/contoh lebih dulu sebelum dikirim). Struktur WAJIB: 1 paragraf pembuka (~80-120 kata), lalu PERSIS 6 sub-judul **Sub Judul** (masing-masing paragraf tersendiri, tiap sub-judul diikuti isi 100-150 kata - JANGAN ada sub-judul dengan isi di bawah 100 kata), lalu WAJIB 4 FAQ di bagian akhir, ditutup 1 paragraf penutup singkat. Paragraf dipisah \\n\\n. UNTUK FAQ: kalau di atas ada daftar 'PERTANYAAN NYATA dari kompetitor', UTAMAKAN pertanyaan itu (boleh diparafrase, wajib tetap bisa dijawab jujur dari DATA ASLI) - baru tambahkan pertanyaan relevan lain kalau kurang dari 4 atau tidak ada yang cocok. KHUSUS kalau cluster keyword ini BUKAN Booking/Keluarga: dari 4 FAQ, MAKSIMAL 1 boleh soal kebijakan umum (check-in/check-out/parkir/anak/pembayaran) - MINIMAL 3 FAQ WAJIB pertanyaan yang relevan dgn FOKUS ARTIKEL INI (lihat instruksi FOKUS ARTIKEL di atas), supaya bagian FAQ tidak jadi salinan generik yang sama persis di semua artikel - ini kelanjutan aturan anti-duplicate-content yang sama. ATURAN FORMAT FAQ (WAJIB DIIKUTI PERSIS, JANGAN pakai kata literal 'Pertanyaan' sebagai label, JANGAN pakai *tanda-bintang-tunggal* untuk pertanyaan): tulis TEKS PERTANYAAN ASLI langsung di dalam **dua bintang**, contoh PERSIS begini -> **Apakah sarapan sudah termasuk di kamar ini?**\\n\\nYa, sarapan sudah termasuk untuk 2 orang di semua tipe kamar. <- lihat, pertanyaan aslinya ADA di dalam ** **, bukan diganti kata 'Pertanyaan' lalu pertanyaan aslinya ditaruh terpisah.",
+  "content": "isi artikel WAJIB 900-1300 kata (ini batas keras, hitung sendiri sebelum menjawab - kalau draftmu kurang dari 900 kata, perpanjang tiap bagian dengan detail/contoh lebih dulu sebelum dikirim). Struktur WAJIB: 1 paragraf pembuka (~80-120 kata), lalu PERSIS 6 sub-judul **Sub Judul** (masing-masing paragraf tersendiri, tiap sub-judul diikuti isi 100-150 kata - JANGAN ada sub-judul dengan isi di bawah 100 kata), lalu WAJIB 4 FAQ di bagian akhir, ditutup 1 paragraf penutup singkat. Paragraf dipisah \\n\\n. UNTUK FAQ: kalau di atas ada daftar 'PERTANYAAN NYATA dari kompetitor', UTAMAKAN pertanyaan itu (boleh diparafrase, wajib tetap bisa dijawab jujur dari DATA ASLI) - baru tambahkan pertanyaan relevan lain kalau kurang dari 4 atau tidak ada yang cocok. KHUSUS kalau cluster keyword ini BUKAN Booking/Keluarga: dari 4 FAQ, MAKSIMAL 1 boleh soal kebijakan umum (check-in/check-out/parkir/anak/pembayaran) - MINIMAL 3 FAQ WAJIB pertanyaan yang relevan dgn FOKUS ARTIKEL INI (lihat instruksi FOKUS ARTIKEL di atas), supaya bagian FAQ tidak jadi salinan generik yang sama persis di semua artikel - ini kelanjutan aturan anti-duplicate-content yang sama. ATURAN FORMAT FAQ (WAJIB DIIKUTI PERSIS - HANYA SATU pola di bawah yang diterima sistem, format lain akan DITOLAK otomatis): tulis TEKS PERTANYAAN ASLI langsung di dalam **dua bintang**, TANPA prefix/label apa pun sebelum atau sesudahnya, lalu jawabannya di baris baru. Contoh PERSIS yang BENAR -> **Apakah sarapan sudah termasuk di kamar ini?**\\n\\nYa, sarapan sudah termasuk untuk 2 orang di semua tipe kamar. DILARANG KERAS semua pola berikut (SERING salah dipakai, WAJIB dihindari): (a) label 'Pertanyaan:'/'Q:'/'Question:' sebelum pertanyaan, mis. 'Q: Apakah ada parkir? A: Ya' - INI SALAH, (b) pertanyaan cuma pakai *tanda-bintang-tunggal* atau tanpa bintang sama sekali, (c) menjawab pertanyaan secara alami di dalam paragraf isi/sub-judul TANPA membuat blok FAQ terpisah di akhir artikel - itu TIDAK dihitung sebagai FAQ oleh sistem meski isinya relevan. WAJIB ada persis 4 blok terpisah di BAGIAN AKHIR artikel (setelah semua sub-judul, sebelum paragraf penutup) yang PERSIS mengikuti pola **pertanyaan?**\\n\\njawaban - JANGAN ada 'FAQ' sbg judul section terpisah, JANGAN duplikasi pertanyaan yang sudah dijawab natural di paragraf isi.",
   "tags": ["tag1", "tag2", "tag3"]
 }}"""
 
@@ -1074,6 +1090,33 @@ async def pick_internal_links(site: str, cluster: str, keyword: str = "", exclud
     if len(pool) < 2:
         pool = candidates
     return pool[:3]
+
+
+def _normalize_faq_format(content: str) -> str:
+    """Normalisasi format FAQ (2026-07-31, ditemukan lewat tes live gpt-5-mini) - model ini
+    KONSISTEN menulis pertanyaan FAQ sbg baris polos tanpa **tebal** sama sekali (beda dari
+    gpt-4.1-mini/gpt-4.1 yg patuh instruksi prompt aslinya), MESKIPUN instruksi format sudah
+    dibuat sangat eksplisit + contoh negatif jelas di prompt - 3x percobaan nyata beda
+    keyword/cluster semua gagal 0% patuh. Daripada terus memperkuat prompt yang terbukti
+    tidak didengar model reasoning ini, normalisasi terjadi di SINI (post-process
+    deterministik) - jauh lebih andal drpd berharap ke kepatuhan model.
+
+    Deteksi: paragraf yang BARIS PERTAMANYA diakhiri '?' (ciri khas soal FAQ ditulis sbg
+    baris tersendiri diikuti jawaban di baris berikutnya dlm paragraf yg sama) - dibungkus
+    **tebal** kalau belum. Cukup aman diterapkan ke SELURUH artikel (bukan cuma bagian FAQ)
+    krn paragraf prosa biasa nyaris tidak pernah berupa SATU baris pertanyaan berdiri
+    sendiri diikuti baris baru dalam paragraf yg sama - itu pola KHAS Q&A, bukan kalimat
+    retoris di tengah paragraf naratif (yg menyatu dgn kalimat lain di baris yg sama)."""
+    paras = re.split(r"(\n\n+)", content)
+    out = []
+    for p in paras:
+        lines = p.split("\n")
+        first = lines[0].strip()
+        if first.endswith("?") and not first.startswith("**") and not first.startswith("#") and 10 <= len(first) <= 200:
+            lines[0] = f"**{first}**"
+            p = "\n".join(lines)
+        out.append(p)
+    return "".join(out)
 
 
 def _inject_links(content: str, links: list, wa_url: str, maps_url: Optional[str] = None) -> str:
@@ -1471,6 +1514,7 @@ async def generate_one(site: str) -> dict:
     try:
         links = await pick_internal_links(site, keyword_doc["cluster"], keyword=keyword_doc["keyword"])
         article = await write_article(site, keyword_doc, link_candidates=links)
+        article["content"] = _normalize_faq_format(article["content"])
         content_final = _inject_links(article["content"], links, WA_BY_SITE[site], article.get("_maps_url"))
 
         problems = quality_check(article, content_final)

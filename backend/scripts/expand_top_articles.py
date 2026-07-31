@@ -34,6 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.seo_agent import (  # noqa: E402
     db, SITE_DOMAIN, _chat, _parse_json_response, _fetch_site_facts, quality_check, fact_check,
+    _normalize_faq_format,
 )
 from scripts import prerender_home as _prerender  # noqa: E402
 
@@ -150,6 +151,8 @@ async def run(site: str, limit: int = MAX_PER_RUN) -> None:
             print(f"[{site}] GAGAL expand {post['slug']}: {type(e).__name__}: {e}")
             continue
 
+        if expanded.get("content"):
+            expanded["content"] = _normalize_faq_format(expanded["content"])
         new_count = len(expanded.get("content", "").split())
         problems = quality_check(expanded, expanded.get("content", ""))
         fact_issues = await fact_check(site, expanded.get("content", ""))
