@@ -875,7 +875,12 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "pegunungan terlihat jelas setiap pagi'.\n\n"
         "SEBELUM MENJAWAB, cek draftmu sendiri: apakah ada kalimat yang berulang-ulang? Apakah "
         "pembuka menarik & penutup memberi nilai tambah (bukan cuma ringkasan)? Apakah tiap sub-judul "
-        "benar-benar menjawab pertanyaan yang relevan? Kalau ada yang kurang, revisi dulu sebelum kirim.\n\n"
+        "benar-benar menjawab pertanyaan yang relevan? WAJIB HITUNG LITERAL: berapa kali kata "
+        "'menghadirkan', 'memberikan', 'menawarkan', 'memanjakan' masing-masing muncul di draftmu "
+        "(hitung satu-satu, jangan menebak) - kalau ADA yang lebih dari 2 kali, ganti kelebihannya "
+        "sebelum kirim (2026-08-01, ditemukan lewat data nyata: instruksi batas 2x di atas SERING "
+        "dilanggar tanpa penghitungan eksplisit ini, artikel jadi tertolak sistem quality gate). "
+        "Kalau ada yang kurang dari semua pengecekan ini, revisi dulu sebelum kirim.\n\n"
         # Editorial Standard v2 (2026-07-29, permintaan user) - target artikel jadi "halaman
         # referensi terbaik utk topik ini", bukan sekadar berhasil masuk index Google. Ditulis
         # sbg MENU pilihan (bukan wajib semua di tiap artikel) krn tidak semua elemen relevan
@@ -1522,6 +1527,62 @@ async def generate_one(site: str) -> dict:
         if fact_issues:
             problems.append("fact-check: " + "; ".join(fact_issues))
         editor_issues = await editor_review(content_final, keyword_doc["keyword"])
+
+        # Auto-fix kata AI-slop berulang (2026-08-01, permintaan user: kurangi tingkat
+        # gagal - audit nyata menunjukkan ~2 dari 3 kegagalan hari itu MURNI karena kata
+        # 'menghadirkan'/'memberikan'/'menawarkan'/'memanjakan' terhitung >=3x, padahal ini
+        # masalah MEKANIS (hitung kata), bukan soal fakta/kualitas substansi - sayang kalau
+        # seluruh artikel dibuang & keyword harus nunggu jadwal cron berikutnya cuma gara-
+        # gara ini. SATU percobaan revisi bertarget (minta model ganti HANYA kalimat yang
+        # memakai kata berlebih, bukan tulis ulang semua - beda dari loop expand kata di
+        # write_article yang menulis ulang total), lalu validasi ULANG PENUH (bukan cuma
+        # slop check - revisi bisa saja tidak sengaja pengaruhi hal lain) sebelum diterima.
+        # Fact-check TIDAK disentuh di sini - itu butuh koreksi substansi yang lebih
+        # berisiko kalau diperbaiki otomatis, tetap reject-&-requeue seperti biasa.
+        counts = _slop_word_counts(content_final)
+        berlebih = {k: v for k, v in counts.items() if v >= 3}
+        # Guard: hanya coba auto-fix kalau penyebabnya MURNI kata berulang (berlebih terisi) -
+        # kalau _slop_phrases_terdeteksi nangkap frasa klise terlarang (SLOP_PHRASES_DILARANG,
+        # bukan hitungan kata), berlebih tetap kosong dan instruksi fix di bawah jadi tidak
+        # berguna ("kata tertentu terlalu sering: {}") - biarkan quality gate normal yang reject.
+        if berlebih and not fact_issues:
+            fix_user = f"""Draft artikel ini (JSON) memakai kata tertentu terlalu sering: {berlebih}
+(target MAKSIMAL 2x per kata di SELURUH artikel).
+
+Tulis ULANG HANYA kalimat-kalimat yang memakai kata berlebih itu, ganti dengan kalimat aktif/kata
+lain yang lebih spesifik (JANGAN sekadar sinonim generik). JANGAN ubah kalimat/paragraf lain yang
+tidak bermasalah, JANGAN ubah/tambah/kurangi fakta apa pun, JANGAN ubah struktur/urutan sub-judul.
+
+JSON artikel:
+{json.dumps({"title": article["title"], "excerpt": article["excerpt"], "content": article["content"], "tags": article.get("tags", [])}, ensure_ascii=False)}
+
+Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content, tags)."""
+            fix_system = (
+                "Kamu editor konten profesional Bahasa Indonesia untuk penginapan di Bedugul, Bali. "
+                "Tugasmu HANYA revisi kata berlebih yang diminta - JANGAN mengarang fakta baru, "
+                "JANGAN mengubah fakta/harga/fasilitas yang sudah ada di draft, JANGAN mengubah "
+                "struktur/urutan sub-judul atau bagian yang tidak diminta."
+            )
+            try:
+                raw_fix = await _chat(fix_system, fix_user, temperature=0.5)
+            except Exception:
+                raw_fix = None
+            if raw_fix:
+                try:
+                    fixed = _parse_json_response(raw_fix)
+                    fixed_content_norm = _normalize_faq_format(fixed["content"])
+                    fixed_final = _inject_links(fixed_content_norm, links, WA_BY_SITE[site], article.get("_maps_url"))
+                    if not _slop_phrases_terdeteksi(fixed_final):
+                        article["title"], article["excerpt"], article["content"] = fixed["title"], fixed["excerpt"], fixed_content_norm
+                        content_final = fixed_final
+                        problems = quality_check(article, content_final)
+                        fact_issues = await fact_check(site, content_final)
+                        if fact_issues:
+                            problems.append("fact-check: " + "; ".join(fact_issues))
+                        editor_issues = await editor_review(content_final, keyword_doc["keyword"])
+                except (json.JSONDecodeError, KeyError):
+                    pass  # gagal parse hasil revisi - lanjut pakai draft asli, biar quality gate normal yang menolak
+
         if editor_issues:
             problems.append("editor: " + "; ".join(editor_issues))
     except Exception:
