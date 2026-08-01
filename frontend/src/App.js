@@ -1,12 +1,21 @@
 import { useEffect, lazy, Suspense } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import { ContentProvider } from "@/context/ContentContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import SiteLayout from "@/components/site/SiteLayout";
 import ProtectedRoute from "@/components/site/ProtectedRoute";
+
+// Toaster (sonner) dijadikan lazy (2026-08-01, ditemukan lewat analisis bundle nyata -
+// source-map-explorer: sonner = 35KB/~9.6KB gzip, 6-8% dari main bundle) - sebelumnya
+// dimuat EAGER di setiap halaman termasuk landing page, padahal toast() TIDAK PERNAH
+// dipanggil dari Home/halaman publik lain (cuma Contact.jsx & /admin, keduanya SUDAH
+// lazy). Toaster cuma perlu siap SEBELUM tamu benar-benar submit form, jadi aman ditunda
+// tanpa terasa - mengurangi JS yang wajib dieksekusi di render pertama Home.
+const Toaster = lazy(() =>
+  import("sonner").then((m) => ({ default: m.Toaster }))
+);
 
 // Home is kept as a static import: it's the most common landing page,
 // so loading it eagerly avoids a Suspense flash for the majority of visits.
@@ -54,11 +63,13 @@ export function AppRoutes() {
   return (
     <>
       <ScrollToTop />
-      <Toaster
-        richColors
-        position="top-center"
-        toastOptions={{ style: { fontFamily: "DM Sans, sans-serif" } }}
-      />
+      <Suspense fallback={null}>
+        <Toaster
+          richColors
+          position="top-center"
+          toastOptions={{ style: { fontFamily: "DM Sans, sans-serif" } }}
+        />
+      </Suspense>
       <Suspense fallback={null}>
       <Routes>
         {/* Site */}
