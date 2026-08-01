@@ -6,25 +6,32 @@
          terpisah) - dibungkus cek hostname supaya traffic Harmoni TIDAK ikut masuk ke
          GA4 property ini (keputusan eksplisit user, bukan digabung).
 
-         Ditunda sampai window "load" (2026-07-28, ditemukan lewat Lighthouse nyata -
-         skor Performance turun ke ~59-66, Total Blocking Time 2.76 detik) - sebelumnya
-         script gtag.js (167KB, ~861ms scripting) dimuat SEGERA di paling atas <head>,
-         ikut bersaing rebutan bandwidth/main-thread dgn resource kritis (bundle React,
-         font, gambar hero) tepat di jendela waktu paling penting utk interaktivitas
-         pertama. dataLayer/gtag() tetap disiapkan segera (event apa pun yg terjadi
-         sebelum load tetap ke-queue, tidak hilang) - cuma FILE gtag.js aktualnya yang
-         ditunda, jadi tidak lagi menunda TTI/blocking main thread. -->
+         Ditunda sampai browser benar-benar idle (2026-08-01, diperkuat lagi lewat
+         Lighthouse nyata - "load" event ternyata masih tumpang tindih dengan hydration
+         React yang belum selesai di CPU throttled mobile, GTM (167KB, ~712ms blocking)
+         tetap ikut menyumbang Total Blocking Time 3+ detik. requestIdleCallback menunggu
+         main thread BENAR-BENAR kosong dulu, jadi tidak lagi rebutan waktu eksekusi
+         dengan hydration - fallback ke setTimeout utk Safari/browser lama yang belum
+         dukung requestIdleCallback. dataLayer/gtag() tetap disiapkan segera, cuma FILE
+         gtag.js aktualnya yang ditunda.) -->
     <script>
       if (window.location.hostname.replace(/^www\./, "") === "pelangihomestay.com") {
         window.dataLayer = window.dataLayer || [];
         function gtag() { dataLayer.push(arguments); }
         gtag("js", new Date());
         gtag("config", "G-G7FZZ8D480");
-        window.addEventListener("load", function () {
+        function loadGtagScript() {
           var gtagScript = document.createElement("script");
           gtagScript.async = true;
           gtagScript.src = "https://www.googletagmanager.com/gtag/js?id=G-G7FZZ8D480";
           document.head.appendChild(gtagScript);
+        }
+        window.addEventListener("load", function () {
+          if ("requestIdleCallback" in window) {
+            requestIdleCallback(loadGtagScript, { timeout: 4000 });
+          } else {
+            setTimeout(loadGtagScript, 2000);
+          }
         });
       }
     </script>
