@@ -1705,6 +1705,9 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
     return {"ok": True, "keyword": keyword_doc["keyword"], "slug": slug, "word_count": len(content_final.split())}
 
 
+MAX_RETRY_PER_SLOT = 4  # lihat catatan retry-until-sukses di main() di bawah
+
+
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--site", required=True, choices=["pelangi", "harmoni", "all"])
@@ -1718,13 +1721,32 @@ async def main():
     # ketinggalan 1 siklus cron tanpa error yang kelihatan jelas (silent, cuma keliatan
     # dari created_at terakhir yang beda 4 jam). Sekarang tiap situs independen: gagal di
     # satu situs tidak menghalangi situs lain tetap dapat jatahnya di run yang sama.
+    #
+    # Retry-until-sukses per slot (2026-08-02, permintaan Agus - target harian WAJIB
+    # tercapai, bukan cuma "dicoba"): SEBELUMNYA `--count N` = N PERCOBAAN, bukan N
+    # ARTIKEL SUKSES - kalau generate_one() gagal quality gate (fact-check/editor/slop,
+    # lihat problems di hasil {"ok": false}), slot itu hilang begitu saja tanpa diganti,
+    # jadi target harian bisa meleset (audit log nyata: ~1 dari 6-7 percobaan gagal
+    # quality gate, murni krn model kadang menghalusinasi 1 klaim kecil/kata berlebih -
+    # BUKAN kegagalan sistemik). Sekarang tiap slot di-retry pakai keyword BERIKUTNYA
+    # (get_next_keyword otomatis skip yang baru gagal, requeue balik ke "belum_dibuat")
+    # sampai benar-benar sukses, dibatasi MAX_RETRY_PER_SLOT supaya tidak infinite-loop
+    # kalau memang ada kegagalan sistemik asli (mis. OpenAI API down total hari itu).
     for site in sites:
+        sukses = 0
         for i in range(args.count):
-            try:
-                result = await generate_one(site)
-                print(f"[{site}] {i+1}/{args.count}: {json.dumps(result, ensure_ascii=False)}")
-            except Exception as e:
-                print(f"[{site}] {i+1}/{args.count}: GAGAL - {type(e).__name__}: {e}")
+            for attempt in range(1, MAX_RETRY_PER_SLOT + 1):
+                try:
+                    result = await generate_one(site)
+                    print(f"[{site}] slot {i+1}/{args.count} percobaan {attempt}: {json.dumps(result, ensure_ascii=False)}")
+                    if result.get("ok"):
+                        sukses += 1
+                        break
+                except Exception as e:
+                    print(f"[{site}] slot {i+1}/{args.count} percobaan {attempt}: GAGAL - {type(e).__name__}: {e}")
+            else:
+                print(f"[{site}] slot {i+1}/{args.count}: MENYERAH setelah {MAX_RETRY_PER_SLOT}x percobaan - kemungkinan kegagalan sistemik (cek log/API), bukan sekadar 1 artikel jelek.")
+        print(f"[{site}] ringkasan run ini: {sukses}/{args.count} artikel benar-benar terbit.")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,13 @@
 #!/bin/bash
-# Dipanggil cron 7x/hari (lihat crontab -l, jam 02/05/08/11/14/17/20 WIB) - tiap
-# panggilan generate 1 artikel per situs (pelangi + harmoni), jadi total 7
-# artikel/hari/situs (14/hari gabungan) sesuai permintaan user 2026-07-28 (naik dari
-# 3x/hari sebelumnya). Log ke file terpisah supaya bisa dicek kalau ada kegagalan
-# tanpa perlu masuk journalctl.
+# Dipanggil cron 10x/hari (2026-08-02, naik dari 7x/hari - permintaan Agus: target
+# WAJIB 10 artikel/hari/situs, bukan cuma "dicoba") - lihat crontab -l, jam
+# 02/04/06/08/10/12/14/16/18/20 WIB, tiap panggilan generate 1 SLOT per situs
+# (pelangi + harmoni), jadi total 10 artikel/hari/situs (20/hari gabungan). "WAJIB
+# 10" ditegakkan di dalam seo_agent.py main() sendiri (retry-until-sukses per slot,
+# lihat MAX_RETRY_PER_SLOT) - --count di sini tetap berarti 1 SLOT (bisa lebih dari
+# 1 percobaan internal kalau ada yang gagal quality gate), bukan 1 percobaan mentah.
+# Log ke file terpisah supaya bisa dicek kalau ada kegagalan tanpa perlu masuk
+# journalctl.
 cd /var/www/web-pelangi/backend || exit 1
 set -a
 source .env
