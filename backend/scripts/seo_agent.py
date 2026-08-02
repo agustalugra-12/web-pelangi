@@ -1348,6 +1348,29 @@ def quality_check(article: dict, content_with_links: str) -> list:
     return problems
 
 
+async def _internal_links_valid(site: str, content: str) -> list:
+    """Validasi DETERMINISTIK (2026-08-02, permintaan Agus - laporan link internal yang
+    tidak bisa diklik): cek tiap link "[label](/blog/slug)" di konten benar-benar menunjuk
+    ke artikel yang ASLI ADA & PUBLISHED di SITUS YANG SAMA. Bug nyata ditemukan lewat
+    audit: 3 dari 112 link internal di seluruh blog ternyata mati - akar masalahnya model
+    kadang menuliskan slug candidat link (dikasih via pick_internal_links) SEDIKIT beda
+    dari string asli (typo/salah salin, atau ke variasi slug situs LAIN yang mirip - mis.
+    artikel Harmoni menunjuk ke slug gaya Pelangi). Link itu SECARA TEKNIS tetap bisa
+    diklik (elemen <a> asli, JANGAN disamakan dgn masalah rendering) - tapi mendarat di
+    404, dari sudut pandang tamu awam terasa sama saja dgn "tidak bisa diklik". Sekarang
+    dicek sebelum publish, sama seperti fact_check/editor_review - reject & requeue kalau
+    ada link mati, JANGAN publish artikel dgn link 404 di dalamnya."""
+    targets = set(re.findall(r"\]\(/blog/([^)]+)\)", content))
+    if not targets:
+        return []
+    existing = await db.blog_posts.find(
+        {"site": site, "slug": {"$in": list(targets)}}, {"slug": 1},
+    ).to_list(len(targets))
+    existing_slugs = {e["slug"] for e in existing}
+    mati = sorted(targets - existing_slugs)
+    return [f'link internal mati: /blog/{slug} (situs "{site}") tidak ditemukan/belum publish' for slug in mati]
+
+
 # Intent Coverage Score (2026-07-29, roadmap AI Grow item 3) - checklist DETERMINISTIK
 # (regex/keyword), BUKAN minta LLM menilai draftnya sendiri 0-100% - itu pola "AI menilai
 # AI" yang sengaja DIHINDARI di Quality Gate sejak awal (lihat quality_check() - rule-
@@ -1566,6 +1589,9 @@ async def generate_one(site: str) -> dict:
         fact_issues = await fact_check(site, content_final)
         if fact_issues:
             problems.append("fact-check: " + "; ".join(fact_issues))
+        link_issues = await _internal_links_valid(site, content_final)
+        if link_issues:
+            problems.extend(link_issues)
         editor_issues = await editor_review(content_final, keyword_doc["keyword"])
 
         # Auto-fix kata AI-slop berulang (2026-08-01, permintaan user: kurangi tingkat
@@ -1619,6 +1645,9 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
                         fact_issues = await fact_check(site, content_final)
                         if fact_issues:
                             problems.append("fact-check: " + "; ".join(fact_issues))
+                        link_issues = await _internal_links_valid(site, content_final)
+                        if link_issues:
+                            problems.extend(link_issues)
                         editor_issues = await editor_review(content_final, keyword_doc["keyword"])
                 except (json.JSONDecodeError, KeyError):
                     pass  # gagal parse hasil revisi - lanjut pakai draft asli, biar quality gate normal yang menolak

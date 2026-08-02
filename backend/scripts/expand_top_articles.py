@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.seo_agent import (  # noqa: E402
     db, SITE_DOMAIN, _chat, _parse_json_response, _fetch_site_facts, quality_check, fact_check,
-    _normalize_faq_format,
+    _normalize_faq_format, _internal_links_valid,
 )
 from scripts import prerender_home as _prerender  # noqa: E402
 
@@ -158,6 +158,9 @@ async def run(site: str, limit: int = MAX_PER_RUN) -> None:
         fact_issues = await fact_check(site, expanded.get("content", ""))
         if fact_issues:
             problems.append("fact-check: " + "; ".join(fact_issues))
+        link_issues = await _internal_links_valid(site, expanded.get("content", ""))
+        if link_issues:
+            problems.extend(link_issues)
         if problems:
             print(f"[{site}] skip {post['slug']}: hasil expand gagal quality/fact check ({problems})")
             continue
