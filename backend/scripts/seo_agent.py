@@ -404,11 +404,25 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
     existing_titles = await db.blog_posts.find({"site": site}, {"title": 1}).to_list(500)
     existing_texts = [k["keyword"] for k in existing_kw] + [p["title"] for p in existing_titles]
 
+    # Cluster Generator (2026-08-02, PRD "AI Blog V2.0" modul 6) - SEBELUM ini SEMUA keyword
+    # hasil generate baru hardcode cluster="Long Tail" tanpa dianalisis, artinya CLUSTER_ANGLE
+    # (10 angle berbeda yang SENGAJA dibuat 2026-07-29 supaya artikel tidak duplicate content -
+    # lihat komentarnya) tidak pernah benar-benar dipakai utk keyword baru, SEMUA dapat angle
+    # "Long Tail" generik walau topiknya sebenarnya jelas² "Pasangan"/"Keluarga"/dst - bug yang
+    # sama persis dgn kelas masalah yang CLUSTER_ANGLE dibuat utk dicegah. Sekarang model WAJIB
+    # pilih cluster PALING PAS dari 10 yang sudah ada (bukan bikin cluster baru), dan diminta
+    # SEBAR ke cluster berbeda-beda (bukan semua nyasar ke 1-2 cluster saja) - efeknya: 1 sesi
+    # generate ini otomatis jadi kumpulan artikel terstruktur lintas angle, bukan varian long-
+    # tail generik semua, mendekati semangat "1 topik -> beberapa artikel bersudut beda" tanpa
+    # perlu subsistem baru terpisah.
+    cluster_list = ", ".join(f'"{c}"' for c in CLUSTER_ANGLE.keys())
     prompt = (
         f"Kamu ahli SEO untuk penginapan di kawasan Bedugul, Bali. Sudah ada {len(existing_kw)} "
         f"keyword yang tercatat. Buat {n} ide keyword BARU (belum ada di daftar), gaya pencarian "
         "orang Indonesia asli (bukan terjemahan kaku), fokus penginapan/wisata Bedugul - variasi "
-        "kombinasi tipe akomodasi + lokasi/fasilitas/aktivitas/harga yang BELUM ada polanya.\n\n"
+        "kombinasi tipe akomodasi + lokasi/fasilitas/aktivitas/harga yang BELUM ada polanya. "
+        f"SEBARKAN ke cluster yang BERBEDA-BEDA (jangan semua ke cluster yang sama) dari daftar "
+        f"ini: {cluster_list}.\n\n"
         # Intent Classifier (2026-08-02, PRD "AI Blog V2.0" modul 3, extends existing 200
         # seed keywords yang sudah punya klasifikasi asli - lihat catatan di bawah) - SEBELUM
         # ini SEMUA keyword hasil generate baru hardcode "Transactional" tanpa benar-benar
@@ -423,7 +437,7 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         # bagus"), "Transactional" (niat pesan/booking sekarang, mis. "booking cottage bedugul "
         # murah").\n\n"
         'Balas HARUS JSON valid array of object, format PERSIS: '
-        '[{"keyword":"...","intent":"Informational"|"Commercial"|"Transactional"}, ...] '
+        f'[{{"keyword":"...","intent":"Informational"|"Commercial"|"Transactional","cluster":{cluster_list}}}, ...] '
         "- TIDAK ADA teks lain di luar JSON array itu."
     )
     raw = await _chat(
@@ -435,8 +449,9 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         parsed = json.loads(raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
     except json.JSONDecodeError:
         parsed = []
-    candidates = [(c.get("keyword", "").strip(), c.get("intent") if c.get("intent") in
-                   ("Informational", "Commercial", "Transactional") else "Transactional")
+    candidates = [(c.get("keyword", "").strip(),
+                   c.get("intent") if c.get("intent") in ("Informational", "Commercial", "Transactional") else "Transactional",
+                   c.get("cluster") if c.get("cluster") in CLUSTER_ANGLE else "Long Tail")
                   for c in parsed if isinstance(c, dict) and c.get("keyword", "").strip()]
 
     if not candidates:
@@ -447,15 +462,14 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
 
     now = datetime.now(timezone.utc).isoformat()
     accepted = 0
-    for (cand, cand_intent), cand_emb in zip(candidates, cand_embeds):
+    for (cand, cand_intent, cand_cluster), cand_emb in zip(candidates, cand_embeds):
         is_dupe = any(_cosine(cand_emb, e) > 0.88 for e in existing_embeds)
         if is_dupe:
             continue
-        cluster = "Long Tail"
         await db.seo_keywords.update_one(
             {"site": site, "keyword": cand},
             {"$setOnInsert": {
-                "id": str(uuid.uuid4()), "site": site, "keyword": cand, "cluster": cluster,
+                "id": str(uuid.uuid4()), "site": site, "keyword": cand, "cluster": cand_cluster,
                 "intent": cand_intent, "priority": "Medium", "musiman": False,
                 "status": "belum_dibuat", "artikel_slug": None, "source": "ai_generated",
                 "created_at": now, "updated_at": now,
