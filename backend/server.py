@@ -258,6 +258,14 @@ class BlogPostOut(BaseModel):
     # Intent Coverage Score (2026-07-29) - {skor_persen, tercakup, kurang}. None utk
     # artikel lama sebelum fitur ini ada, atau artikel yang ditulis manual.
     intent_coverage: Optional[dict] = None
+    # Author byline (2026-08-02, PRD "AI Blog V2.0" modul 9 EEAT Builder) - "Tim {brand
+    # asli}" (lihat seo_agent.py generate_one), BUKAN nama editor/reviewer karangan. Field
+    # ini SEMPAT hilang dari response walau sudah ditulis ke DB & dibackfill ke artikel
+    # lama (2026-08-02, bug nyata ditemukan lewat verifikasi live: BlogPostOut ini
+    # whitelist Pydantic ketat, field baru yang tidak didaftarkan di sini otomatis
+    # ke-drop dari response API walau ada di dokumen Mongo-nya) - byline tampil "Tim
+    # Kami" generik (fallback frontend) sampai fix ini, bukan nama brand asli.
+    author: Optional[str] = None
 
 
 class ContactMessageCreate(BaseModel):
@@ -301,6 +309,7 @@ def post_to_out(doc: dict) -> BlogPostOut:
         competitor_analysis=doc.get("competitor_analysis"),
         expanded_at=doc.get("expanded_at"),
         intent_coverage=doc.get("intent_coverage"),
+        author=doc.get("author"),
     )
 
 
@@ -639,6 +648,13 @@ async def admin_create_post(payload: BlogPostCreate, _: dict = Depends(get_curre
         counter += 1
         slug = f"{slug_base}-{counter}"
 
+    # Author byline (2026-08-02, sama pola dgn scripts/seo_agent.py generate_one) - artikel
+    # yang ditulis manual staf via CMS ini JUGA butuh byline (bukan cuma artikel AI SEO
+    # Agent), tanpa ini fallback frontend "Tim Kami" generik selamanya. Tetap "Tim {brand}",
+    # bukan nama staf individu - staf yang login CMS memang bagian dari tim itu, jujur.
+    site_brand_doc = (await db.site_content.find_one({"site": site, "type": "site"}) or {}).get("data", {})
+    author_name = f"Tim {site_brand_doc.get('brand') or ('Pelangi Homestay' if site == 'pelangi' else 'Harmoni Hills')}"
+
     doc = {
         "title": payload.title,
         "excerpt": payload.excerpt,
@@ -651,6 +667,7 @@ async def admin_create_post(payload: BlogPostCreate, _: dict = Depends(get_curre
         "site": site,
         "created_at": now,
         "updated_at": now,
+        "author": author_name,
     }
     result = await db.blog_posts.insert_one(doc)
     doc["_id"] = result.inserted_id

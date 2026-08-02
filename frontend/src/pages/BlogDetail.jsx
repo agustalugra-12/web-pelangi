@@ -60,6 +60,11 @@ export default function BlogDetail() {
       <p className="mt-4 text-[11px] font-semibold uppercase tracking-widest text-mustard-deep">{post.category}</p>
       <h1 className="font-display text-4xl md:text-5xl text-teal-deep leading-tight mt-2">{pick(post, "title")}</h1>
       <p className="mt-3 text-sm text-teal-deep/60">
+        {/* Byline (2026-08-02, PRD "AI Blog V2.0" modul 9 EEAT Builder) - identitas TIM ASLI
+            di balik artikel, bukan cuma tanggal - sinyal E-E-A-T yang PEMBACA benar-benar
+            lihat, bukan cuma tersembunyi di JSON-LD. Fallback ke label brand generik kalau
+            artikel lama belum punya field author (dibuat sebelum fix ini). */}
+        {(post.author || (lang === "en" ? "Our Team" : "Tim Kami")) + " · "}
         {new Date(post.created_at).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}
         {/* "Terakhir diperbarui" (2026-07-29, Editorial Standard v2) - sinyal freshness/EEAT
             nyata utk PEMBACA, sebelumnya updated_at cuma ada di JSON-LD (dateModified) utk
@@ -149,13 +154,17 @@ function buildArticleSchema(post, content, blogLabel, testimonials) {
     ...content.matchAll(/\*\*([^*]+\?)\*\*\n+([^\n]+)/g),
     ...content.matchAll(/\*\*Pertanyaan\?\*\*\n\*([^*]+)\*\n([^\n]+)/g),
   ];
-  // publisher/author (2026-07-28, lengkapi Schema Generator) - Google mewajibkan
-  // Article punya publisher Organization+logo utk rich result. Direferensikan lewat
-  // @id ke LodgingBusiness yang sama (dirender site-wide di SiteLayout/LodgingSchema.jsx,
-  // co-exist di halaman yang sama) - bukan duplikat entity baru, cuma nunjuk ke entity
-  // bisnis yang sudah ada. Artikel tanpa byline manusia (AI SEO Agent) - Organization
-  // sebagai author juga pola yang lazim & didukung Google utk blog brand tanpa penulis.
+  // publisher/author (2026-07-28, lengkapi Schema Generator; author diperbarui 2026-08-02
+  // PRD "AI Blog V2.0" modul 9 EEAT Builder) - Article punya publisher Organization+logo
+  // utk rich result, direferensikan lewat @id ke LodgingBusiness yang sama (dirender site-
+  // wide di SiteLayout/LodgingSchema.jsx). Author SEKARANG entity Organization bernama
+  // TERPISAH ("Tim {brand}", dari post.author - lihat seo_agent.py generate_one) - BUKAN
+  // nama editor/reviewer karangan (byline palsu justru berisiko dianggap konten
+  // menyesatkan bagi Google), tapi juga bukan lagi cuma nunjuk balik ke publisher generik
+  // spt sebelumnya - identitas tim asli yang bisa diverifikasi lebih spesifik drpd cuma
+  // nama bisnis. Fallback ke publisherRef kalau artikel lama belum punya post.author.
   const publisherRef = { "@id": `${origin}/#lodgingbusiness` };
+  const authorNode = post.author ? { "@type": "Organization", name: post.author } : publisherRef;
   const nodes = [
     {
       "@type": "Article",
@@ -165,7 +174,7 @@ function buildArticleSchema(post, content, blogLabel, testimonials) {
       datePublished: post.created_at,
       dateModified: post.updated_at,
       url: `${origin}/blog/${post.slug}`,
-      author: publisherRef,
+      author: authorNode,
       publisher: publisherRef,
     },
     breadcrumbNode([

@@ -408,20 +408,46 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         f"Kamu ahli SEO untuk penginapan di kawasan Bedugul, Bali. Sudah ada {len(existing_kw)} "
         f"keyword yang tercatat. Buat {n} ide keyword BARU (belum ada di daftar), gaya pencarian "
         "orang Indonesia asli (bukan terjemahan kaku), fokus penginapan/wisata Bedugul - variasi "
-        "kombinasi tipe akomodasi + lokasi/fasilitas/aktivitas/harga yang BELUM ada polanya. "
-        "Balas HANYA daftar keyword, satu per baris, tanpa nomor/tanda apapun."
+        "kombinasi tipe akomodasi + lokasi/fasilitas/aktivitas/harga yang BELUM ada polanya.\n\n"
+        # Intent Classifier (2026-08-02, PRD "AI Blog V2.0" modul 3, extends existing 200
+        # seed keywords yang sudah punya klasifikasi asli - lihat catatan di bawah) - SEBELUM
+        # ini SEMUA keyword hasil generate baru hardcode "Transactional" tanpa benar-benar
+        # dianalisis (bug nyata ditemukan lewat audit: 38/38 keyword ai_generated 100%
+        # Transactional, padahal 200 keyword seed awal punya variasi asli
+        # 100 Transactional/60 Commercial/40 Informational - generator ini yang tidak pernah
+        # ikut mengklasifikasi). Sekarang WAJIB klasifikasi tiap keyword ke SALAH SATU dari 3
+        # kategori standar SEO (bukan 4 - "Navigational" tidak relevan utk niche ini, tidak
+        # ada yang mencari nama brand spesifik yg belum dikenal): "Informational" (mencari
+        # info/panduan, blm niat booking, mis. "itinerary 1 hari bedugul"), "Commercial"
+        # (membandingkan pilihan sebelum memutuskan, mis. "cottage vs hotel bedugul mana lebih "
+        # bagus"), "Transactional" (niat pesan/booking sekarang, mis. "booking cottage bedugul "
+        # murah").\n\n"
+        'Balas HARUS JSON valid array of object, format PERSIS: '
+        '[{"keyword":"...","intent":"Informational"|"Commercial"|"Transactional"}, ...] '
+        "- TIDAK ADA teks lain di luar JSON array itu."
     )
-    raw = await _chat("Kamu SEO keyword researcher yang teliti, tidak pernah mengarang tempat/fasilitas fiktif.", prompt)
-    candidates = [ln.strip("-• \t") for ln in raw.strip().split("\n") if ln.strip()]
+    raw = await _chat(
+        "Kamu SEO keyword researcher yang teliti, tidak pernah mengarang tempat/fasilitas fiktif. "
+        "Balas HANYA JSON valid, tidak ada markdown code fence atau teks pembuka/penutup.",
+        prompt,
+    )
+    try:
+        parsed = json.loads(raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
+    except json.JSONDecodeError:
+        parsed = []
+    candidates = [(c.get("keyword", "").strip(), c.get("intent") if c.get("intent") in
+                   ("Informational", "Commercial", "Transactional") else "Transactional")
+                  for c in parsed if isinstance(c, dict) and c.get("keyword", "").strip()]
 
     if not candidates:
         return
-    cand_embeds = await _embed(candidates)
+    cand_texts = [c[0] for c in candidates]
+    cand_embeds = await _embed(cand_texts)
     existing_embeds = await _embed(existing_texts) if existing_texts else []
 
     now = datetime.now(timezone.utc).isoformat()
     accepted = 0
-    for cand, cand_emb in zip(candidates, cand_embeds):
+    for (cand, cand_intent), cand_emb in zip(candidates, cand_embeds):
         is_dupe = any(_cosine(cand_emb, e) > 0.88 for e in existing_embeds)
         if is_dupe:
             continue
@@ -430,7 +456,7 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
             {"site": site, "keyword": cand},
             {"$setOnInsert": {
                 "id": str(uuid.uuid4()), "site": site, "keyword": cand, "cluster": cluster,
-                "intent": "Transactional", "priority": "Medium", "musiman": False,
+                "intent": cand_intent, "priority": "Medium", "musiman": False,
                 "status": "belum_dibuat", "artikel_slug": None, "source": "ai_generated",
                 "created_at": now, "updated_at": now,
             }},
@@ -1610,12 +1636,21 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
     cover = await pick_cover_image(site, keyword_doc["keyword"], keyword_doc["cluster"], slug)
     now = datetime.now(timezone.utc).isoformat()
 
+    # Author byline (2026-08-02, PRD "AI Blog V2.0" modul 9 EEAT Builder, permintaan Agus) -
+    # SENGAJA nama TIM ASLI ("Tim {brand asli}"), BUKAN nama editor/reviewer karangan - Google
+    # menilai E-E-A-T dari identitas yang bisa diverifikasi nyata, byline palsu justru
+    # berisiko dianggap konten menyesatkan. `brand` diambil dari db.site_content (sumber
+    # kebenaran yang sama dipakai _fetch_site_facts di atas), bukan hardcode per-situs -
+    # otomatis benar kalau brand berubah tanpa perlu ubah kode ini.
+    site_brand_doc = (await db.site_content.find_one({"site": site, "type": "site"}) or {}).get("data", {})
+    author_name = f"Tim {site_brand_doc.get('brand') or ('Pelangi Homestay' if site == 'pelangi' else 'Harmoni Hills')}"
+
     doc = {
         "title": article["title"], "excerpt": article["excerpt"], "content": content_final,
         "category": CLUSTER_CATEGORY.get(keyword_doc["cluster"], "General"),
         "cover_image": cover, "tags": article.get("tags", []), "published": True,
         "slug": slug, "site": site, "created_at": now, "updated_at": now,
-        "seo_keyword": keyword_doc["keyword"],
+        "seo_keyword": keyword_doc["keyword"], "author": author_name,
         # Data kompetitor yang dibaca AI sebelum menulis (2026-07-28, permintaan user -
         # tampil di dashboard CMS) - None kalau analisis di-skip (budget Serper habis
         # hari itu/API down) - lihat analyze_competitors().

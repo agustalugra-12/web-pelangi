@@ -226,6 +226,15 @@ export default function CmsBlog() {
                 <span className="w-5 text-right text-teal-deep/40 font-mono text-xs shrink-0">{i + 1}.</span>
                 <span className="flex-1 text-teal-deep font-medium">{k.keyword}</span>
                 <span className="text-xs text-teal-deep/60 hidden sm:inline">{k.cluster}</span>
+                {/* Intent Classifier (2026-08-02, PRD "AI Blog V2.0" modul 3) - field ini
+                    sebelumnya ada di data tapi tidak pernah ditampilkan di mana pun (dead
+                    data). Warna netral (bukan merah/kuning spt priority) krn ini bukan
+                    sinyal urgensi, cuma kategori. */}
+                {k.intent && (
+                  <span className="text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 shrink-0 bg-teal-deep/8 text-teal-deep/70 hidden md:inline-block">
+                    {k.intent}
+                  </span>
+                )}
                 <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 shrink-0 ${
                   k.priority === "High" ? "bg-red-100 text-red-700"
                     : k.priority === "Medium" ? "bg-mustard-soft/30 text-mustard-deep"
