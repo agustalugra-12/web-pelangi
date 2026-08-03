@@ -221,7 +221,16 @@ function buildArticleSchema(post, content, blogLabel, testimonials) {
 // diperlakukan sebagai sub-judul (lihat wholeBoldMatch di atas), sisanya cuma
 // bold inline biasa.
 function renderInline(text) {
-  const pattern = /\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[([^\]]+)\]\(([^)]+)\)/g;
+  // (2026-08-03, bug nyata ditemukan Agus - banyak link Google Maps di artikel terbit
+  // tidak bisa diklik) - akar masalahnya: sebagian artikel (mis. hasil Writer Agent yang
+  // tidak konsisten ikuti instruksi format markdown) menyimpan URL MENTAH langsung di
+  // teks (bukan format "[label](url)"), jadi tidak pernah cocok pola link di atas -
+  // tampil sbg teks polos selamanya. Tambah alternatif ke-5 di regex utk tangkap URL
+  // mentah "http(s)://..." yang BUKAN bagian dari "[label](url)" (pola itu tetap
+  // diutamakan lebih dulu dlm alternation, jadi URL yg SUDAH dibungkus markdown tidak
+  // ke-double-match di sini) - diperlakukan sbg link yg sama amannya (selalu http/https
+  // by construction, tidak perlu whitelist skema lagi spt cabang bawah).
+  const pattern = /\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[([^\]]+)\]\(([^)]+)\)|(https?:\/\/[^\s<>()]+)/g;
   const parts = [];
   let lastIndex = 0;
   let match;
@@ -232,6 +241,20 @@ function renderInline(text) {
       parts.push(<strong key={key++}>{match[1]}</strong>);
     } else if (match[2] !== undefined) {
       parts.push(<em key={key++}>{match[2]}</em>);
+    } else if (match[5] !== undefined) {
+      // URL mentah - buang tanda baca akhir kalimat yang ikut ke-capture (mis. "...query)." atau
+      // "...url," di akhir kalimat) supaya tidak ikut jadi bagian href yang salah.
+      let raw = match[5];
+      let trailing = "";
+      const trailingMatch = raw.match(/[.,;:!?]+$/);
+      if (trailingMatch) {
+        trailing = trailingMatch[0];
+        raw = raw.slice(0, -trailing.length);
+      }
+      parts.push(
+        <a key={key++} href={raw} target="_blank" rel="noopener noreferrer" className="text-mustard-deep underline hover:text-mustard">{raw}</a>
+      );
+      if (trailing) parts.push(trailing);
     } else {
       const label = match[3];
       const href = match[4];
