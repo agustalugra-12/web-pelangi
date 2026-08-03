@@ -484,6 +484,15 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         "kombinasi tipe akomodasi + lokasi/fasilitas/aktivitas/harga yang BELUM ada polanya. "
         f"SEBARKAN ke cluster yang BERBEDA-BEDA (jangan semua ke cluster yang sama) dari daftar "
         f"ini: {cluster_list}.\n\n"
+        # (2026-08-03, permintaan Agus - bug nyata: keyword spt "penginapan pet friendly boleh "
+        # bawa anjing" & "akomodasi dgn ruang meeting dan katering" sempat lolos jadi keyword,
+        # artikelnya PUBLISH mengasumsikan fasilitas yg TIDAK PERNAH ada) - dicegah dari akar
+        # di sini SEBELUM masuk pool sama sekali, bukan cuma mengandalkan Writer Agent/fact-
+        # checker menangkapnya belakangan.
+        "JANGAN buat keyword yang mengasumsikan/menyiratkan properti punya salah satu dari ini "
+        "(properti TIDAK punya semuanya): menerima hewan peliharaan/pet-friendly, ruang meeting/"
+        "katering untuk acara/corporate, sewa mobil/motor, jemput/antar bandara, paket trip/tur/"
+        "wisata terorganisir (trekking/panen buah/city tour dst yang dijual properti).\n\n"
         # Intent Classifier (2026-08-02, PRD "AI Blog V2.0" modul 3, extends existing 200
         # seed keywords yang sudah punya klasifikasi asli - lihat catatan di bawah) - SEBELUM
         # ini SEMUA keyword hasil generate baru hardcode "Transactional" tanpa benar-benar
@@ -620,6 +629,28 @@ async def _fetch_site_facts(site: str) -> str:
         f"khusus milik properti ini): {BEDUGUL_FACTS}",
         f"Fakta jarak & waktu kunjungan landmark wisata sekitar (boleh dikutip, fakta publik "
         f"area, BUKAN milik properti): {LANDMARK_FACTS}",
+        # (2026-08-03, permintaan Agus - bug nyata: artikel terbit yg mengklaim pet-friendly/
+        # ruang meeting yg TIDAK PERNAH ada) - fasilitas/layanan yg SERING diasumsikan hotel
+        # pada umumnya tapi properti INI TIDAK PUNYA, WAJIB ditegaskan eksplisit di sini (bukan
+        # cuma "diam" soal itu) - kalau cuma diam, model/keyword generator bisa menganggap
+        # topik itu netral & tetap menulis artikel yang MENGASUMSIKAN properti punya fasilitas
+        # itu (spt yg sudah terjadi). fact_check() pakai fungsi yg SAMA (satu sumber kebenaran,
+        # lihat komentar di atas), jadi larangan ini otomatis juga jadi jaring pengaman kalau
+        # instruksi prompt Writer Agent (lihat write_article) tetap dilanggar.
+        "FASILITAS/LAYANAN YANG TIDAK KAMI SEDIAKAN (JANGAN PERNAH tulis artikel yang "
+        "mengklaim/mengasumsikan salah satu ini tersedia, walau keyword-nya menyiratkan "
+        "begitu - kalau keyword secara eksplisit minta topik ini, jawab jujur TIDAK "
+        "tersedia atau alihkan ke sudut pandang lain yang relevan, JANGAN menulis seolah "
+        "tersedia): TIDAK menerima hewan peliharaan/pet (anjing/kucing/dst) dalam bentuk "
+        "apa pun; TIDAK ada ruang meeting/rapat dan TIDAK ada layanan katering/catering "
+        "makanan untuk acara; TIDAK menyewakan mobil maupun motor; TIDAK ada layanan "
+        "jemput/antar bandara; TIDAK ada paket trip/tur/wisata (mis. paket trekking, paket "
+        "panen buah, city tour) yang dijual/diselenggarakan properti - properti hanya "
+        "menyediakan penginapan, tamu atur sendiri aktivitas wisata di luar.",
+        "KAPASITAS ROMBONGAN (fakta ASLI, boleh dikutip): properti BISA menerima rombongan "
+        "dengan kapasitas total sekitar 30-50 orang (gabungan beberapa kamar) - boleh "
+        "disebutkan sbg fasilitas nyata, TAPI jangan campur dgn klaim ruang meeting/katering "
+        "di atas (rombongan menginap biasa, bukan fasilitas acara/venue).",
     ]
     # Link Maps ASLI (2026-07-31, bug nyata ditemukan lewat tes gpt-5-mini) - write_article()
     # sudah dikasih link ini via external_block (lihat _maps_url_for_site), tapi fact_check()

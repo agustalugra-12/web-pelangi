@@ -30,6 +30,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import httpx  # noqa: E402
@@ -64,9 +65,20 @@ async def _fetch_content(domain: str) -> dict:
         return r.json()
 
 
-async def _fetch_blog_list(domain: str) -> list:
+async def _fetch_blog_list(domain: str, limit: Optional[int] = None) -> list:
+    # `limit` param (2026-08-03, bug nyata ditemukan Agus - beberapa artikel lama TIDAK
+    # PERNAH ter-regenerasi lewat blog-detail-all/deploy.sh) - GET /api/blog default
+    # limit=50 (lihat server.py list_posts), diurutkan created_at terbaru dulu. Blog
+    # sekarang >100 artikel (produksi ~14/hari), jadi artikel LEBIH LAMA dari 50 artikel
+    # terbaru selalu kelewat tiap kali blog-detail-all dipanggil pakai limit default -
+    # snapshot-nya jadi basi PERMANEN (tidak pernah ikut deploy fix kode apa pun, mis.
+    # perbaikan link Maps yang tidak bisa diklik). Caller blog-detail-all (di bawah)
+    # WAJIB isi limit tinggi eksplisit - caller listing halaman "blog" TETAP tidak isi
+    # (None -> pakai default backend 50), krn itu memang benar 50 artikel terbaru yang
+    # dimaksud tampil ke pengunjung, bukan bug yang sama.
+    params = {"limit": limit} if limit else {}
     async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(f"https://{domain}/api/blog")
+        r = await client.get(f"https://{domain}/api/blog", params=params)
         r.raise_for_status()
         return r.json()
 
@@ -232,7 +244,10 @@ async def main():
     if page == "blog-detail-all":
         # Bulk regenerate SEMUA artikel existing utk situs ini - dipakai backfill awal
         # & deploy.sh (kode baru = hash bundle baru, semua snapshot artikel jadi basi).
-        posts = await _fetch_blog_list(domain)
+        # limit=1000 WAJIB eksplisit di sini (lihat catatan _fetch_blog_list) - tanpa ini
+        # cuma 50 artikel TERBARU yang ke-regenerasi, artikel lebih lama snapshot-nya
+        # basi permanen tiap deploy.
+        posts = await _fetch_blog_list(domain, limit=1000)
         for p in posts:
             try:
                 await prerender_blog_detail(site, domain, p["slug"])
