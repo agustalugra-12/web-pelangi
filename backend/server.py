@@ -571,6 +571,48 @@ async def admin_seo_agent_basi(_: dict = Depends(get_current_user), site: str = 
     return {"total": len(stale), "items": stale[:10]}
 
 
+@api_router.get("/admin/landmark-sources")
+async def admin_landmark_sources_list(_: dict = Depends(get_current_user)):
+    """Daftar landmark & URL sumber resmi yang sudah dikonfigurasi (2026-08-03,
+    permintaan Agus, Feature 1 PRD Tahap 2 - "Source Citation"). Kosong sampai staf/owner
+    isi source_url pertama - fungsi crawl (refresh_landmark_facts) SENGAJA tidak
+    menebak URL sendiri, lihat catatan lengkap di scripts/seo_agent.py."""
+    sources = await db.landmark_sources.find({}, {"_id": 0}).to_list(100)
+    facts = {f["name"]: f for f in await db.landmark_facts.find({}, {"_id": 0}).to_list(100)}
+    for s in sources:
+        f = facts.get(s["name"])
+        s["last_crawled"] = f.get("last_crawled") if f else None
+    return {"sources": sources}
+
+
+class LandmarkSourceIn(BaseModel):
+    name: str
+    source_url: str
+
+
+@api_router.post("/admin/landmark-sources")
+async def admin_landmark_sources_add(body: LandmarkSourceIn, _: dict = Depends(get_current_user)):
+    """Tambah/update 1 landmark + URL sumber resminya, LANGSUNG crawl sekali saat
+    disimpan (staf/owner yang menjamin URL ini benar-benar resmi - sistem tidak
+    memverifikasi keaslian sumber, cuma mengambil isinya)."""
+    from scripts.seo_agent import refresh_landmark_facts
+    result = await refresh_landmark_facts(body.name, body.source_url)
+    if not result.get("ok"):
+        raise HTTPException(400, result.get("error", "Gagal crawl"))
+    return result
+
+
+@api_router.post("/admin/landmark-sources/{name}/refresh")
+async def admin_landmark_sources_refresh(name: str, _: dict = Depends(get_current_user)):
+    """Refresh manual (2026-08-03, permintaan Agus - "owner bisa minta refresh") - crawl
+    ulang landmark yang source_url-nya sudah tersimpan, timpa data lama."""
+    from scripts.seo_agent import refresh_landmark_facts
+    result = await refresh_landmark_facts(name)
+    if not result.get("ok"):
+        raise HTTPException(400, result.get("error", "Gagal crawl"))
+    return result
+
+
 @api_router.get("/admin/seo-agent/cakupan")
 async def admin_seo_agent_cakupan(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     """Cakupan Editorial per cluster (2026-08-03, upgrade dari versi progress-bar polos

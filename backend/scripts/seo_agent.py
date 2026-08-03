@@ -614,6 +614,75 @@ async def _maps_url_for_site(site: str) -> Optional[str]:
     return _maps_url_from_embed(site_doc.get("mapEmbed", ""))
 
 
+LANDMARK_FACT_MAX_AGE_DAYS = 30
+
+
+async def refresh_landmark_facts(name: str, source_url: Optional[str] = None) -> dict:
+    """Freshness check fakta landmark eksternal (2026-08-03, permintaan Agus, Feature 1
+    PRD Tahap 2 - "fact-check ke sumber resmi utk data yang mudah berubah: harga tiket,
+    jam buka, kontak"). SENGAJA TIDAK auto-cari/tebak URL resmi landmark (mis. Kebun Raya
+    Bedugul, Ulun Danu Beratan) - salah pilih sumber (situs tidak resmi/kadaluarsa) lebih
+    berbahaya drpd tidak ada data sama sekali, sama prinsipnya dgn "jangan mengarang lebih
+    baik dari mengarang salah" yang sudah dipegang di seluruh file ini. `source_url` WAJIB
+    diisi eksplisit oleh staf/owner (via endpoint admin, lihat server.py) - fungsi ini
+    CUMA crawl url yang SUDAH dikonfirmasi asli, bukan menebak sendiri.
+
+    Pakai scraping yang SUDAH ADA (_fetch_competitor_page - httpx+BeautifulSoup, gratis,
+    tanpa API berbayar baru) - BUKAN Firecrawl, krn kapasitas yang sama (ambil teks halaman)
+    sudah tercapai tanpa dependency baru, kecuali nanti ketahuan situs tertentu butuh
+    render JavaScript yang scraping ini tidak bisa (belum ada bukti itu terjadi)."""
+    if source_url is None:
+        existing = await db.landmark_sources.find_one({"name": name})
+        if not existing or not existing.get("source_url"):
+            return {"ok": False, "error": f'Belum ada source_url utk landmark "{name}" - isi dulu via /admin/landmark-sources'}
+        source_url = existing["source_url"]
+    try:
+        page = await _fetch_competitor_page(source_url)
+    except Exception as e:
+        return {"ok": False, "error": f"Gagal crawl {source_url}: {type(e).__name__}: {e}"}
+    raw_text = page.get("headings", [])
+    now = datetime.now(timezone.utc).isoformat()
+    await db.landmark_facts.update_one(
+        {"name": name},
+        {"$set": {
+            "name": name, "source_url": source_url, "last_crawled": now,
+            "headings": raw_text, "word_count": page.get("word_count", 0),
+        }},
+        upsert=True,
+    )
+    await db.landmark_sources.update_one(
+        {"name": name}, {"$set": {"name": name, "source_url": source_url}}, upsert=True,
+    )
+    return {"ok": True, "name": name, "last_crawled": now, "headings_sample": raw_text[:10]}
+
+
+async def _landmark_facts_block() -> str:
+    """Dipanggil oleh _fetch_site_facts di bawah - kumpulkan fakta landmark yang SUDAH
+    di-crawl (db.landmark_facts, diisi via refresh_landmark_facts di atas) jadi 1 blok
+    teks dgn SUMBER & TANGGAL CRAWL eksplisit disebut (2026-08-03, permintaan Agus -
+    "Source Citation": tiap fakta wajib source_url + last_crawled + confidence). Kosong
+    kalau belum ada landmark yang di-crawl sama sekali (jujur - belum aktif sampai
+    staf/owner isi source_url pertama via endpoint admin)."""
+    entries = await db.landmark_facts.find({}).to_list(50)
+    if not entries:
+        return ""
+    lines = []
+    for e in entries:
+        age_days = (datetime.now(timezone.utc) - datetime.fromisoformat(e["last_crawled"])).days
+        confidence = "masih segar" if age_days < LANDMARK_FACT_MAX_AGE_DAYS else f"SUDAH {age_days} hari, mungkin basi - verifikasi manual dulu kalau dipakai"
+        heading_text = "; ".join(e.get("headings", [])[:8])
+        lines.append(
+            f"- {e['name']} (sumber: {e['source_url']}, di-crawl {e['last_crawled'][:10]}, "
+            f"{confidence}): {heading_text}"
+        )
+    return (
+        "\n\nFAKTA LANDMARK DARI SUMBER EKSTERNAL (di-crawl dari situs asli, BUKAN dari "
+        "training data - kalau ada info harga/jam buka spesifik di sini, itu LEBIH "
+        "TERPERCAYA drpd asumsi umum, TAPI kalau ditandai 'mungkin basi', WAJIB frasakan "
+        "sbg perkiraan/sarankan cek ulang, jangan sebut sbg pasti):\n" + "\n".join(lines)
+    )
+
+
 async def _fetch_site_facts(site: str) -> str:
     site_doc = (await db.site_content.find_one({"site": site, "type": "site"}) or {}).get("data", {})
     rooms_doc = (await db.site_content.find_one({"site": site, "type": "rooms"}) or {}).get("data", [])
@@ -661,6 +730,9 @@ async def _fetch_site_facts(site: str) -> str:
     maps_url_site = _maps_url_from_embed(site_doc.get("mapEmbed", ""))
     if maps_url_site:
         lines.append(f"Link Google Maps ASLI properti ini (boleh dikutip persis, termasuk koordinat/place_id di dalamnya): {maps_url_site}")
+    landmark_block = await _landmark_facts_block()
+    if landmark_block:
+        lines.append(landmark_block)
     for r in rooms_doc:
         # Day Use & Menginap SENGAJA dipisah (2026-07-29, revisi manual user menemukan Day
         # Use disebut-sebut di artikel tapi TIDAK PERNAH dijelaskan harga/jamnya krn memang
@@ -1091,12 +1163,96 @@ def _klasifikasi_persaingan(urls: list) -> str:
     return "Sedang"
 
 
-async def analyze_competitors(keyword: str) -> Optional[dict]:
-    """Return {"prompt_text": ..., "data": {...}} - prompt_text siap disisipkan ke
-    Writer Agent, data = hasil mentah (url/word_count/heading per kompetitor) UTK
-    DISIMPAN ke blog_posts.competitor_analysis (2026-07-28, permintaan user - tampil
-    di dashboard CMS "data kompetitor yang dibaca"). None kalau analisis gagal total
-    (search API down/tidak dikonfigurasi/budget harian habis)."""
+COMPETITOR_CACHE_MAX_AGE_DAYS = 30
+
+
+async def analyze_competitors(keyword: str, site: Optional[str] = None) -> Optional[dict]:
+    """Cache-first wrapper (2026-08-03, permintaan Agus - "jangan crawl tiap kali, simpan
+    ke database, refresh cuma kalau kedaluwarsa >30 hari atau owner minta refresh") -
+    SEBELUM ini analisis kompetitor SELALU live tiap generate_one() dipanggil (dibatasi
+    jatah Serper harian, tapi tetap konsumsi kredit tiap kali walau keyword yang sama
+    baru saja dianalisis kemarin). Sekarang dicek db.competitor_cache dulu - kalau ada
+    entri utk keyword ini & umurnya < 30 hari, dipakai ulang TANPA panggil Serper/fetch
+    sama sekali (hemat kredit, bukan cuma hemat waktu). `site` opsional (utk content gap
+    detection di bawah - lihat _content_gap_topics) - kalau tidak diisi, gap detection
+    dilewati (tetap kompatibel dgn caller lama yang belum kirim `site`).
+    Return TETAP sama persis shape-nya spt sebelumnya (prompt_text + data) supaya semua
+    caller existing (write_article, CmsBlog "competitor_analysis" tersimpan) tidak perlu
+    berubah - field baru (`from_cache`, `content_gap`) cuma tambahan di `data`, bukan
+    breaking change."""
+    cached = await db.competitor_cache.find_one({"keyword": keyword})
+    if cached:
+        cached_at = datetime.fromisoformat(cached["data"]["analyzed_at"])
+        age_days = (datetime.now(timezone.utc) - cached_at).days
+        if age_days < COMPETITOR_CACHE_MAX_AGE_DAYS:
+            data = dict(cached["data"])
+            data["from_cache"] = True
+            data["cache_age_days"] = age_days
+            if site:
+                data["content_gap"] = await _content_gap_topics(site, data)
+            return {"prompt_text": cached["prompt_text"], "data": data}
+
+    result = await _analyze_competitors_live(keyword)
+    if result is None:
+        return result
+    await db.competitor_cache.update_one(
+        {"keyword": keyword},
+        {"$set": {"keyword": keyword, "prompt_text": result["prompt_text"], "data": result["data"]}},
+        upsert=True,
+    )
+    result["data"]["from_cache"] = False
+    if site:
+        result["data"]["content_gap"] = await _content_gap_topics(site, result["data"])
+    return result
+
+
+async def refresh_competitor_cache(keyword: str) -> Optional[dict]:
+    """Refresh manual (2026-08-03) - permintaan Agus "owner bisa minta refresh" - buang
+    entri lama, panggil live lagi, timpa cache. Dipakai endpoint admin (lihat server.py)."""
+    await db.competitor_cache.delete_one({"keyword": keyword})
+    return await analyze_competitors(keyword)
+
+
+async def _content_gap_topics(site: str, competitor_data: dict) -> list:
+    """Content Gap Detection (2026-08-03, permintaan Agus, Feature 1 PRD Tahap 2) -
+    bandingkan heading/topik kompetitor (data yang SUDAH di-crawl, bukan panggilan baru)
+    terhadap JUDUL semua artikel kita sendiri di situs ini - heading kompetitor yang tidak
+    ada kata kuncinya di judul artikel manapun milik kita ditandai sbg "belum dibahas".
+    SENGAJA heuristik sederhana (cocok kata kunci signifikan, bukan NLP topic-modeling
+    berat) - cukup utk sinyal awal "ini mungkin lubang konten", staf/AI yang menilai
+    relevansinya, BUKAN klaim pasti "topik ini pasti harus ditulis"."""
+    headings = competitor_data.get("competitors", [])
+    all_headings = [h for c in headings for h in c.get("headings", [])]
+    if not all_headings:
+        return []
+    our_titles = " ".join(
+        p["title"].lower() for p in await db.blog_posts.find(
+            {"site": site, "published": True}, {"_id": 0, "title": 1},
+        ).to_list(1000)
+    )
+    STOPWORDS = {
+        "yang", "dan", "di", "ke", "dari", "untuk", "dengan", "atau", "ini", "itu", "apa",
+        "bagaimana", "kenapa", "kapan", "adalah", "saja", "juga", "bisa", "tidak", "ada",
+        "bedugul", "hotel", "penginapan", "villa", "cottage", "homestay",
+    }
+    gap = []
+    seen = set()
+    for h in all_headings:
+        words = [w for w in re.findall(r"[a-z]+", h.lower()) if w not in STOPWORDS and len(w) > 3]
+        if len(words) < 2:
+            continue
+        # Heading dianggap "sudah dibahas" kalau MAYORITAS kata signifikannya muncul di
+        # judul artikel kita manapun (bukan wajib semua kata - beda urutan/imbuhan wajar).
+        hits = sum(1 for w in words if w in our_titles)
+        if hits / len(words) < 0.5 and h.strip().lower() not in seen:
+            seen.add(h.strip().lower())
+            gap.append(h.strip())
+    return gap[:8]
+
+
+async def _analyze_competitors_live(keyword: str) -> Optional[dict]:
+    """Isi asli analyze_competitors (2026-07-28) - dipisah jadi fungsi privat 2026-08-03
+    supaya bisa dibungkus cache di atas tanpa mengubah logika analisis itu sendiri."""
     try:
         results = await _search_competitors(keyword)
     except Exception as e:
@@ -1181,7 +1337,7 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
                          sibling_collision: Optional[dict] = None) -> dict:
     facts = await _fetch_site_facts(site)
     keyword = keyword_doc["keyword"]
-    competitor_result = await analyze_competitors(keyword)
+    competitor_result = await analyze_competitors(keyword, site=site)
     maps_url = await _maps_url_for_site(site)
 
     # Editorial Writing Standard (2026-07-28, permintaan user, diringkas dari pedoman
@@ -1297,6 +1453,17 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         f"\n\nANALISIS KOMPETITOR (dari hasil pencarian Google nyata):\n{competitor_result['prompt_text']}"
         if competitor_result else ""
     )
+    # Content Gap (2026-08-03, permintaan Agus) - topik yang kompetitor bahas tapi BELUM
+    # ada di artikel kita manapun (situs ini) - SARAN opsional, bukan wajib (model yang
+    # nilai relevansi ke keyword spesifik ini, jangan dipaksa masuk kalau tidak nyambung).
+    gap_topics = (competitor_result or {}).get("data", {}).get("content_gap") or []
+    if gap_topics:
+        competitor_block += (
+            "\n\nCONTENT GAP (topik yang dibahas kompetitor tapi BELUM PERNAH ada di artikel "
+            "kita manapun) - kalau RELEVAN dengan keyword ini, boleh disinggung singkat "
+            "(bukan wajib, jangan dipaksakan kalau tidak nyambung/tidak bisa dijawab jujur "
+            "dari DATA ASLI): " + "; ".join(gap_topics)
+        )
     # Internal link SEBAGAI KONTEKS PENULISAN, bukan ditempel di akhir (2026-07-28,
     # perbaikan anchor text natural) - sebelumnya pick_internal_links() dipanggil SETELAH
     # write_article() lalu ditempel mekanis sbg "Baca juga: [Judul Asli] [Judul Asli]."
