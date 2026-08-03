@@ -80,6 +80,27 @@ SITE_ASSETS = {
                                  "/assets/cot-4.webp", "/assets/cot-5.webp"],
 }
 
+# Brand Voice / Content Differentiation (2026-08-03, permintaan Agus - "AI Blog v3 Content
+# Differentiation Engine") - Pelangi & Harmoni berbagi 1 root domain (Harmoni = subdomain
+# pelangihomestay.com), jadi kalau keduanya kebetulan menulis keyword yang mirip TANPA sudut
+# pandang beda, Google berisiko anggap itu duplicate content lintas situs & bingung mana yang
+# lebih relevan - merugikan RANKING KEDUANYA, bukan cuma salah satu. Persona ini SELALU
+# disuntik ke Writer Agent (bukan cuma saat tabrakan keyword terdeteksi, lihat
+# _cross_brand_collision) supaya nada tulisan tiap situs konsisten dari awal, tapi jadi
+# KRITIS terutama saat tabrakan - lihat blok "TABRAKAN KEYWORD LINTAS BRAND" di write_article.
+SITE_PERSONA = {
+    "pelangi": (
+        "Pelangi Homestay - budget-friendly, ramah keluarga, cocok backpacker & long stay/"
+        "remote work, dekat Danau Beratan & Handara, value for money. Nada tulisan: hangat, "
+        "ramah, membantu wisatawan yang cari penginapan terjangkau & praktis."
+    ),
+    "harmoni": (
+        "Harmoni Hills - villa privat, cocok honeymoon & nature escape, suasana premium "
+        "dgn view pegunungan, romantis. Nada tulisan: elegan, eksklusif, lebih emosional/"
+        "sensorik dibanding Pelangi."
+    ),
+}
+
 CLUSTER_CATEGORY = {
     "Utama": "General", "Harga": "Tips", "Lokasi Wisata": "Wisata", "View": "Wisata",
     "Keluarga": "Tips", "Pasangan": "Tips", "Fasilitas": "Tips", "Aktivitas": "Wisata",
@@ -277,6 +298,46 @@ async def _keyword_cannibalizes_existing(site: str, keyword: str, cluster: str) 
     for w_kw, emb in zip(written_kws, written_embs):
         if _cosine(kw_emb, emb) > CANNIBALIZATION_THRESHOLD:
             return w_kw
+    return None
+
+
+async def _cross_brand_collision(site: str, keyword: str, cluster: str) -> Optional[dict]:
+    """Cek tabrakan keyword LINTAS BRAND - Pelangi vs Harmoni (2026-08-03, permintaan Agus,
+    PRD "AI Blog v3 Content Differentiation Engine"). BEDA dari _keyword_cannibalizes_
+    existing di atas: fungsi itu cuma cek DALAM 1 situs (query `{"site": site, ...}`),
+    TIDAK PERNAH membandingkan Pelangi vs Harmoni - dikonfirmasi langsung baca kodenya
+    sebelum menambah fungsi ini, supaya tidak menduplikasi cek yang sudah ada.
+
+    Beda perlakuan dari kasus within-site JUGA disengaja: within-site collision -> SKIP
+    (topik sama + situs sama = benar-benar duplikat, tidak ada alasan nulis ulang). Cross-
+    brand collision -> JANGAN skip, tetap tulis, TAPI beri tahu Writer Agent (lihat
+    write_article, blok TABRAKAN KEYWORD LINTAS BRAND) supaya wajib ambil sudut pandang
+    beda sesuai SITE_PERSONA masing-masing brand - itu skenario nyata yang diminta Agus
+    (keyword sama, angle beda: Pelangi budget/keluarga vs Harmoni honeymoon/private).
+
+    Return dict {"title", "site"} punya brand SEBERANG kalau ketemu tabrakan (skor cosine
+    > CANNIBALIZATION_THRESHOLD, threshold SAMA & cluster-scoping SAMA dgn within-site utk
+    konsistensi - sudah terbukti pas lewat 3 revisi empiris di fungsi di atas), None kalau
+    aman."""
+    other_site = "harmoni" if site == "pelangi" else "pelangi"
+    written = await db.seo_keywords.find(
+        {"site": other_site, "status": "sudah_dibuat", "cluster": cluster}, {"keyword": 1, "artikel_slug": 1},
+    ).to_list(1000)
+    if not written:
+        return None
+    written_kws = [w["keyword"] for w in written]
+    embeds = await _embed([keyword] + written_kws)
+    kw_emb, written_embs = embeds[0], embeds[1:]
+    for w_doc, emb in zip(written, written_embs):
+        if _cosine(kw_emb, emb) > CANNIBALIZATION_THRESHOLD:
+            title = w_doc["keyword"]
+            if w_doc.get("artikel_slug"):
+                post = await db.blog_posts.find_one(
+                    {"site": other_site, "slug": w_doc["artikel_slug"]}, {"title": 1},
+                )
+                if post and post.get("title"):
+                    title = post["title"]
+            return {"title": title, "site": other_site}
     return None
 
 
@@ -873,7 +934,8 @@ async def analyze_competitors(keyword: str) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 # 3. Writer Agent
 # ---------------------------------------------------------------------------
-async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[list] = None) -> dict:
+async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[list] = None,
+                         sibling_collision: Optional[dict] = None) -> dict:
     facts = await _fetch_site_facts(site)
     keyword = keyword_doc["keyword"]
     competitor_result = await analyze_competitors(keyword)
@@ -947,6 +1009,23 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         # content, bisa menurunkan ranking SEMUA artikel terkait sekaligus). ANGLE_BLOCK di
         # bawah (diisi per cluster keyword ini) memberi FOKUS BERBEDA tiap cluster - WAJIB
         # diikuti, bukan cuma saran.
+        # Brand Voice (2026-08-03, PRD "AI Blog v3 Content Differentiation Engine") - SELALU
+        # disuntik (bukan cuma saat tabrakan) supaya nada tiap situs konsisten sejak awal.
+        f"KARAKTER BRAND (WAJIB, situs \"{site}\"): {SITE_PERSONA.get(site, '')}\n\n"
+        # Cross-brand collision (2026-08-03) - HANYA muncul kalau _cross_brand_collision di
+        # generate_one() menemukan brand seberang sudah menulis topik mirip di cluster yang
+        # sama. Beri tahu Writer Agent SECARA EKSPLISIT judul artikel seberang supaya bisa
+        # benar-benar menghindarinya, bukan cuma diminta "beda" secara abstrak.
+        + (
+            f"TABRAKAN KEYWORD LINTAS BRAND (WAJIB DIPERHATIKAN): situs \"{sibling_collision['site']}\" "
+            f"sudah menulis artikel dgn topik SANGAT MIRIP keyword ini, judulnya: "
+            f"\"{sibling_collision['title']}\". JANGAN tulis artikel dgn sudut pandang/fokus yang "
+            f"sama seperti itu - WAJIB ambil angle BERBEDA sesuai KARAKTER BRAND situs \"{site}\" di "
+            "atas (kalau situs ini Pelangi, fokus budget/keluarga/backpacker/value; kalau Harmoni, "
+            "fokus honeymoon/private/romantis/premium) supaya kedua artikel benar-benar melayani "
+            "pembaca dgn kebutuhan berbeda, bukan 2 versi dari artikel yang sama.\n\n"
+            if sibling_collision else ""
+        ) +
         f"FOKUS ARTIKEL INI (WAJIB diikuti, cluster \"{keyword_doc['cluster']}\"): "
         f"{CLUSTER_ANGLE.get(keyword_doc['cluster'], '')}\n\n"
         + ("" if keyword_doc["cluster"] in ("Booking", "Keluarga") else (
@@ -1581,7 +1660,12 @@ async def generate_one(site: str) -> dict:
 
     try:
         links = await pick_internal_links(site, keyword_doc["cluster"], keyword=keyword_doc["keyword"])
-        article = await write_article(site, keyword_doc, link_candidates=links)
+        # Cross-brand collision (2026-08-03, permintaan Agus) - Pelangi & Harmoni dicek
+        # SEBELUM menulis (bukan skip spt within-site, lihat _cross_brand_collision) supaya
+        # Writer Agent tahu kalau brand seberang sudah pernah menulis topik mirip & wajib
+        # ambil sudut pandang beda sesuai persona masing-masing brand.
+        sibling = await _cross_brand_collision(site, keyword_doc["keyword"], keyword_doc["cluster"])
+        article = await write_article(site, keyword_doc, link_candidates=links, sibling_collision=sibling)
         article["content"] = _normalize_faq_format(article["content"])
         content_final = _inject_links(article["content"], links, WA_BY_SITE[site], article.get("_maps_url"))
 
