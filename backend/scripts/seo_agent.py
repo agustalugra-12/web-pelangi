@@ -492,7 +492,8 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         "JANGAN buat keyword yang mengasumsikan/menyiratkan properti punya salah satu dari ini "
         "(properti TIDAK punya semuanya): menerima hewan peliharaan/pet-friendly, ruang meeting/"
         "katering untuk acara/corporate, sewa mobil/motor, jemput/antar bandara, paket trip/tur/"
-        "wisata terorganisir (trekking/panen buah/city tour dst yang dijual properti).\n\n"
+        "wisata terorganisir (trekking/panen buah/city tour dst yang dijual properti), kolam "
+        "renang/swimming pool (Pelangi maupun Harmoni sama-sama tidak punya).\n\n"
         # Intent Classifier (2026-08-02, PRD "AI Blog V2.0" modul 3, extends existing 200
         # seed keywords yang sudah punya klasifikasi asli - lihat catatan di bawah) - SEBELUM
         # ini SEMUA keyword hasil generate baru hardcode "Transactional" tanpa benar-benar
@@ -714,7 +715,9 @@ async def _fetch_site_facts(site: str) -> str:
         "apa pun; TIDAK ada ruang meeting/rapat dan TIDAK ada layanan katering/catering "
         "makanan untuk acara; TIDAK menyewakan mobil maupun motor; TIDAK ada layanan "
         "jemput/antar bandara; TIDAK ada paket trip/tur/wisata (mis. paket trekking, paket "
-        "panen buah, city tour) yang dijual/diselenggarakan properti - properti hanya "
+        "panen buah, city tour) yang dijual/diselenggarakan properti; TIDAK ada kolam "
+        "renang (baik Pelangi Homestay maupun Harmoni Hills, kedua properti SAMA-SAMA "
+        "tidak punya kolam renang) - properti hanya "
         "menyediakan penginapan, tamu atur sendiri aktivitas wisata di luar.",
         "KAPASITAS ROMBONGAN (fakta ASLI, boleh dikutip): properti BISA menerima rombongan "
         "dengan kapasitas total sekitar 30-50 orang (gabungan beberapa kamar) - boleh "
@@ -2230,6 +2233,31 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
 
 MAX_RETRY_PER_SLOT = 4  # lihat catatan retry-until-sukses di main() di bawah
 
+# Target produksi harian per situs (2026-08-03, permintaan Agus - kampanye sementara:
+# Pelangi naik 10->15/hari, Harmoni turun 10->5/hari, berlaku 2026-08-01 s.d. 2026-09-30,
+# otomatis kembali ke 10/10 mulai 2026-10-01 TANPA perlu ubah cron/deploy lagi - lihat
+# _artikel_sukses_hari_ini() & pengecekan kuota di main(). Kalau ada kampanye serupa lagi
+# nanti, cukup ubah tanggal/angka di sini, bukan crontab.
+_TARGET_HARIAN_DEFAULT = 10
+_TARGET_HARIAN_KAMPANYE = {"pelangi": 15, "harmoni": 5}
+_KAMPANYE_MULAI = date(2026, 8, 1)
+_KAMPANYE_SELESAI = date(2026, 9, 30)
+
+
+def _target_harian(site: str, hari_ini: Optional[date] = None) -> int:
+    hari_ini = hari_ini or datetime.now(timezone.utc).date()
+    if _KAMPANYE_MULAI <= hari_ini <= _KAMPANYE_SELESAI:
+        return _TARGET_HARIAN_KAMPANYE.get(site, _TARGET_HARIAN_DEFAULT)
+    return _TARGET_HARIAN_DEFAULT
+
+
+async def _artikel_sukses_hari_ini(site: str) -> int:
+    """Hitung artikel situs ini yang SUDAH terbit hari ini (UTC) - dipakai main() untuk
+    berhenti begitu target harian tercapai, supaya cron yang fire lebih sering dari target
+    (lihat crontab) otomatis self-limit tanpa perlu hitung manual per run."""
+    mulai_hari = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time()).replace(tzinfo=timezone.utc)
+    return await db.blog_posts.count_documents({"site": site, "created_at": {"$gte": mulai_hari.isoformat()}})
+
 
 async def main():
     ap = argparse.ArgumentParser()
@@ -2256,8 +2284,17 @@ async def main():
     # sampai benar-benar sukses, dibatasi MAX_RETRY_PER_SLOT supaya tidak infinite-loop
     # kalau memang ada kegagalan sistemik asli (mis. OpenAI API down total hari itu).
     for site in sites:
+        target = _target_harian(site)
+        sudah_terbit = await _artikel_sukses_hari_ini(site)
+        if sudah_terbit >= target:
+            print(f"[{site}] target harian ({target}) sudah tercapai ({sudah_terbit} artikel hari ini) - skip run ini.")
+            continue
         sukses = 0
         for i in range(args.count):
+            sudah_terbit = await _artikel_sukses_hari_ini(site)
+            if sudah_terbit >= target:
+                print(f"[{site}] target harian ({target}) tercapai di tengah run ini ({sudah_terbit} artikel) - stop, tidak lanjut slot berikutnya.")
+                break
             for attempt in range(1, MAX_RETRY_PER_SLOT + 1):
                 try:
                     result = await generate_one(site)
@@ -2269,7 +2306,7 @@ async def main():
                     print(f"[{site}] slot {i+1}/{args.count} percobaan {attempt}: GAGAL - {type(e).__name__}: {e}")
             else:
                 print(f"[{site}] slot {i+1}/{args.count}: MENYERAH setelah {MAX_RETRY_PER_SLOT}x percobaan - kemungkinan kegagalan sistemik (cek log/API), bukan sekadar 1 artikel jelek.")
-        print(f"[{site}] ringkasan run ini: {sukses}/{args.count} artikel benar-benar terbit.")
+        print(f"[{site}] ringkasan run ini: {sukses}/{args.count} artikel benar-benar terbit (target harian: {target}).")
 
 
 if __name__ == "__main__":
