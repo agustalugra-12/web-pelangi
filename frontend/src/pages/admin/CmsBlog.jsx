@@ -16,6 +16,7 @@ export default function CmsBlog() {
   const [rulesSaving, setRulesSaving] = useState(false);
   const [basi, setBasi] = useState(null);
   const [cakupan, setCakupan] = useState(null);
+  const [expandedCluster, setExpandedCluster] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -365,31 +366,161 @@ export default function CmsBlog() {
         </div>
       )}
 
-      {cakupan && cakupan.clusters.length > 0 && (
-        <div className="bg-paper rounded-2xl border border-ink/10 p-5 mb-6" data-testid="seo-agent-cakupan">
-          <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mb-1">
-            📊 Cakupan Rencana Keyword per Cluster
-          </p>
-          <p className="text-xs text-teal-deep/50 mb-3">
-            % keyword per cluster yang sudah ditulis dari 100 keyword awal - bukan skor
-            "topical authority" beneran (itu perlu data kompetitif yang mahal diukur akurat),
-            cuma sinyal cluster mana yang masih kosong.
-          </p>
-          <div className="space-y-2">
-            {cakupan.clusters.map((c) => (
-              <div key={c.cluster} className="flex items-center gap-3 text-sm">
-                <span className="w-28 shrink-0 text-teal-deep/80 truncate">{c.cluster}</span>
-                <div className="flex-1 h-2.5 rounded-full bg-ink/10 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${c.persen >= 60 ? "bg-leaf" : c.persen >= 30 ? "bg-mustard-deep" : "bg-red-400"}`}
-                    style={{ width: `${c.persen}%` }}
-                  />
-                </div>
-                <span className="w-24 shrink-0 text-xs text-teal-deep/60 text-right">
-                  {c.sudah_dibuat}/{c.total} ({c.persen}%)
-                </span>
-              </div>
-            ))}
+      {cakupan && cakupan.clusters?.length > 0 && (
+        <div className="mb-6 space-y-4" data-testid="seo-agent-cakupan">
+          {/* AI Recommendation Today (2026-08-03, permintaan Agus - "bagian paling
+              penting", ditaruh paling atas) - reuse persis urutan get_next_keyword,
+              alasan dihitung dari sinyal ASLI (priority/musim/demand GSC), bukan
+              template kosong. */}
+          {cakupan.rekomendasi_hari_ini?.length > 0 && (
+            <div className="bg-teal-deep rounded-2xl p-5 text-white shadow-paper-sm" data-testid="cakupan-rekomendasi">
+              <p className="text-xs uppercase tracking-widest text-white/70 font-semibold mb-2">
+                🎯 Rekomendasi Hari Ini
+              </p>
+              <p className="text-sm text-white/90 mb-3">Hari ini disarankan menulis:</p>
+              <ol className="space-y-2">
+                {cakupan.rekomendasi_hari_ini.map((r, i) => (
+                  <li key={i} className="text-sm">
+                    <span className="font-display">{i + 1}. {r.keyword}</span>
+                    <span className="block text-xs text-white/70 pl-4">↳ {r.alasan}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Ringkasan target (2026-08-03) */}
+          <div className="bg-paper rounded-2xl border border-ink/10 p-5 grid grid-cols-2 md:grid-cols-5 gap-4" data-testid="cakupan-ringkasan">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Coverage Editorial</p>
+              <p className="text-2xl font-display text-teal-deep">{cakupan.persen_keseluruhan}%</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Keyword Selesai</p>
+              <p className="text-2xl font-display text-teal-deep">{cakupan.total_sudah} / {cakupan.total_target}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Sisa Ditulis</p>
+              <p className="text-2xl font-display text-teal-deep">{cakupan.total_sisa}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Cluster Terlemah</p>
+              <p className="text-lg font-display text-red-500">{cakupan.cluster_terlemah || "-"}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Cluster Terkuat</p>
+              <p className="text-lg font-display text-leaf">{cakupan.cluster_terkuat || "-"}</p>
+            </div>
+          </div>
+
+          {/* Insight (2026-08-03) */}
+          {cakupan.insight?.length > 0 && (
+            <div className="bg-paper rounded-2xl border border-ink/10 p-5" data-testid="cakupan-insight">
+              <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mb-2">💡 Insight Hari Ini</p>
+              <ul className="text-sm text-teal-deep/80 space-y-1 list-disc list-inside">
+                {cakupan.insight.map((line, i) => <li key={i}>{line}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {/* Per-cluster (2026-08-03) - progress lebih informatif + badge prioritas +
+              expand utk keyword berikutnya, coverage, traffic/booking opportunity
+              (estimasi internal - lihat CLUSTER_TRAFFIC_HEURISTIK/CLUSTER_BOOKING_
+              HEURISTIK di backend, DITIMPA data GSC asli kalau sudah ada), & jaringan
+              internal link. Sengaja "Cakupan Editorial/Keyword", BUKAN "Topical
+              Authority" (label lama itu tidak akurat - lihat catatan backend). */}
+          <div className="bg-paper rounded-2xl border border-ink/10 p-5">
+            <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mb-1">
+              📊 Cakupan Editorial per Cluster
+            </p>
+            <p className="text-xs text-teal-deep/50 mb-3">
+              Keyword yang sudah ditulis dari yang MASIH BISA ditulis (keyword yang otomatis
+              dilewati karena duplikat topik tidak dihitung sebagai "kurang" - lihat detail
+              tiap cluster). Klik cluster untuk lihat keyword berikutnya & jaringan link internal.
+            </p>
+            <div className="space-y-2">
+              {cakupan.clusters.map((c) => {
+                const isOpen = expandedCluster === c.cluster;
+                return (
+                  <div key={c.cluster} className="border border-ink/10 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setExpandedCluster(isOpen ? null : c.cluster)}
+                      data-testid={`cakupan-cluster-${c.cluster}`}
+                      className="w-full text-left p-3 hover:bg-ink/5"
+                    >
+                      <div className="flex items-center gap-3 text-sm">
+                        <span className="w-28 shrink-0 text-teal-deep/80 truncate font-semibold">{c.cluster}</span>
+                        <div className="flex-1 h-2.5 rounded-full bg-ink/10 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${c.persen >= 100 ? "bg-leaf" : c.persen >= 70 ? "bg-leaf" : c.persen >= 40 ? "bg-mustard-deep" : c.persen >= 20 ? "bg-orange-400" : "bg-red-400"}`}
+                            style={{ width: `${Math.min(100, c.persen)}%` }}
+                          />
+                        </div>
+                        <span className="w-16 shrink-0 text-xs font-semibold text-teal-deep text-right">{c.persen}%</span>
+                        <span className="shrink-0 text-xs whitespace-nowrap">{c.status_emoji} {c.status_label}</span>
+                        <i className={`fa-solid fa-chevron-${isOpen ? "up" : "down"} text-teal-deep/40 text-xs shrink-0`} aria-hidden="true"></i>
+                      </div>
+                      <div className="flex items-center gap-4 mt-1.5 pl-[7.5rem] text-[11px] text-teal-deep/60">
+                        <span>{c.sudah_dibuat} / {c.total} artikel · sisa {c.sisa}</span>
+                        {c.dilewati_mirip > 0 && (
+                          <span title="Keyword yang otomatis dilewati karena topiknya duplikat artikel yang sudah ada">
+                            ({c.dilewati_mirip} dilewati/duplikat)
+                          </span>
+                        )}
+                        <span title={c.traffic_gsc_impressions ? `${c.traffic_gsc_impressions} impression nyata dari Google Search Console` : "Estimasi internal, bukan data pencarian nyata"}>
+                          {c.traffic_gsc_impressions ? `${c.traffic_gsc_impressions} impresi (GSC)` : "🔥".repeat(c.traffic_level || 1) + " Traffic (estimasi)"}
+                        </span>
+                        <span title="Estimasi peluang booking - internal, bukan data nyata">
+                          {"💰".repeat(c.booking_level || 1)} Booking (estimasi)
+                        </span>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div className="p-3 pt-0 border-t border-ink/10 bg-ink/[0.02] text-sm space-y-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mt-3 mb-1.5">
+                            Belum Ditulis {c.belum_ditulis?.length ? `(${c.sisa})` : ""}
+                          </p>
+                          {c.belum_ditulis?.length ? (
+                            <ul className="space-y-1">
+                              {c.belum_ditulis.map((k, i) => (
+                                <li key={i} className="flex items-center gap-1.5">
+                                  <span className="text-teal-deep/30">✓</span>
+                                  <span className="text-teal-deep/80">{k.keyword}</span>
+                                  {k.priority === "High" && <span className="text-[10px] px-1.5 rounded bg-red-100 text-red-700 font-semibold">High</span>}
+                                  {k.musiman && <span className="text-[10px] px-1.5 rounded bg-mustard-deep/20 text-mustard-deep font-semibold">Musiman</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-teal-deep/50 italic">Tidak ada - semua keyword yang bisa ditulis di cluster ini sudah selesai.</p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mb-1.5">
+                            Jaringan Internal Link
+                          </p>
+                          {c.internal_links?.length ? (
+                            <ul className="space-y-1.5">
+                              {c.internal_links.map((l, i) => (
+                                <li key={i} className="text-teal-deep/80">
+                                  <span className="font-medium">{l.from_title}</span>
+                                  {l.targets.map((t, j) => (
+                                    <span key={j} className="block pl-4 text-xs text-teal-deep/60">↳ link ke: {t.title}</span>
+                                  ))}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-teal-deep/50 italic">Belum ada link internal tercatat di cluster ini.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

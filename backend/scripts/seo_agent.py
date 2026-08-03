@@ -40,7 +40,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
-from typing import Optional
+from typing import Optional, Dict
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import httpx  # noqa: E402
@@ -766,6 +766,218 @@ async def cakupan_keyword_per_cluster(site: str) -> list:
         })
     result.sort(key=lambda r: r["persen"])
     return result
+
+
+# Bobot estimasi internal (2026-08-03, permintaan Agus - "Editorial Intelligence
+# Dashboard") - SENGAJA BUKAN data volume pencarian/nilai booking asli (tidak ada API
+# berbayar utk itu, sama seperti keterbatasan yang sudah didokumentasikan di seluruh
+# file ini) - ini murni bobot kualitatif dari KARAKTER masing-masing cluster (lihat
+# CLUSTER_ANGLE) supaya owner dapat SINYAL AWAL cluster mana yang layak diprioritaskan,
+# BUKAN angka presisi palsu yang kelihatan meyakinkan padahal karangan (persis jenis
+# "AI Slop angka" yang sudah berkali-kali dihindari di proyek ini). Selalu ditimpa oleh
+# data GSC ASLI kalau cluster itu sudah punya traffic tercatat (lihat cakupan_editorial_
+# lengkap di bawah) - heuristik ini CUMA fallback utk cluster yang belum ada data nyata
+# sama sekali (situs baru/cluster baru).
+CLUSTER_TRAFFIC_HEURISTIK = {
+    "Harga": 4, "Lokasi Wisata": 4, "Aktivitas": 3, "Utama": 3, "Keluarga": 3,
+    "Pasangan": 3, "Fasilitas": 3, "View": 2, "Booking": 2, "Long Tail": 2,
+}
+CLUSTER_BOOKING_HEURISTIK = {
+    "Booking": 5, "Harga": 5, "Keluarga": 4, "Pasangan": 4, "Long Tail": 4,
+    "Fasilitas": 3, "Utama": 3, "Aktivitas": 2, "Lokasi Wisata": 2, "View": 2,
+}
+
+
+def _status_prioritas(persen: int) -> tuple:
+    """Badge status per cluster (2026-08-03, permintaan Agus) - ambang SAMA dgn contoh
+    yang diminta langsung: 0-20 Sangat Kurang, 20-40 Perlu Ditingkatkan, 40-70 Cukup,
+    70-90 Hampir Lengkap, 100 Selesai."""
+    if persen >= 100:
+        return ("✅", "Selesai")
+    if persen >= 70:
+        return ("🟢", "Hampir Lengkap")
+    if persen >= 40:
+        return ("🟡", "Cukup")
+    if persen >= 20:
+        return ("🟠", "Perlu Ditingkatkan")
+    return ("🔴", "Sangat Kurang")
+
+
+_BLOG_LINK_RE = re.compile(r"\[([^\]]+)\]\(/blog/([a-z0-9-]+)\)")
+
+
+async def cakupan_editorial_lengkap(site: str) -> dict:
+    """Editorial Coverage Dashboard (2026-08-03, permintaan Agus - versi lengkap dari
+    cakupan_keyword_per_cluster di atas, TIDAK menggantikannya krn fungsi lama masih
+    dipakai tempat lain). Sengaja dinamai "Cakupan Editorial/Keyword", BUKAN "Topical
+    Authority" (sudah jadi prinsip proyek ini sejak awal - lihat catatan di fungsi lama)
+    - owner sempat minta ini ditegaskan lagi, jadi label di sini & di frontend
+    konsisten hindari istilah itu.
+
+    Tujuan: dashboard ini harus bisa jawab 5 pertanyaan (persis permintaan owner):
+    1) sudah berapa artikel -> `sudah_dibuat`/`total_sudah`
+    2) masih kurang berapa -> `sisa`/`total_sisa`
+    3) keyword berikutnya -> `belum_ditulis` (list) & `rekomendasi_hari_ini`
+    4) kenapa dipilih -> `alasan` per item rekomendasi (dihitung dari sinyal ASLI:
+       priority manual, musim, demand GSC - SAMA PERSIS logika get_next_keyword,
+       bukan penjelasan karangan setelah fakta)
+    5) kapan cluster dianggap selesai -> "selesai" didefinisikan jujur sbg 100% dari
+       keyword yang MASIH BISA ditulis di cluster itu (`total_efektif` = sudah_dibuat +
+       belum_dibuat + draft, SENGAJA TIDAK menghitung `dilewati_mirip` - ditemukan lewat
+       audit data nyata: cluster "Harga" Harmoni 14/16 keyword-nya ternyata sudah
+       di-skip permanen krn dianggap duplikat topik yang sama, cuma 2 yang genuinely
+       ditulis/bisa ditulis - kalau dihitung dari 16, persennya kelihatan "Sangat Kurang"
+       padahal SEBENARNYA cluster itu nyaris tuntas dari keyword yang memang layak
+       ditulis. Menghitung skip permanen sbg "belum dikerjakan" itu sendiri bentuk
+       ketidakjujuran angka yang coba dihindari proyek ini).
+    """
+    demand = await _cluster_demand_scores(site)  # {cluster: impression GSC ASLI}
+
+    # Breakdown status PER cluster (2026-08-03, ganti dari cakupan_keyword_per_cluster
+    # yang cuma tahu total & sudah_dibuat - lihat catatan "selesai" di atas kenapa
+    # dilewati_mirip WAJIB dipisah, bukan ikut dihitung sbg "belum").
+    status_rows: Dict[str, Dict[str, int]] = {}
+    async for row in db.seo_keywords.aggregate([
+        {"$match": {"site": site}},
+        {"$group": {"_id": {"cluster": "$cluster", "status": "$status"}, "n": {"$sum": 1}}},
+    ]):
+        cluster = row["_id"]["cluster"]
+        status_rows.setdefault(cluster, {}).update({row["_id"]["status"]: row["n"]})
+
+    # Keyword "belum_dibuat" per cluster, sekalian ambil priority utk sortir & bahan
+    # rekomendasi - 1 query, dikelompokkan di Python (jumlah row kecil, <1000).
+    belum_docs = await db.seo_keywords.find(
+        {"site": site, "status": "belum_dibuat"},
+        {"_id": 0, "keyword": 1, "cluster": 1, "priority": 1, "musiman": 1},
+    ).to_list(2000)
+    order_prio = {"High": 0, "Medium": 1, "Low": 2}
+    belum_by_cluster: Dict[str, list] = {}
+    for k in belum_docs:
+        belum_by_cluster.setdefault(k["cluster"], []).append(k)
+    for lst in belum_by_cluster.values():
+        lst.sort(key=lambda k: order_prio.get(k.get("priority"), 9))
+
+    # Internal link network per cluster (2026-08-03) - link internal TIDAK disimpan
+    # terstruktur (cuma markdown di dalam content), jadi diekstrak di sini dgn regex
+    # yang SAMA persis pola yang dipakai _inject_links/_internal_links_valid (format
+    # link internal SELALU "[label](/blog/slug)") - bukan data baru, cuma dibaca ulang
+    # dari yang sudah ada, supaya owner lihat jaringan artikel per cluster tanpa perlu
+    # sistem pelacakan baru. Cluster tiap artikel di-JOIN lewat `seo_keyword` (keyword
+    # ASLI yang dipakai menulis, tersimpan apa adanya di blog_posts) -> db.seo_keywords -
+    # BUKAN reverse-lookup dari `category` (dicoba dulu, TERBUKTI salah: CLUSTER_CATEGORY
+    # itu many-to-one, mis. Harga/Keluarga/Pasangan/Booking/Fasilitas SEMUA sama-sama
+    # "Tips", reverse-lookup asal ambil cluster PERTAMA yg cocok kategori - hasil ditemukan
+    # salah atribusi lewat tes langsung sebelum kode ini dikirim).
+    keyword_to_cluster = {
+        k["keyword"]: k["cluster"] for k in await db.seo_keywords.find(
+            {"site": site}, {"_id": 0, "keyword": 1, "cluster": 1},
+        ).to_list(3000)
+    }
+    posts = await db.blog_posts.find(
+        {"site": site, "published": True}, {"_id": 0, "slug": 1, "title": 1, "seo_keyword": 1, "content": 1},
+    ).to_list(1000)
+    slug_to_title = {p["slug"]: p["title"] for p in posts}
+    links_by_cluster: Dict[str, list] = {}
+    for p in posts:
+        cluster_match = keyword_to_cluster.get(p.get("seo_keyword"))
+        found = _BLOG_LINK_RE.findall(p.get("content") or "")
+        if found:
+            targets = [{"slug": slug, "title": slug_to_title.get(slug, label)} for label, slug in found if slug in slug_to_title]
+            if targets:
+                links_by_cluster.setdefault(cluster_match or "Lainnya", []).append({
+                    "from_title": p["title"], "from_slug": p["slug"], "targets": targets,
+                })
+
+    clusters_out = []
+    for cluster, statuses in status_rows.items():
+        sudah = statuses.get("sudah_dibuat", 0)
+        belum = statuses.get("belum_dibuat", 0)
+        draft = statuses.get("draft", 0)
+        dilewati = statuses.get("dilewati_mirip", 0)
+        total_efektif = sudah + belum + draft
+        persen = round(sudah / total_efektif * 100) if total_efektif else (100 if dilewati else 0)
+        emoji, label_status = _status_prioritas(persen)
+        gsc_impressions = demand.get(cluster)
+        clusters_out.append({
+            "cluster": cluster,
+            "total": total_efektif,
+            "sudah_dibuat": sudah,
+            "sisa": belum + draft,
+            "dilewati_mirip": dilewati,
+            "persen": persen,
+            "status_emoji": emoji,
+            "status_label": label_status,
+            "belum_ditulis": [
+                {"keyword": k["keyword"], "priority": k.get("priority"), "musiman": bool(k.get("musiman"))}
+                for k in belum_by_cluster.get(cluster, [])[:10]
+            ],
+            "traffic_level": None if gsc_impressions else CLUSTER_TRAFFIC_HEURISTIK.get(cluster, 3),
+            "traffic_gsc_impressions": gsc_impressions,
+            "booking_level": CLUSTER_BOOKING_HEURISTIK.get(cluster, 3),
+            "internal_links": links_by_cluster.get(cluster, [])[:8],
+        })
+    clusters_out.sort(key=lambda c: c["persen"])
+
+    total_sudah = sum(c["sudah_dibuat"] for c in clusters_out)
+    total_all = sum(c["total"] for c in clusters_out)
+    berdata = [c for c in clusters_out if c["total"] > 0]
+    terlemah = min(berdata, key=lambda c: c["persen"])["cluster"] if berdata else None
+    terkuat = max(berdata, key=lambda c: c["persen"])["cluster"] if berdata else None
+
+    # Rekomendasi hari ini (2026-08-03) - REUSE persis logika get_next_keyword (priority
+    # -> musim -> demand GSC), bukan aturan terpisah/kedua yang bisa menyimpang dari
+    # urutan nyata yang benar-benar dipakai AI menulis. Diambil 3 kandidat teratas dari
+    # SEMUA cluster gabungan (bukan cuma 1 cluster) - alasan per item ditentukan dari
+    # sinyal MANA yang sebenarnya paling menentukan skor kandidat itu.
+    musim_aktif = _musim_mendekat()
+    semua_belum = sorted(
+        belum_docs,
+        key=lambda k: (
+            order_prio.get(k.get("priority"), 9),
+            0 if (musim_aktif and k.get("musiman")) else 1,
+            -demand.get(k.get("cluster"), 0),
+        ),
+    )
+    rekomendasi = []
+    for k in semua_belum[:3]:
+        cluster = k["cluster"]
+        cluster_row = next((c for c in clusters_out if c["cluster"] == cluster), None)
+        if k.get("priority") == "High":
+            alasan = f"Prioritas High (ditandai manual) & cluster {cluster} baru {cluster_row['persen'] if cluster_row else '?'}%."
+        elif musim_aktif and k.get("musiman"):
+            alasan = f"Musiman - sedang mendekati \"{musim_aktif}\"."
+        elif demand.get(cluster):
+            alasan = f"Cluster {cluster} terbukti dapat {demand[cluster]} impression nyata dari Google Search Console."
+        elif cluster_row and cluster_row["persen"] < 40:
+            alasan = f"Cluster {cluster} masih {cluster_row['persen']}% - termasuk yang paling lemah."
+        else:
+            alasan = f"Berikutnya dalam antrian cluster {cluster}."
+        rekomendasi.append({"keyword": k["keyword"], "cluster": cluster, "alasan": alasan})
+
+    insight = []
+    if terlemah:
+        lemah_row = next(c for c in clusters_out if c["cluster"] == terlemah)
+        insight.append(f"Cluster {terlemah} masih paling lemah ({lemah_row['persen']}%, sisa {lemah_row['sisa']} artikel).")
+    if terkuat and terkuat != terlemah:
+        kuat_row = next(c for c in clusters_out if c["cluster"] == terkuat)
+        insight.append(f"Cluster {terkuat} paling lengkap ({kuat_row['persen']}%).")
+    hampir_selesai = [c["cluster"] for c in clusters_out if 70 <= c["persen"] < 100]
+    if hampir_selesai:
+        insight.append(f"{', '.join(hampir_selesai)} sudah hampir lengkap (70-90%).")
+    if terlemah:
+        insight.append(f"Disarankan fokus ke cluster {terlemah} selama beberapa hari ke depan.")
+
+    return {
+        "clusters": clusters_out,
+        "total_sudah": total_sudah,
+        "total_sisa": total_all - total_sudah,
+        "total_target": total_all,
+        "persen_keseluruhan": round(total_sudah / total_all * 100) if total_all else 0,
+        "cluster_terlemah": terlemah,
+        "cluster_terkuat": terkuat,
+        "insight": insight,
+        "rekomendasi_hari_ini": rekomendasi,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -573,12 +573,13 @@ async def admin_seo_agent_basi(_: dict = Depends(get_current_user), site: str = 
 
 @api_router.get("/admin/seo-agent/cakupan")
 async def admin_seo_agent_cakupan(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
-    """Cakupan rencana keyword per cluster (2026-07-29) - % keyword per cluster yang
-    sudah ditulis dari 100 keyword awal. BUKAN "topical authority" beneran (lihat
-    catatan di cakupan_keyword_per_cluster) - label jujur soal apa yang diukur."""
-    from scripts.seo_agent import cakupan_keyword_per_cluster
-    rows = await cakupan_keyword_per_cluster(site)
-    return {"clusters": rows}
+    """Cakupan Editorial per cluster (2026-08-03, upgrade dari versi progress-bar polos
+    2026-07-29 - permintaan Agus jadi "Editorial Intelligence Dashboard"). Sengaja
+    "Cakupan Editorial/Keyword", BUKAN "Topical Authority" (itu perlu data kompetitif
+    berbayar yang tidak dimiliki proyek ini - lihat catatan lengkap di
+    cakupan_editorial_lengkap/cakupan_keyword_per_cluster)."""
+    from scripts.seo_agent import cakupan_editorial_lengkap
+    return await cakupan_editorial_lengkap(site)
 
 
 @api_router.get("/admin/gsc/summary")
