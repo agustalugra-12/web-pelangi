@@ -33,6 +33,7 @@ import asyncio
 import json
 import math
 import os
+import random
 import re
 import statistics
 import sys
@@ -100,6 +101,51 @@ SITE_PERSONA = {
         "sensorik dibanding Pelangi."
     ),
 }
+
+# Gate 1: Facility Truthfulness Gate (2026-08-04, PRD "AI Blog Engine v2.0") - blacklist
+# KERAS, terpisah dari larangan di _fetch_site_facts/_generate_new_keywords brainstorm
+# prompt di bawah (yang SIFATNYA instruksi ke model, bisa dilanggar - sudah 3x terbukti di
+# sesi ini prompt-only tidak 100% reliable: bug multi-tipe kamar, janji eskalasi, jam
+# kesiapan besok/lusa). Gate ini jalan SEBELUM keyword sempat masuk antrian sama sekali -
+# lihat pemanggilnya di get_next_keyword()/_pick_from_pool() & _generate_new_keywords().
+# Fasilitas di bawah sudah dikonfirmasi TIDAK dimiliki KEDUA properti (audit 2026-08-03,
+# lihat FASILITAS/LAYANAN YANG TIDAK KAMI SEDIAKAN di _fetch_site_facts).
+#
+# "villa" SENGAJA TIDAK masuk daftar walau ada di draft PRD asli - Harmoni Hills memakai
+# "villa privat" sbg deskripsi brand-nya sendiri (lihat SITE_PERSONA di atas), blacklist
+# kata itu akan salah-tolak keyword legitimate soal Harmoni sendiri. Ambang deteksi tetap
+# akurat karena fasilitas spesifik ("private pool", "dapur lengkap") sudah cukup menangkap
+# klaim palsu tanpa perlu blok kata generik "villa".
+FACILITY_BLACKLIST = [
+    "kolam renang", "swimming pool", "private pool", "kolam pribadi",
+    "glamping", "tenda camping",
+    "dapur lengkap", "full kitchen", "kitchen lengkap", "dengan dapur", "dapur pribadi",
+    "ruang meeting", "ruang rapat", "layanan katering", "catering",
+    "gym", "fitness center", "spa",
+    "sewa mobil", "sewa motor", "rental mobil", "rental motor",
+    "jemput bandara", "antar jemput bandara", "airport transfer", "airport pickup",
+    "paket trip", "paket tur", "paket wisata", "paket trekking",
+    "hewan peliharaan", "pet friendly", "pet-friendly",
+]
+ACCOMMODATION_SIGNALS = [
+    "hotel", "villa", "resort", "penginapan", "homestay", "cottage",
+    "guest house", "guesthouse", "akomodasi", "menginap", "sewa", "booking",
+]
+
+
+def _keyword_menjanjikan_fasilitas_tidak_ada(keyword: str) -> Optional[str]:
+    """True (return nama fasilitasnya) kalau keyword mengandung fasilitas yang TIDAK kami
+    punya DAN menyiratkan ini soal akomodasi/booking (bukan pertanyaan informasional murni,
+    mis. "kolam renang umum di Bedugul" boleh lolos - itu bukan klaim Pelangi/Harmoni
+    punya kolam)."""
+    lower = keyword.lower()
+    fasilitas_match = next((f for f in FACILITY_BLACKLIST if f in lower), None)
+    if not fasilitas_match:
+        return None
+    if not any(s in lower for s in ACCOMMODATION_SIGNALS):
+        return None
+    return fasilitas_match
+
 
 CLUSTER_CATEGORY = {
     "Utama": "General", "Harga": "Tips", "Lokasi Wisata": "Wisata", "View": "Wisata",
@@ -412,17 +458,50 @@ def _musim_mendekat(today: Optional[date] = None) -> Optional[str]:
     return None
 
 
+# Rasio komposisi intent target (2026-08-04, PRD "AI Blog Engine v2.0" §5.1) - 40%
+# Informational murni, 40% Commercial (masih informasional, soft-promosi Pelangi sbg
+# salah satu opsi - padanan terdekat dari "informational+soft" PRD ke taksonomi intent 3
+# kategori yang SUDAH ADA, bukan taksonomi baru), 20% Transactional (fokus Pelangi/niat
+# booking). Dipakai get_next_keyword() sbg tie-breaker CONDONG (bukan kuota kaku per
+# batch) supaya komposisi keseluruhan korpus perlahan menuju target ini.
+INTENT_RATIO_TARGET = {"Informational": 0.40, "Commercial": 0.40, "Transactional": 0.20}
+
+
+async def _intent_ratio_saat_ini(site: str) -> Dict[str, float]:
+    """Komposisi intent artikel yang SUDAH terbit - join blog_posts.seo_keyword ->
+    seo_keywords.intent (field intent sudah ada dari Intent Classifier 2026-08-02, tapi
+    sebelumnya cuma tersimpan, tidak pernah dipakai apa pun - lihat catatan di
+    _generate_new_keywords). {} kalau belum ada artikel terbit sama sekali."""
+    posts = await db.blog_posts.find({"site": site, "published": True}, {"seo_keyword": 1}).to_list(2000)
+    kw_texts = [p["seo_keyword"] for p in posts if p.get("seo_keyword")]
+    if not kw_texts:
+        return {}
+    kw_docs = await db.seo_keywords.find(
+        {"site": site, "keyword": {"$in": kw_texts}}, {"keyword": 1, "intent": 1},
+    ).to_list(len(kw_texts))
+    intent_by_kw = {d["keyword"]: d.get("intent", "Transactional") for d in kw_docs}
+    counts = {"Informational": 0, "Commercial": 0, "Transactional": 0}
+    for kw in kw_texts:
+        counts[intent_by_kw.get(kw, "Transactional")] = counts.get(intent_by_kw.get(kw, "Transactional"), 0) + 1
+    total = len(kw_texts)
+    return {k: v / total for k, v in counts.items()}
+
+
 async def get_next_keyword(site: str) -> dict:
     """Ambil keyword prioritas tertinggi yang statusnya 'belum_dibuat' DAN belum
-    cannibalize topik yang sudah pernah ditulis. Di antara keyword dgn priority sama,
-    dahulukan (1) keyword musiman kalau lagi mendekati musim (lihat _musim_mendekat),
-    lalu (2) cluster yang terbukti dapat impression GSC nyata (lihat
-    _cluster_demand_scores). Kalau pool habis (atau semua kandidat ternyata
-    cannibalizing), generate keyword baru dulu (cek duplikat semantik ke keyword+judul
-    artikel yang sudah ada) sebelum diambil."""
+    cannibalize topik yang sudah pernah ditulis, DAN bukan janji fasilitas yang tidak
+    kami punya (Gate 1, lihat _keyword_menjanjikan_fasilitas_tidak_ada). Di antara
+    keyword dgn priority sama, dahulukan (1) keyword musiman kalau lagi mendekati musim
+    (lihat _musim_mendekat), (2) cluster yang terbukti dapat impression GSC nyata (lihat
+    _cluster_demand_scores), (3) intent yang komposisinya masih di bawah target 40/40/20
+    (lihat INTENT_RATIO_TARGET) - condong, bukan kuota kaku, supaya tidak deadlock kalau
+    pool suatu intent kebetulan kosong hari itu. Kalau pool habis (atau semua kandidat
+    ternyata cannibalizing/fasilitas fiktif), generate keyword baru dulu (cek duplikat
+    semantik ke keyword+judul artikel yang sudah ada) sebelum diambil."""
     order = {"High": 0, "Medium": 1, "Low": 2}
     cluster_scores = await _cluster_demand_scores(site)
     musim_aktif = _musim_mendekat()
+    intent_ratio = await _intent_ratio_saat_ini(site)
 
     async def _pick_from_pool() -> Optional[dict]:
         pool = await db.seo_keywords.find({"site": site, "status": "belum_dibuat"}).to_list(500)
@@ -430,9 +509,20 @@ async def get_next_keyword(site: str) -> dict:
             order.get(k["priority"], 9),
             0 if (musim_aktif and k.get("musiman")) else 1,
             -cluster_scores.get(k.get("cluster"), 0),
+            -(INTENT_RATIO_TARGET.get(k.get("intent", "Transactional"), 0) - intent_ratio.get(k.get("intent", "Transactional"), 0)),
         ))
         now = datetime.now(timezone.utc).isoformat()
         for kw_doc in pool:
+            fasilitas_match = _keyword_menjanjikan_fasilitas_tidak_ada(kw_doc["keyword"])
+            if fasilitas_match:
+                await db.seo_keywords.update_one(
+                    {"id": kw_doc["id"]},
+                    {"$set": {
+                        "status": "ditolak_fasilitas_tidak_ada", "updated_at": now,
+                        "cannibalization_note": f'Gate 1: keyword menjanjikan "{fasilitas_match}" yang tidak dimiliki properti',
+                    }},
+                )
+                continue
             dupe_kw = await _keyword_cannibalizes_existing(site, kw_doc["keyword"], kw_doc["cluster"])
             if dupe_kw is None:
                 return kw_doc
@@ -452,7 +542,7 @@ async def get_next_keyword(site: str) -> dict:
     if picked is None:
         raise RuntimeError(
             f"Tidak ada keyword tersedia untuk situs {site} (pool habis/semua kandidat "
-            "mirip topik yang sudah ditulis, generate baru juga gagal)"
+            "mirip topik yang sudah ditulis/menjanjikan fasilitas fiktif, generate baru juga gagal)"
         )
     return picked
 
@@ -1626,7 +1716,20 @@ async def pick_internal_links(site: str, cluster: str, keyword: str = "", exclud
     pool = entity_pool + [c for c in same_category if c["slug"] not in {e["slug"] for e in entity_pool}]
     if len(pool) < 2:
         pool = candidates
-    return pool[:3]
+    # Rotasi (2026-08-04, PRD "AI Blog Engine v2.0" - "internal link selalu ke 1 artikel
+    # sama") - SEBELUM ini `pool[:3]` deterministik, urutan ditentukan created_at DESC
+    # yang dibawa dari query awal, jadi artikel PALING BARU di kategori/entity yang sama
+    # selalu jadi target link untuk BERBULAN-BULAN sampai ada artikel lebih baru lagi -
+    # link equity tidak tersebar. Entity match (paling relevan topical) tetap DIUTAMAKAN
+    # (selalu masuk kalau ada, tidak ikut diacak keluar), tapi urutan PENGAMBILAN di dalam
+    # tiap grup diacak tiap generate - dari banyak artikel, target link jadi bervariasi
+    # alami tanpa perlu tracking counter/state baru.
+    entity_slugs = {e["slug"] for e in entity_pool}
+    entity_shuffled = entity_pool.copy()
+    random.shuffle(entity_shuffled)
+    sisa_shuffled = [c for c in pool if c["slug"] not in entity_slugs]
+    random.shuffle(sisa_shuffled)
+    return (entity_shuffled + sisa_shuffled)[:3]
 
 
 def _normalize_faq_format(content: str) -> str:
@@ -1992,7 +2095,82 @@ async def _duplicate_section_terdeteksi(content: str) -> bool:
     return False
 
 
-async def editor_review(content: str, keyword: str) -> list:
+# Gate 3: Template Intro Detection (2026-08-04, PRD "AI Blog Engine v2.0") - regex pada
+# paragraf PERTAMA artikel, pola pembuka generik yang membuat pembaca langsung sadar ini
+# tulisan AI-generated (audit nyata: hampir semua artikel dimulai "Pelangi Homestay
+# berada di Bedugul, Baturiti, Tabanan..." atau "Jika kata kunci Anda adalah...").
+INTRO_TEMPLATE_PATTERNS = [
+    r"^(pelangi homestay|harmoni hills)\s+(berada|terletak|berlokasi)",
+    r"^jika\s+(kata kunci|keyword)",
+    r"^artikel ini\s+(membahas|menjelaskan|fokus)",
+    r"^mencari\s+(resort|villa|hotel|penginapan|homestay)",
+    r"^bagi\s+(anda|tamu|wisatawan|kamu)\s+yang",
+]
+
+
+def _intro_template_terdeteksi(content: str) -> bool:
+    paras = [p.strip() for p in re.split(r"\n\n+", content) if p.strip()]
+    if not paras:
+        return False
+    intro = paras[0].lower()
+    return any(re.search(pat, intro) for pat in INTRO_TEMPLATE_PATTERNS)
+
+
+# Gate 2: Information Repetition Check (2026-08-04, PRD "AI Blog Engine v2.0") - fakta
+# SPESIFIK (harga, suhu, jarak, kapasitas) yang disebut berulang bikin artikel terasa
+# "berputar-putar" (audit nyata: harga kamar disebut 3x, "tidak menyediakan transport"
+# 4x). SENGAJA regex GENERIK per KATEGORI fakta (angka+satuan), BUKAN hardcode angka
+# tertentu spt draft PRD asli ("175.000"/"225.000") - hardcode rapuh & basi begitu harga
+# berubah, melanggar prinsip satu-sumber-kebenaran yang dipakai di seluruh file ini
+# (tarif SELALU dibaca live dari DB, bukan ditulis ulang di kode). Harga diberi ambang
+# lebih longgar (>2x, bukan >1x) krn struktur artikel yang SUDAH ADA (intro ringkas +
+# FAQ "berapa harga?" + info praktis) secara wajar menyebut harga 2x tanpa terasa
+# repetitif - baru dianggap masalah kalau muncul PERSIS angka yang sama 3x+.
+_FAKTA_REPETISI_PATTERNS = {
+    "suhu (°C)": (r"\d{1,2}\s?[-–]\s?\d{1,2}\s?°?c\b", 1),
+    "jarak (km)": (r"\d+(?:[.,]\d+)?\s?km\b", 1),
+    "kapasitas rombongan (orang)": (r"\d+\s?[-–]\s?\d+\s?orang\b", 1),
+    "harga (Rp)": (r"rp\s?\d[\d.,]*\d|rp\s?\d", 2),
+}
+
+
+def _fakta_berulang_terdeteksi(content: str) -> list:
+    lower = content.lower()
+    problems = []
+    for label, (pattern, max_ok) in _FAKTA_REPETISI_PATTERNS.items():
+        counts: Dict[str, int] = {}
+        for m in re.findall(pattern, lower):
+            counts[m] = counts.get(m, 0) + 1
+        berulang = [f'"{v}" {c}x' for v, c in counts.items() if c > max_ok]
+        if berulang:
+            problems.append(f"{label} disebut berulang: {', '.join(berulang)}")
+    return problems
+
+
+# Gate 4: Pelangi/Harmoni Dominance Check (2026-08-04, PRD "AI Blog Engine v2.0") - hitung
+# % paragraf yang menyebut nama brand, artikel yang HAMPIR SEMUA paragrafnya menyebut
+# properti terasa seperti brosur produk, bukan konten blog (target PRD: 70% isi soal
+# TOPIK, 30% soal properti). Ambang beda per intent (2026-08-04, mitigasi risiko yang
+# SUDAH diantisipasi PRD sendiri §10 "Dominance check terlalu ketat"): keyword ber-intent
+# Transactional (fokus Pelangi/Harmoni, mis. "Review Pelangi Homestay") WAJAR dominasi
+# tinggi, dikasih ambang lebih longgar drpd Informational/Commercial.
+DOMINANCE_THRESHOLD_BY_INTENT = {"Informational": 0.35, "Commercial": 0.35, "Transactional": 0.60}
+
+
+def _dominasi_brand_terdeteksi(content: str, site: str, intent: str) -> Optional[str]:
+    paras = [p.strip() for p in re.split(r"\n\n+", content) if p.strip()]
+    if len(paras) < 3:
+        return None  # terlalu pendek utk statistik rasio yang berarti
+    nama = "pelangi" if site == "pelangi" else "harmoni"
+    n_match = sum(1 for p in paras if nama in p.lower())
+    rasio = n_match / len(paras)
+    ambang = DOMINANCE_THRESHOLD_BY_INTENT.get(intent, 0.35)
+    if rasio > ambang:
+        return f"{round(rasio * 100)}% paragraf menyebut brand (ambang {round(ambang * 100)}% utk intent {intent})"
+    return None
+
+
+async def editor_review(content: str, keyword: str, site: str = "", intent: str = "Transactional") -> list:
     """AI Editor (2026-07-29, roadmap AI Grow item 6) - bagian yang genuinely BISA
     dijadikan pemeriksaan deterministik (duplicate section via embedding yang sudah ada,
     keyword stuffing via hitung frekuensi) DIJADIKAN jaring pengaman keras (masuk
@@ -2010,6 +2188,15 @@ async def editor_review(content: str, keyword: str) -> list:
         problems.append(f"AI slop terdeteksi (frasa klise/kata berulang): {', '.join(slop)}")
     if _variasi_kalimat_kurang(content):
         problems.append("variasi panjang kalimat terlalu rendah (kalimat cenderung seragam, ciri khas AI generik)")
+    if _intro_template_terdeteksi(content):
+        problems.append("intro pakai pola template generik (mis. 'X berada di...'/'Jika kata kunci Anda...') - tulis ulang dgn hook yang menarik")
+    fakta_berulang = _fakta_berulang_terdeteksi(content)
+    if fakta_berulang:
+        problems.append("informasi berulang: " + "; ".join(fakta_berulang))
+    if site:
+        dominasi = _dominasi_brand_terdeteksi(content, site, intent)
+        if dominasi:
+            problems.append(f"artikel terlalu dominan membahas properti ({dominasi}) - perbanyak isi soal topik/destinasi")
     return problems
 
 
@@ -2089,7 +2276,7 @@ async def generate_one(site: str) -> dict:
         link_issues = await _internal_links_valid(site, content_final)
         if link_issues:
             problems.extend(link_issues)
-        editor_issues = await editor_review(content_final, keyword_doc["keyword"])
+        editor_issues = await editor_review(content_final, keyword_doc["keyword"], site=site, intent=keyword_doc.get("intent", "Transactional"))
 
         # Auto-fix kata AI-slop berulang (2026-08-01, permintaan user: kurangi tingkat
         # gagal - audit nyata menunjukkan ~2 dari 3 kegagalan hari itu MURNI karena kata
@@ -2145,7 +2332,7 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
                         link_issues = await _internal_links_valid(site, content_final)
                         if link_issues:
                             problems.extend(link_issues)
-                        editor_issues = await editor_review(content_final, keyword_doc["keyword"])
+                        editor_issues = await editor_review(content_final, keyword_doc["keyword"], site=site, intent=keyword_doc.get("intent", "Transactional"))
                 except (json.JSONDecodeError, KeyError):
                     pass  # gagal parse hasil revisi - lanjut pakai draft asli, biar quality gate normal yang menolak
 
