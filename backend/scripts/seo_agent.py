@@ -54,7 +54,20 @@ DB_NAME = os.environ["DB_NAME"]
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "")
-CHAT_MODEL = "gpt-5-mini"
+# Ganti dari gpt-5-mini ke gpt-4.1-mini (2026-08-05, investigasi biaya + insiden nyata:
+# sejak 2026-08-04 ~12:36 WIB SEMUA slot cron gagal 4x percobaan lalu MENYERAH tanpa
+# publish sama sekali - ditemukan 2 penyebab: (1) banyak panggilan ReadTimeout di 90 detik,
+# kemungkinan besar krn gpt-5-mini (model reasoning) punya overhead "thinking" tersembunyi
+# yg tidak kelihatan di teks tapi tetap makan waktu & TETAP DITAGIH sbg output token walau
+# client sudah menyerah nunggu; (2) gpt-5-mini output token 25% lebih mahal ($2.00/1M) drpd
+# gpt-4.1-mini ($1.60/1M), plus overhead reasoning token di atas itu - kombinasi ini bikin
+# gpt-5-mini jadi model termahal di seluruh stack (ai-chat-bot pakai gpt-4o-mini/gpt-4.1-mini,
+# jauh lebih murah). gpt-4.1-mini BUKAN model reasoning (tidak ada overhead tersembunyi),
+# lebih cepat respon (harusnya langsung mengurangi ReadTimeout), lebih murah per token, DAN
+# tidak lagi dipaksa temperature=1 (lihat _chat() di bawah - restriksi itu cuma utk model
+# gpt-5) - artinya temperature asli tiap call site (0.6 penulisan/0.2 fact-check/0.5 fix)
+# yg sengaja di-tuning dari awal otomatis balik berlaku, bukan diseragamkan paksa ke 1 lagi.
+CHAT_MODEL = "gpt-4.1-mini"
 EMBED_MODEL = "text-embedding-3-small"
 
 client = AsyncIOMotorClient(MONGO_URL)
@@ -261,7 +274,10 @@ async def _chat(system: str, user: str, temperature: float = 0.7) -> str:
     # fact-check 0.2, expand loop, dst) otomatis aman tanpa perlu ubah tiap call site.
     if CHAT_MODEL.lower().startswith("gpt-5"):
         temperature = 1
-    async with httpx.AsyncClient(timeout=90) as http:
+    # Timeout dinaikkan 90 -> 150 detik (2026-08-05, jaring pengaman tambahan sesudah
+    # ganti model - bukan solusi utama, tapi tetap wajar dikasih margin lebih longgar
+    # utk artikel panjang, bukan hanya berharap gpt-4.1-mini selalu cukup cepat).
+    async with httpx.AsyncClient(timeout=150) as http:
         resp = await http.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
@@ -487,7 +503,7 @@ async def _intent_ratio_saat_ini(site: str) -> Dict[str, float]:
     return {k: v / total for k, v in counts.items()}
 
 
-async def get_next_keyword(site: str) -> dict:
+async def get_next_keyword(site: str, exclude_ids: Optional[set] = None) -> dict:
     """Ambil keyword prioritas tertinggi yang statusnya 'belum_dibuat' DAN belum
     cannibalize topik yang sudah pernah ditulis, DAN bukan janji fasilitas yang tidak
     kami punya (Gate 1, lihat _keyword_menjanjikan_fasilitas_tidak_ada). Di antara
@@ -497,14 +513,27 @@ async def get_next_keyword(site: str) -> dict:
     (lihat INTENT_RATIO_TARGET) - condong, bukan kuota kaku, supaya tidak deadlock kalau
     pool suatu intent kebetulan kosong hari itu. Kalau pool habis (atau semua kandidat
     ternyata cannibalizing/fasilitas fiktif), generate keyword baru dulu (cek duplikat
-    semantik ke keyword+judul artikel yang sudah ada) sebelum diambil."""
+    semantik ke keyword+judul artikel yang sudah ada) sebelum diambil.
+
+    `exclude_ids` (2026-08-05, bug nyata ditemukan lewat tes live - retry-until-sukses di
+    main() SEHARUSNYA "otomatis skip yang baru gagal" (lihat komentar main()), tapi pool
+    di-sort DETERMINISTIK (priority/cluster-score/intent-ratio) tanpa memandang percobaan
+    barusan - keyword yang gagal langsung direset ke "belum_dibuat" & posisi sortirnya
+    TIDAK BERUBAH SAMA SEKALI, jadi kepilih lagi persis sama di percobaan berikutnya.
+    Terbukti nyata: 1 keyword ("...kebun strawberry...", topik yg fact-check-nya SELALU
+    gagal krn tidak didukung data asli) kepilih 8x berturut-turut lintas 2 percobaan
+    terpisah, MAX_RETRY_PER_SLOT habis tanpa pernah coba keyword lain. Dipakai main() utk
+    mengecualikan keyword yang SUDAH gagal di slot yang SAMA, supaya percobaan berikutnya
+    benar-benar coba kandidat berbeda spt yang diniatkan sejak awal."""
     order = {"High": 0, "Medium": 1, "Low": 2}
     cluster_scores = await _cluster_demand_scores(site)
     musim_aktif = _musim_mendekat()
     intent_ratio = await _intent_ratio_saat_ini(site)
+    exclude_ids = exclude_ids or set()
 
     async def _pick_from_pool() -> Optional[dict]:
         pool = await db.seo_keywords.find({"site": site, "status": "belum_dibuat"}).to_list(500)
+        pool = [k for k in pool if k["id"] not in exclude_ids]
         pool.sort(key=lambda k: (
             order.get(k["priority"], 9),
             0 if (musim_aktif and k.get("musiman")) else 1,
@@ -1562,7 +1591,24 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "ttg Bedugul/destinasi, atau detail sensorik (suara, suhu, pemandangan, aroma) - BUKAN "
         "deskripsi properti/lokasi/\"Jika kata kunci Anda...\"/\"Artikel ini membahas...\". "
         "Properti baru boleh disebut mulai sub-judul kedua/ketiga dst, idealnya di 1 sub-judul "
-        "khusus (\"X sbg opsi menginap\") yang ringkas, bukan disebut berulang di semua sub-judul."
+        "khusus (\"X sbg opsi menginap\") yang ringkas, bukan disebut berulang di semua sub-judul.\n\n"
+        # Penegasan angka pasti (2026-08-05, ditemukan lewat tes live sesudah ganti model
+        # gpt-5-mini ke gpt-4.1-mini) - gate dominasi brand (ambang 35% paragraf utk intent
+        # Informational/Commercial) jauh lebih sering menolak dgn model baru ini, terukur
+        # 44-71% padahal instruksi target 70/30 di atas sudah ada sejak awal - gpt-4.1-mini
+        # terbukti nyata cenderung menyebut nama properti jauh lebih sering per paragraf
+        # drpd gpt-5-mini walau instruksinya sama persis. Angka pasti + peringatan "ditolak
+        # otomatis" di bawah SENGAJA lebih tegas drpd instruksi "target 70/30" di atas,
+        # supaya model menghitung sendiri sbg batas keras, bukan sekadar arahan gaya.
+        "PENTING - BATAS KERAS PENYEBUTAN NAMA PROPERTI: draft ini akan DITOLAK OTOMATIS kalau "
+        f"nama \"{'Pelangi' if site == 'pelangi' else 'Harmoni'}\"/\"{'Pelangi Homestay' if site == 'pelangi' else 'Harmoni Hills'}\" "
+        "muncul di LEBIH DARI 1 dari SETIAP 3 paragraf (maks ~33%, target aman ~25% biar ada "
+        "ruang). Sebelum menulis tiap paragraf baru selain bagian \"X sbg opsi menginap\", "
+        "TANYA KE DIRI SENDIRI: paragraf ini WAJIB menyebut nama properti, atau bisa tetap "
+        "membahas destinasi/aktivitas/tips tanpa menyebut nama sama sekali? Kalau bisa tanpa, "
+        "JANGAN sebut nama - pakai kata ganti umum (\"penginapan ini\", \"tempat menginap\") "
+        "HANYA kalau benar-benar perlu, atau lebih baik lanjut bahas topik tanpa referensi "
+        "properti sama sekali di paragraf itu."
     )
     editorial_rules = await _fetch_editorial_rules()
     if editorial_rules:
@@ -2201,7 +2247,14 @@ def _dominasi_brand_terdeteksi(content: str, site: str, intent: str) -> Optional
 # dgn cannibalization/duplicate-section (_embed/_cosine), BUKAN infrastruktur baru.
 # db.faq_index di-cache incremental (diisi tiap artikel publish di generate_one) drpd
 # re-embed SELURUH korpus FAQ tiap kali generate - jauh lebih hemat API call.
-FAQ_DEDUP_THRESHOLD = 0.7
+# Dinaikkan 0.7 -> 0.85 (2026-08-05, investigasi biaya - ditemukan penyebab utama gagal-
+# terus-menerus sejak 2026-08-04: korpus FAQ sudah 143 artikel, topik universal (metode
+# pembayaran, kebijakan pembatalan, jam check-in/out, sarapan) SECARA WAJAR mirip satu
+# sama lain krn memang menjawab hal yang sama - pada 0.7 nyaris SEMUA draft baru gagal di
+# gate ini walau kalimatnya beda, bukan cuma yang benar-benar copy-paste. 0.85 tetap
+# menangkap duplikat nyaris identik, tapi tidak lagi menolak sekadar rephrasing wajar utk
+# topik yang memang berulang di semua artikel hotel manapun.
+FAQ_DEDUP_THRESHOLD = 0.85
 _FAQ_PATTERN = re.compile(r"\*\*([^*]+\?)\*\*")
 
 
@@ -2334,8 +2387,8 @@ Array "issues" KOSONG kalau semua klaim spesifik di draft sudah sesuai/didukung 
 SITE_DOMAIN = {"pelangi": "pelangihomestay.com", "harmoni": "harmoniby.pelangihomestay.com"}
 
 
-async def generate_one(site: str) -> dict:
-    keyword_doc = await get_next_keyword(site)
+async def generate_one(site: str, exclude_ids: Optional[set] = None) -> dict:
+    keyword_doc = await get_next_keyword(site, exclude_ids=exclude_ids)
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "draft", "updated_at": datetime.now(timezone.utc).isoformat()}})
 
     try:
@@ -2434,7 +2487,7 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
 
     if problems:
         await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "belum_dibuat"}})
-        return {"ok": False, "keyword": keyword_doc["keyword"], "problems": problems}
+        return {"ok": False, "keyword": keyword_doc["keyword"], "keyword_id": keyword_doc["id"], "problems": problems}
 
     slug_base = slugify(article["title"])
     slug = slug_base
@@ -2568,13 +2621,21 @@ async def main():
             if sudah_terbit >= target:
                 print(f"[{site}] target harian ({target}) tercapai di tengah run ini ({sudah_terbit} artikel) - stop, tidak lanjut slot berikutnya.")
                 break
+            # exclude_ids terkumpul PER SLOT (2026-08-05, fix bug nyata - lihat catatan
+            # exclude_ids di get_next_keyword) - keyword yang baru gagal quality gate di
+            # percobaan sebelumnya TIDAK dipilih lagi di percobaan berikutnya slot yang
+            # sama, supaya 4x retry benar-benar coba 4 keyword berbeda (spt yang sudah
+            # dimaksud sejak awal), bukan keyword cursed yang sama berulang-ulang.
+            sudah_dicoba_slot_ini: set = set()
             for attempt in range(1, MAX_RETRY_PER_SLOT + 1):
                 try:
-                    result = await generate_one(site)
+                    result = await generate_one(site, exclude_ids=sudah_dicoba_slot_ini)
                     print(f"[{site}] slot {i+1}/{args.count} percobaan {attempt}: {json.dumps(result, ensure_ascii=False)}")
                     if result.get("ok"):
                         sukses += 1
                         break
+                    if result.get("keyword_id"):
+                        sudah_dicoba_slot_ini.add(result["keyword_id"])
                 except Exception as e:
                     print(f"[{site}] slot {i+1}/{args.count} percobaan {attempt}: GAGAL - {type(e).__name__}: {e}")
             else:
