@@ -659,6 +659,11 @@ export default function CmsBlog() {
                     <span className={`text-xs font-semibold rounded-full px-2 py-1 ${p.published ? "bg-leaf/15 text-leaf" : "bg-ink/10 text-ink"}`}>
                       {p.published ? "Published" : "Draft"}
                     </span>
+                    {p.noindex && (
+                      <span className="ml-1.5 text-xs font-semibold rounded-full px-2 py-1 bg-amber-100 text-amber-700" title="Tetap bisa diakses via link langsung, tapi disembunyikan dari hasil pencarian Google">
+                        Noindex
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3 hidden md:table-cell text-xs text-teal-deep/70">
                     {new Date(p.created_at).toLocaleDateString("id-ID")}

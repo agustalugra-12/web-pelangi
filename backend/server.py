@@ -216,6 +216,13 @@ class BlogPostCreate(BaseModel):
     cover_image: str = ""
     tags: List[str] = []
     published: bool = True
+    # (2026-08-04, PRD "AI Blog Engine v2.0" §7.1 triage artikel) - noindex artikel yang
+    # kontennya bermasalah (mis. keyword menjanjikan fasilitas fiktif) TANPA harus
+    # unpublish total - halaman tetap bisa diakses via link langsung, tapi diberi sinyal
+    # eksplisit ke Google utk TIDAK memasukkannya ke index pencarian. Dipakai
+    # prerender_home.py (snapshot statis dibaca crawler) & Seo.jsx (client-side, sudah
+    # ada mekanismenya utk halaman 404, sekarang diperluas ke artikel biasa).
+    noindex: bool = False
 
 
 class BlogPostUpdate(BaseModel):
@@ -226,6 +233,7 @@ class BlogPostUpdate(BaseModel):
     cover_image: Optional[str] = None
     tags: Optional[List[str]] = None
     published: Optional[bool] = None
+    noindex: Optional[bool] = None
 
 
 class BlogPostOut(BaseModel):
@@ -266,6 +274,7 @@ class BlogPostOut(BaseModel):
     # ke-drop dari response API walau ada di dokumen Mongo-nya) - byline tampil "Tim
     # Kami" generik (fallback frontend) sampai fix ini, bukan nama brand asli.
     author: Optional[str] = None
+    noindex: bool = False
 
 
 class ContactMessageCreate(BaseModel):
@@ -310,6 +319,7 @@ def post_to_out(doc: dict) -> BlogPostOut:
         expanded_at=doc.get("expanded_at"),
         intent_coverage=doc.get("intent_coverage"),
         author=doc.get("author"),
+        noindex=doc.get("noindex", False),
     )
 
 
@@ -711,6 +721,7 @@ async def admin_create_post(payload: BlogPostCreate, _: dict = Depends(get_curre
         "created_at": now,
         "updated_at": now,
         "author": author_name,
+        "noindex": payload.noindex,
     }
     result = await db.blog_posts.insert_one(doc)
     doc["_id"] = result.inserted_id

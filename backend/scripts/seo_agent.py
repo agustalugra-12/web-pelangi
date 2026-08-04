@@ -1452,8 +1452,10 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "GAYA TULISAN: Tulis natural, variasikan panjang kalimat & struktur paragraf (jangan semua "
         "paragraf polanya sama), gunakan kalimat aktif, bahasa yang mudah dipahami. Sapaan 'Kakak' "
         "MAKSIMAL 5-7 kali di SELURUH artikel (2026-07-29, revisi manual user - sebelumnya muncul "
-        ">15 kali/artikel, terasa dipaksakan) - variasikan dgn 'Anda'/'tamu'/langsung tanpa sapaan "
-        "di kalimat lain. Paragraf pendek (2-5 kalimat), setiap paragraf punya tujuan jelas - jangan "
+        ">15 kali/artikel, terasa dipaksakan) - variasikan dgn 'kamu'/'tamu'/langsung tanpa sapaan "
+        "di kalimat lain (2026-08-04, revisi PRD AI Blog v2.0 - 'kamu' bukan 'Anda', target pembaca "
+        "traveler 25-40 tahun yang cari info santai, bukan korespondensi formal). Paragraf pendek "
+        "(2-5 kalimat), setiap paragraf punya tujuan jelas - jangan "
         "bertele-tele atau mengulang poin yang sama. HINDARI frasa generik/klise seperti 'di era "
         "digital ini', 'tidak dapat dipungkiri', 'perlu diketahui bahwa', 'pada dasarnya', "
         "'kesimpulannya', 'udara sejuk yang menyegarkan', 'nyaman dan menyenangkan', 'kenyamanan "
@@ -1474,7 +1476,13 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "(hitung satu-satu, jangan menebak) - kalau ADA yang lebih dari 2 kali, ganti kelebihannya "
         "sebelum kirim (2026-08-01, ditemukan lewat data nyata: instruksi batas 2x di atas SERING "
         "dilanggar tanpa penghitungan eksplisit ini, artikel jadi tertolak sistem quality gate). "
-        "Kalau ada yang kurang dari semua pengecekan ini, revisi dulu sebelum kirim.\n\n"
+        "Kalau ada yang kurang dari semua pengecekan ini, revisi dulu sebelum kirim. "
+        "TAMBAHAN (2026-08-04, PRD AI Blog v2.0): apakah paragraf pembuka BENAR-BENAR tidak "
+        "menyebut nama properti? Apakah dari 6 sub-judul, MAYORITAS (4-5) benar-benar tentang "
+        "topik/destinasi, bukan tentang properti? Apakah properti hanya disebut di 1-2 sub-judul "
+        "saja (bukan di semua)? Apakah ada harga/suhu/jarak/kapasitas yang kamu tulis LEBIH dari "
+        "sekali dgn angka yang sama? Kalau ADA salah satu yang jawabannya tidak sesuai target, "
+        "revisi dulu.\n\n"
         # Editorial Standard v2 (2026-07-29, permintaan user) - target artikel jadi "halaman
         # referensi terbaik utk topik ini", bukan sekadar berhasil masuk index Google. Ditulis
         # sbg MENU pilihan (bukan wajib semua di tiap artikel) krn tidak semua elemen relevan
@@ -1534,10 +1542,27 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         )) +
         "CTA: tutup artikel dengan ajakan SPESIFIK & natural (mis. \"Tanya langsung ketersediaan "
         "kamar untuk tanggal liburan Kakak\"), BUKAN kalimat generik seperti \"Chat sekarang lewat "
-        "WhatsApp\" saja.\n\n"
+        "WhatsApp\" saja. Muncul SATU KALI saja di penutup, jangan diulang di tengah artikel.\n\n"
         "TESTIMONI: kalau ada \"Testimoni tamu asli\" di DATA ASLI DAN relevan dgn topik artikel "
         "ini, boleh dikutip singkat sbg social proof - JANGAN PERNAH mengarang testimoni baru yang "
-        "tidak ada di DATA ASLI."
+        "tidak ada di DATA ASLI. Kalau tidak ada testimoni yang benar-benar relevan dgn topik "
+        "artikel ini, JANGAN dipaksakan masuk - lewati saja bagian ini.\n\n"
+        # Rasio 70/30 & hook (2026-08-04, PRD "AI Blog Engine v2.0" §4.1 - permintaan Agus,
+        # digabung dgn draft revisi prompt yang dikirim langsung) - instruksi di sini SELALU
+        # dipasangkan dgn enforcement KODE (Gate 3 template intro, Gate 4 dominasi brand di
+        # editor_review) krn sesi ini sudah 3x buktikan instruksi prompt saja tidak reliable
+        # (bug multi-tipe kamar, janji eskalasi, jam kesiapan besok/lusa) - prompt di sini
+        # bukan satu-satunya jaring pengaman, tapi tetap penting supaya draft PERTAMA sudah
+        # cenderung benar (kurangi reject-&-retry, hemat biaya API).
+        "PEMBACA DULU, PROPERTI BELAKANGAN: target ~70% isi artikel tentang TOPIK/DESTINASI "
+        "(Bedugul, aktivitas, tempat wisata) dan ~30% tentang properti sbg opsi menginap - "
+        f"pembaca yang TIDAK jadi booking {'Pelangi' if site == 'pelangi' else 'Harmoni'} tetap "
+        "harus dapat nilai dari artikel ini. JANGAN sebut nama properti di paragraf pembuka - "
+        "mulai dengan cerita/skenario pendek, pertanyaan yang bikin penasaran, fakta spesifik "
+        "ttg Bedugul/destinasi, atau detail sensorik (suara, suhu, pemandangan, aroma) - BUKAN "
+        "deskripsi properti/lokasi/\"Jika kata kunci Anda...\"/\"Artikel ini membahas...\". "
+        "Properti baru boleh disebut mulai sub-judul kedua/ketiga dst, idealnya di 1 sub-judul "
+        "khusus (\"X sbg opsi menginap\") yang ringkas, bukan disebut berulang di semua sub-judul."
     )
     editorial_rules = await _fetch_editorial_rules()
     if editorial_rules:
@@ -1599,7 +1624,7 @@ Tulis artikel SEO untuk target keyword: "{keyword}"
 
 Format balasan HARUS JSON valid dengan struktur persis ini (tanpa markdown code fence):
 {{
-  "title": "judul menarik & mengandung keyword, maks 70 karakter",
+  "title": "judul menarik & natural, maks 60 karakter, keyword masuk alami (JANGAN sekadar deret kata kunci ditempel - itu keyword stuffing di judul)",
   "excerpt": "ringkasan 1-2 kalimat, maks 160 karakter",
   "content": "isi artikel WAJIB 900-1300 kata (ini batas keras, hitung sendiri sebelum menjawab - kalau draftmu kurang dari 900 kata, perpanjang tiap bagian dengan detail/contoh lebih dulu sebelum dikirim). Struktur WAJIB: 1 paragraf pembuka (~80-120 kata), lalu PERSIS 6 sub-judul **Sub Judul** (masing-masing paragraf tersendiri, tiap sub-judul diikuti isi 100-150 kata - JANGAN ada sub-judul dengan isi di bawah 100 kata), lalu WAJIB 4 FAQ di bagian akhir, ditutup 1 paragraf penutup singkat. Paragraf dipisah \\n\\n. UNTUK FAQ: kalau di atas ada daftar 'PERTANYAAN NYATA dari kompetitor', UTAMAKAN pertanyaan itu (boleh diparafrase, wajib tetap bisa dijawab jujur dari DATA ASLI) - baru tambahkan pertanyaan relevan lain kalau kurang dari 4 atau tidak ada yang cocok. KHUSUS kalau cluster keyword ini BUKAN Booking/Keluarga: dari 4 FAQ, MAKSIMAL 1 boleh soal kebijakan umum (check-in/check-out/parkir/anak/pembayaran) - MINIMAL 3 FAQ WAJIB pertanyaan yang relevan dgn FOKUS ARTIKEL INI (lihat instruksi FOKUS ARTIKEL di atas), supaya bagian FAQ tidak jadi salinan generik yang sama persis di semua artikel - ini kelanjutan aturan anti-duplicate-content yang sama. ATURAN FORMAT FAQ (WAJIB DIIKUTI PERSIS - HANYA SATU pola di bawah yang diterima sistem, format lain akan DITOLAK otomatis): tulis TEKS PERTANYAAN ASLI langsung di dalam **dua bintang**, TANPA prefix/label apa pun sebelum atau sesudahnya, lalu jawabannya di baris baru. Contoh PERSIS yang BENAR -> **Apakah sarapan sudah termasuk di kamar ini?**\\n\\nYa, sarapan sudah termasuk untuk 2 orang di semua tipe kamar. DILARANG KERAS semua pola berikut (SERING salah dipakai, WAJIB dihindari): (a) label 'Pertanyaan:'/'Q:'/'Question:' sebelum pertanyaan, mis. 'Q: Apakah ada parkir? A: Ya' - INI SALAH, (b) pertanyaan cuma pakai *tanda-bintang-tunggal* atau tanpa bintang sama sekali, (c) menjawab pertanyaan secara alami di dalam paragraf isi/sub-judul TANPA membuat blok FAQ terpisah di akhir artikel - itu TIDAK dihitung sebagai FAQ oleh sistem meski isinya relevan. WAJIB ada persis 4 blok terpisah di BAGIAN AKHIR artikel (setelah semua sub-judul, sebelum paragraf penutup) yang PERSIS mengikuti pola **pertanyaan?**\\n\\njawaban - JANGAN ada 'FAQ' sbg judul section terpisah, JANGAN duplikasi pertanyaan yang sudah dijawab natural di paragraf isi.",
   "tags": ["tag1", "tag2", "tag3"]
@@ -2170,6 +2195,61 @@ def _dominasi_brand_terdeteksi(content: str, site: str, intent: str) -> Optional
     return None
 
 
+# Gate 5: Cross-Article FAQ Dedup (2026-08-04, PRD "AI Blog Engine v2.0") - FAQ hampir
+# identik antar artikel ("Berapa harga kamar?"/"Jam check-in?" berulang di puluhan
+# artikel) jadi sinyal duplicate content ke Google. Reuse pipeline embedding yang SAMA
+# dgn cannibalization/duplicate-section (_embed/_cosine), BUKAN infrastruktur baru.
+# db.faq_index di-cache incremental (diisi tiap artikel publish di generate_one) drpd
+# re-embed SELURUH korpus FAQ tiap kali generate - jauh lebih hemat API call.
+FAQ_DEDUP_THRESHOLD = 0.7
+_FAQ_PATTERN = re.compile(r"\*\*([^*]+\?)\*\*")
+
+
+def _extract_faqs(content: str) -> list:
+    return [q.strip() for q in _FAQ_PATTERN.findall(content) if q.strip()]
+
+
+async def _faq_duplikat_terdeteksi(site: str, content: str, exclude_slug: str = "") -> list:
+    faqs_baru = _extract_faqs(content)
+    if not faqs_baru:
+        return []
+    existing = await db.faq_index.find(
+        {"site": site, "slug": {"$ne": exclude_slug}}, {"text": 1, "embedding": 1},
+    ).to_list(3000)
+    if not existing:
+        return []
+    try:
+        new_embeds = await _embed(faqs_baru)
+    except Exception:
+        return []  # gagal embed (mis. rate limit) - jangan blokir publish krn ini, sama pola dgn _duplicate_section_terdeteksi
+    problems = []
+    for faq, emb in zip(faqs_baru, new_embeds):
+        mirip = next((e["text"] for e in existing if _cosine(emb, e["embedding"]) > FAQ_DEDUP_THRESHOLD), None)
+        if mirip:
+            problems.append(f'FAQ mirip yang sudah ada di artikel lain: "{faq}" ~ "{mirip}"')
+    return problems
+
+
+async def _simpan_faq_index(site: str, slug: str, content: str) -> None:
+    """Dipanggil SEKALI saat artikel benar-benar publish (generate_one) - simpan FAQ +
+    embedding-nya ke db.faq_index supaya artikel BERIKUTNYA bisa dicek dedup terhadap ini
+    tanpa perlu re-embed seluruh korpus."""
+    faqs = _extract_faqs(content)
+    if not faqs:
+        return
+    try:
+        embeds = await _embed(faqs)
+    except Exception:
+        return  # gagal embed - FAQ artikel ini cuma tidak masuk index dedup, tidak fatal
+    now = datetime.now(timezone.utc).isoformat()
+    docs = [
+        {"id": str(uuid.uuid4()), "site": site, "slug": slug, "text": faq, "embedding": emb, "created_at": now}
+        for faq, emb in zip(faqs, embeds)
+    ]
+    if docs:
+        await db.faq_index.insert_many(docs)
+
+
 async def editor_review(content: str, keyword: str, site: str = "", intent: str = "Transactional") -> list:
     """AI Editor (2026-07-29, roadmap AI Grow item 6) - bagian yang genuinely BISA
     dijadikan pemeriksaan deterministik (duplicate section via embedding yang sudah ada,
@@ -2338,6 +2418,9 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
 
         if editor_issues:
             problems.append("editor: " + "; ".join(editor_issues))
+        faq_dedup_issues = await _faq_duplikat_terdeteksi(site, content_final)
+        if faq_dedup_issues:
+            problems.append("FAQ duplikat: " + "; ".join(faq_dedup_issues))
     except Exception:
         # Reset ke "belum_dibuat" - JANGAN biarkan macet permanen di "draft" kalau ada
         # error TAK TERDUGA (2026-07-28, ditemukan nyata: httpx.ReadTimeout dari OpenAI
@@ -2402,6 +2485,9 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {
         "status": "sudah_dibuat", "artikel_slug": slug, "updated_at": now,
     }})
+    # Gate 5 (2026-08-04) - index FAQ artikel ini SEKARANG (setelah benar2 publish, bukan
+    # sebelumnya) supaya artikel BERIKUTNYA bisa dicek dedup terhadap FAQ ini.
+    await _simpan_faq_index(site, slug, content_final)
 
     # Prerender listing + detail artikel baru ini (2026-07-28, perluas SSR ke Blog) -
     # jalur INI beda dari admin_create_post di server.py (insert langsung ke DB, bukan

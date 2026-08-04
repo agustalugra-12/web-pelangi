@@ -19,6 +19,7 @@ export default function PostEditor() {
     cover_image: "",
     tags: "",
     published: true,
+    noindex: false,
   });
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!isNew);
@@ -36,6 +37,7 @@ export default function PostEditor() {
           cover_image: data.cover_image || "",
           tags: (data.tags || []).join(", "),
           published: !!data.published,
+          noindex: !!data.noindex,
         });
       })
       .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message))
@@ -147,6 +149,15 @@ export default function PostEditor() {
         <label className="inline-flex items-center gap-2">
           <input type="checkbox" checked={form.published} onChange={change("published")} />
           <span className="text-sm text-teal-deep">Publikasikan sekarang</span>
+        </label>
+
+        {/* Noindex (2026-08-04, PRD "AI Blog Engine v2.0" §7.1) - artikel tetap bisa
+            diakses via link langsung, tapi diberi sinyal ke Google utk TIDAK dimasukkan
+            ke index pencarian. Dipakai utk artikel bermasalah (mis. keyword menjanjikan
+            fasilitas fiktif) yang belum sempat di-rewrite/dihapus, drpd unpublish total. */}
+        <label className="inline-flex items-center gap-2">
+          <input type="checkbox" checked={form.noindex} onChange={change("noindex")} />
+          <span className="text-sm text-teal-deep">Noindex (sembunyikan dari hasil pencarian Google, halaman tetap bisa diakses)</span>
         </label>
 
         <div className="flex items-center gap-3 pt-4">

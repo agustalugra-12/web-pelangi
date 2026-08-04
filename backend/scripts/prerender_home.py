@@ -26,8 +26,10 @@ own default `lang="id"`. English-first-time visitors keep today's CSR behavior u
 just without this LCP boost.
 """
 import asyncio
+import html as html_lib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -170,6 +172,39 @@ def _assemble_html(ssr_html: str, content: dict, lang: str, path: str, origin: s
     # halaman yang di-prerender (statis, HTML mentah dibaca crawler sebelum JS jalan) butuh
     # versi statisnya juga, path yang benar sesuai halaman (bukan selalu "/").
     html = html.replace("</head>", f'<link rel="canonical" href="{origin}{path}"/></head>', 1)
+
+    # Meta tag PER-ARTIKEL di snapshot statis (2026-08-04, PRD "AI Blog Engine v2.0" §7.2 -
+    # bug nyata diverifikasi live: curl artikel mana pun selalu balikin <title>/<meta
+    # description> DEFAULT SITUS yang sama, bukan punya artikel itu sendiri). Root cause:
+    # Seo.jsx SUDAH benar set title/description per-artikel, TAPI itu client-side
+    # (useEffect, jalan SETELAH JS hydrate) - crawler/social-media-scraper yang baca HTML
+    # MENTAH (snapshot ini, sebelum JS jalan) selalu lihat default situs, bukan konten
+    # artikel yang sebenarnya. Excerpt (`excerpt` field, sudah ada per-artikel sejak awal
+    # tapi TIDAK PERNAH dirender ke sini) jadi meta description; noindex (field baru,
+    # lihat BlogPostOut) inject <meta name="robots"> kalau artikel ditandai bermasalah.
+    if blog_detail:
+        judul = html_lib.escape((blog_detail.get("title") or "").strip())
+        excerpt = html_lib.escape((blog_detail.get("excerpt") or "").strip())
+        brand = html_lib.escape((content.get("site") or {}).get("brand") or "")
+        if judul:
+            page_title = f"{judul} — {brand}" if brand else judul
+            html = re.sub(r"<title>.*?</title>", f"<title>{page_title}</title>", html, count=1, flags=re.DOTALL)
+            html = re.sub(
+                r'<meta property="og:title" content="[^"]*"\s*/>',
+                f'<meta property="og:title" content="{page_title}"/>', html, count=1,
+            )
+        if excerpt:
+            html = re.sub(
+                r'<meta name="description" content="[^"]*"\s*/>',
+                f'<meta name="description" content="{excerpt}"/>', html, count=1,
+            )
+            html = re.sub(
+                r'<meta property="og:description" content="[^"]*"\s*/>',
+                f'<meta property="og:description" content="{excerpt}"/>', html, count=1,
+            )
+        if blog_detail.get("noindex"):
+            html = html.replace("</head>", '<meta name="robots" content="noindex,nofollow"/></head>', 1)
+
     return html
 
 
