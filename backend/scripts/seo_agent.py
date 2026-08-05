@@ -164,6 +164,10 @@ CLUSTER_CATEGORY = {
     "Utama": "General", "Harga": "Tips", "Lokasi Wisata": "Wisata", "View": "Wisata",
     "Keluarga": "Tips", "Pasangan": "Tips", "Fasilitas": "Tips", "Aktivitas": "Wisata",
     "Booking": "Tips", "Long Tail": "General",
+    # 7 cluster baru (2026-08-05, audit pool exhaustion - lihat CLUSTER_ANGLE di bawah utk
+    # konteks lengkap kenapa ditambahkan).
+    "Day Use": "Tips", "Itinerary": "Wisata", "Cuaca": "Wisata", "Backpacker": "Tips",
+    "Long Stay": "Tips", "Tempat Makan": "Wisata", "Wisata Umum": "Wisata",
 }
 
 # Angle per cluster (2026-07-29, revisi manual user - akar masalah "3 artikel isinya hampir
@@ -222,6 +226,60 @@ CLUSTER_ANGLE = {
         "Keyword ini sangat spesifik - jawab LANGSUNG ke inti pertanyaannya di paragraf "
         "pembuka, jangan muter-muter dgn info umum properti dulu."
     ),
+    # 7 cluster baru (2026-08-05, audit pool exhaustion - keyword pool "belum_dibuat" nyaris
+    # kosong di kedua situs: Pelangi 1/314, Harmoni 3/309, sementara 76-90% keyword yang
+    # pernah digenerate ke-skip krn "dilewati_mirip" - niche Bedugul yang sempit sudah
+    # dikombinasi habis dgn 10 cluster lama [tipe kamar]x[audiens]x[landmark]x[harga]. Audit
+    # cakupan (regex ke seo_keywords, dikonfirmasi Agus 2026-08-05): 3 topik SAMA SEKALI
+    # belum pernah dieksplor (Day Use, Itinerary, Cuaca - 0 keyword di kedua situs meski Day
+    # Use produk NYATA & inti Pelangi), + 4 topik nyaris kosong yang cocok jadi angle
+    # tersendiri (bukan sekadar variasi cluster lama). "Villa Keluarga" yang sempat dicatat
+    # SENGAJA TIDAK dijadikan cluster - dicek ke PMS langsung, kedua properti CUMA punya tipe
+    # kamar Cottage/Standard (tidak ada tipe "Villa"), bikin cluster bernama itu berisiko
+    # menjanjikan fasilitas fiktif (persis kelas bug yang Gate 1 di atas dirancang cegah) -
+    # dilebur ke cluster "Keluarga" yang sudah ada, bukan dibuang begitu saja.
+    "Day Use": (
+        "Fokus Day Use SEBAGAI PRODUK TERSENDIRI (durasi terbatas, jam checkin fleksibel, "
+        "cocok transit/istirahat/refreshing sebelum lanjut perjalanan) - BEDA dari Menginap "
+        "semalaman, jangan disamakan. Jangan uraikan kebijakan Menginap panjang lebar di sini."
+    ),
+    "Itinerary": (
+        "Fokus RENCANA PERJALANAN/URUTAN KUNJUNGAN ke beberapa destinasi sekaligus (bukan 1 "
+        "landmark saja seperti cluster Lokasi Wisata) - urutan yang masuk akal, estimasi "
+        "durasi tiap titik dari DATA ASLI kalau ada, JANGAN mengarang jam buka/harga tiket "
+        "spesifik yang tidak ada di DATA ASLI. Penginapan disebut singkat di penutup saja, "
+        "artikel ini tentang AREA-nya, bukan kamarnya."
+    ),
+    "Cuaca": (
+        "Fokus KARAKTER IKLIM dataran tinggi Bedugul (sejuk, kabut pagi, kecenderungan hujan "
+        "musim tertentu) secara EVERGREEN/UMUM - JANGAN pernah klaim angka suhu pasti atau "
+        "prakiraan harian (tidak ada di DATA ASLI, itu mengarang), cukup deskripsi kualitatif "
+        "('sejuk', 'dingin di malam hari'). Kaitkan dengan tips praktis (pakaian hangat, "
+        "waktu terbaik berkunjung) supaya tetap actionable, bukan cuma deskripsi cuaca."
+    ),
+    "Backpacker": (
+        "Fokus traveler BUDGET/SOLO - value murah, kepraktisan, suasana santai tanpa formalitas. "
+        "JANGAN sisipkan konten keluarga (extra bed/anak) atau romantis pasangan - beda cluster, "
+        "beda pembaca."
+    ),
+    "Long Stay": (
+        "Fokus tamu yang menginap LAMA/kerja remote dari penginapan - kenyamanan utk aktivitas "
+        "harian yang berulang, suasana tenang, kalau ADA harga mingguan/bulanan di DATA ASLI "
+        "boleh disebut. JANGAN mengarang fasilitas coworking/ruang meeting/wifi kencang kalau "
+        "tidak ada di DATA ASLI - itu fasilitas yang sudah dilarang keras di gate lain."
+    ),
+    "Tempat Makan": (
+        "Fokus KULINER SEKITAR Bedugul (BUKAN klaim properti sendiri sediakan "
+        "restoran/katering - itu fasilitas yang tidak kami punya). Sebut nama tempat makan "
+        "spesifik HANYA kalau ada di DATA ASLI; kalau tidak ada, bicara umum soal jenis "
+        "kuliner khas dataran tinggi/warung lokal tanpa nama yang tidak terverifikasi."
+    ),
+    "Wisata Umum": (
+        "Fokus PANDUAN UMUM kawasan Bedugul (gambaran kawasan & kenapa layak dikunjungi, bukan "
+        "1 landmark spesifik seperti cluster Lokasi Wisata) - ringkasan pilihan "
+        "aktivitas/landmark di area, bukan uraian detail 1 tempat. Penginapan disebut singkat "
+        "di penutup saja, bukan fokus utama."
+    ),
 }
 
 # Query pencarian Pexels (2026-07-28) - Pexels cuma cari bagus dalam Bahasa Inggris, jadi
@@ -251,6 +309,13 @@ CLUSTER_PEXELS_QUERY = {
     "Aktivitas": ["bali mountain nature trail", "bali strawberry farm highland"],
     "Booking": ["bali highland lake temple scenery", "bali mountain village travel"],
     "Long Tail": ["bali highland garden mountain", "bali lake temple misty morning"],
+    "Day Use": ["bali highland lake daytime", "bali mountain garden midday sun"],
+    "Itinerary": ["bali highland travel road", "bali temple garden pathway"],
+    "Cuaca": ["misty bali mountain morning fog", "bali highland cloud forest"],
+    "Backpacker": ["bali mountain hiking trail", "bali highland travel path"],
+    "Long Stay": ["bali highland quiet garden", "bali mountain village calm"],
+    "Tempat Makan": ["bali highland local market", "bali mountain village warung"],
+    "Wisata Umum": ["bali highland lake temple panorama", "bali mountain nature scenery"],
 }
 
 
