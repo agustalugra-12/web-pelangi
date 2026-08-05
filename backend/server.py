@@ -634,6 +634,32 @@ async def admin_seo_agent_cakupan(_: dict = Depends(get_current_user), site: str
     return await cakupan_editorial_lengkap(site)
 
 
+@api_router.get("/admin/content-facts")
+async def admin_content_facts(request: Request, site: str = "pelangi"):
+    """Knowledge Base Pelangi/Harmoni utk KONSUMEN LUAR (2026-08-05, permintaan Agus -
+    KontenPilot AI, app Node.js TERPISAH, butuh "pengetahuan dari website Pelangi" biar
+    ide konten & caption tidak keluar jalur - JANGAN mengarang fasilitas yg tidak ada,
+    tetap dlm radius wisata yg relevan). REUSE PERSIS `_fetch_site_facts()` yg sudah lama
+    dipakai fact_check() SEO Agent (kamar/harga/fasilitas/EKSPLISIT larangan klaim kolam
+    renang-pet-meeting room dst/fakta radius Bedugul & landmark) - SATU sumber kebenaran,
+    bukan salinan kedua yg bisa basi sendiri-sendiri.
+
+    Auth BEDA dari endpoint admin lain (bukan JWT get_current_user - itu perlu sesi
+    browser interaktif, tidak cocok dipanggil service-to-service otomatis) - shared
+    secret sederhana via header X-Internal-Key, dicek thd INTERNAL_SERVICE_KEY di .env.
+    Read-only, tidak expose apa pun yg belum public via /api/content juga (site/rooms/
+    faqs/testimonials sudah public) - tambahannya cuma fakta radius/larangan fasilitas yg
+    sebelumnya cuma "hidup" di dalam proses Python seo_agent.py, sekarang bisa dibaca app
+    lain di server yg sama."""
+    expected_key = os.environ.get("INTERNAL_SERVICE_KEY")
+    provided_key = request.headers.get("x-internal-key", "")
+    if not expected_key or provided_key != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Internal-Key")
+    from scripts.seo_agent import _fetch_site_facts
+    facts = await _fetch_site_facts(site)
+    return {"site": site, "facts": facts}
+
+
 @api_router.get("/admin/gsc/summary")
 async def admin_gsc_summary(_: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin)):
     """Analytics Dashboard (2026-07-28) - performa artikel dari Google Search Console
