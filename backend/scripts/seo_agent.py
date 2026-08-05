@@ -868,6 +868,38 @@ async def _landmark_facts_block() -> str:
     )
 
 
+# Slug properti di PMS (BEDA dari `site` internal web-pelangi "pelangi"/"harmoni") - dipakai
+# _fetch_pms_room_prices di bawah. Dikonfirmasi live 2026-08-05 lewat curl langsung ke
+# /api/public/rooms-catalog (endpoint publik, tanpa auth).
+PMS_PROPERTY_SLUG = {"pelangi": "pelangi-homestay", "harmoni": "harmoni"}
+
+
+async def _fetch_pms_room_prices(site: str) -> Optional[Dict[str, dict]]:
+    """Harga kamar LIVE dari PMS (2026-08-05, permintaan Agus - "info pelangi homestay bisa
+    kamu ambil di PMS dan website... harga dan jenis kamar") - PMS adalah single source of
+    truth harga (lihat memory proyek, dikonfirmasi lewat audit langsung: db.site_content
+    "rooms" di sini yg SEBELUM ini jadi satu2nya sumber harga ternyata basi/beda dari PMS
+    - Rp175rb vs Rp150rb Standard, Rp225rb vs Rp200rb Cottage, selisihnya persis
+    BREAKFAST_PRICE PMS (Rp25rb) - CMS di sini simpan harga SUDAH termasuk sarapan tanpa
+    label jelas, sementara field asalnya (tarif_menginap) itu tanpa sarapan).
+
+    Return {tipe: {tarif, tarif_menginap, tarif_menginap_dengan_sarapan, ada_sarapan}} per
+    tipe kamar, atau None kalau PMS tidak bisa dihubungi (gagal-diam, caller fallback ke
+    data CMS lokal - jangan sampai generate konten macet total krn PMS down sesaat)."""
+    slug = PMS_PROPERTY_SLUG.get(site)
+    if not slug:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            resp = await http.get(f"https://api.pelangihomestay.com/api/public/rooms-catalog?properti={slug}")
+            resp.raise_for_status()
+            rows = resp.json()
+        return {r["tipe"]: r for r in rows}
+    except Exception as e:
+        print(f"[_fetch_pms_room_prices] gagal ambil harga live PMS utk {site}, fallback ke data CMS lokal: {e}")
+        return None
+
+
 async def _fetch_site_facts(site: str) -> str:
     site_doc = (await db.site_content.find_one({"site": site, "type": "site"}) or {}).get("data", {})
     rooms_doc = (await db.site_content.find_one({"site": site, "type": "rooms"}) or {}).get("data", [])
@@ -920,14 +952,37 @@ async def _fetch_site_facts(site: str) -> str:
     landmark_block = await _landmark_facts_block()
     if landmark_block:
         lines.append(landmark_block)
+    # Harga LIVE dari PMS (2026-08-05) - lihat _fetch_pms_room_prices, MENGGANTIKAN
+    # priceFrom/priceFromDayUse dari db.site_content yg terbukti bisa basi (audit langsung
+    # Agus menemukan CMS di sini 175rb/225rb vs PMS 150rb/200rb, beda persis harga sarapan).
+    # None kalau PMS tidak terjangkau saat ini - fallback ke field CMS lama spy generate
+    # konten tetap jalan (gagal-diam), bukan pernah dianggap error keras.
+    pms_prices = await _fetch_pms_room_prices(site)
     for r in rooms_doc:
         # Day Use & Menginap SENGAJA dipisah (2026-07-29, revisi manual user menemukan Day
         # Use disebut-sebut di artikel tapi TIDAK PERNAH dijelaskan harga/jamnya krn memang
         # tidak pernah ada di data ini sebelumnya) - priceFromDayUse baru ditambahkan ke CMS.
+        room_name = r.get("name", "")
+        pms_row = None
+        if pms_prices:
+            pms_row = next((row for tipe, row in pms_prices.items() if tipe.lower() in room_name.lower()), None)
+        if pms_row:
+            harga_dasar = f"Rp{pms_row['tarif_menginap']:,}".replace(",", ".")
+            harga_dayuse = f"Rp{pms_row['tarif']:,}".replace(",", ".")
+            if pms_row.get("tarif_menginap_dengan_sarapan"):
+                harga_sarapan = f"Rp{pms_row['tarif_menginap_dengan_sarapan']:,}".replace(",", ".")
+                harga_line = f"harga Menginap {harga_dasar}/malam TANPA sarapan, {harga_sarapan}/malam SUDAH TERMASUK sarapan"
+            else:
+                harga_line = f"harga Menginap {harga_dasar}/malam (properti ini tidak menyediakan opsi sarapan)"
+            harga_line += f" | harga Day Use (6 jam) {harga_dayuse}"
+        else:
+            harga_line = (
+                f"harga Menginap mulai {r.get('priceFrom')}/malam | harga Day Use (6 jam) mulai "
+                f"{r.get('priceFromDayUse', '-')}"
+            )
         lines.append(
-            f"Tipe kamar: {r.get('name')} | ukuran {r.get('size')} | kapasitas {r.get('capacity')} | "
-            f"harga Menginap mulai {r.get('priceFrom')}/malam | harga Day Use (6 jam) mulai "
-            f"{r.get('priceFromDayUse', '-')} | fasilitas: {', '.join(r.get('facilities', []))}"
+            f"Tipe kamar: {room_name} | ukuran {r.get('size')} | kapasitas {r.get('capacity')} | "
+            f"{harga_line} | fasilitas: {', '.join(r.get('facilities', []))}"
         )
     for f in faqs_doc:
         lines.append(f"FAQ - {f.get('q')}: {f.get('a')}")
