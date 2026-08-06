@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from typing import Dict, List, Optional, Annotated
 
 import bcrypt
+import httpx
 import jwt
 from bson import ObjectId
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, status, UploadFile, File
@@ -859,6 +860,52 @@ async def site_config():
 # ---------- Routes: CMS Content ----------
 ALLOWED_CONTENT_TYPES = {"rooms", "menu", "gallery", "attractions", "faqs", "testimonials", "site"}
 
+# Harga kamar tampilan publik (2026-08-06, permintaan Agus - follow-up dari temuan
+# 2026-08-05: PMS adalah single source of truth harga [lihat memory proyek], KB
+# AI-facing sudah pull LIVE dari PMS [scripts/seo_agent.py _fetch_pms_room_prices], TAPI
+# tampilan publik pelangihomestay.com (priceFrom di db.site_content "rooms", CMS manual)
+# BELUM - dulu pernah beda [Rp175rb CMS vs Rp150rb PMS, selisih persis harga sarapan yg
+# tidak dilabeli], sekarang kebetulan SUDAH sinkron [dicek live: 175k/225k/275k semua
+# cocok], TAPI itu cuma kebetulan - CMS tetap manual, bisa basi lagi kapan saja kalau PMS
+# berubah tanpa ada yang ingat update CMS jg. Sama pola persis dgn _fetch_pms_room_prices
+# (PMS_PROPERTY_SLUG sama), gagal-diam ke harga CMS lama kalau PMS tidak bisa dihubungi -
+# jangan sampai halaman Rooms publik macet total krn PMS down sesaat.
+PMS_PROPERTY_SLUG_PUBLIC = {"pelangi": "pelangi-homestay", "harmoni": "harmoni"}
+
+
+async def _fetch_pms_room_prices_public(site: str) -> Optional[dict]:
+    slug = PMS_PROPERTY_SLUG_PUBLIC.get(site)
+    if not slug:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=8) as http:
+            resp = await http.get(f"https://api.pelangihomestay.com/api/public/rooms-catalog?properti={slug}")
+            resp.raise_for_status()
+            rows = resp.json()
+        return {r["tipe"].strip().lower(): r for r in rows}
+    except Exception as e:
+        logger.warning(f"[content] gagal ambil harga live PMS utk tampilan publik {site}, fallback ke CMS lama: {e}")
+        return None
+
+
+def _apply_live_prices_to_rooms(rooms: list, pms_prices: dict) -> list:
+    """Timpa `priceFrom` tiap room CMS dgn harga live PMS kalau tipenya cocok (match by
+    `name`, mis. "Standard Room" -> cari kata "standard"/"cottage" di dalamnya - CMS pakai
+    nama panjang "Standard Room" sedangkan PMS pakai "Standard" polos, bukan exact match).
+    Room yg tipenya tidak ketemu di PMS (properti baru/CMS py entry tanpa padanan PMS)
+    tetap pakai priceFrom CMS apa adanya - tidak dipaksa."""
+    result = []
+    for room in rooms:
+        room = dict(room)
+        name_lower = (room.get("name") or "").lower()
+        matched = next((v for k, v in pms_prices.items() if k in name_lower), None)
+        if matched:
+            harga = matched.get("tarif_menginap_dengan_sarapan") or matched.get("tarif_menginap")
+            if harga:
+                room["priceFrom"] = f"IDR {harga:,}".replace(",", ".")
+        result.append(room)
+    return result
+
 
 @api_router.get("/content")
 async def get_all_content(site: str = Depends(get_current_site_public)):
@@ -868,6 +915,11 @@ async def get_all_content(site: str = Depends(get_current_site_public)):
     out = {}
     async for doc in db.site_content.find({"site": site}):
         out[doc["type"]] = doc.get("data")
+
+    if isinstance(out.get("rooms"), list):
+        pms_prices = await _fetch_pms_room_prices_public(site)
+        if pms_prices:
+            out["rooms"] = _apply_live_prices_to_rooms(out["rooms"], pms_prices)
     # `_site` (2026-07-26, bug nyata: hero pelangi & harmoni ternyata berbagi SATU file
     # "signage.webp" krn frontend hardcode path tanpa tahu situs mana yang aktif - upload
     # foto harmoni menimpa punya pelangi juga). Slug ini dipakai komponen frontend
