@@ -474,7 +474,12 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
     # dilewati_mirip (2026-07-28) - keyword yang DILEWATI otomatis krn cek cannibalization
     # (topiknya terlalu mirip artikel yang sudah terbit, lihat _keyword_cannibalizes_existing
     # di seo_agent.py) - ditampilkan biar transparan, bukan diam-diam hilang dari hitungan.
-    keyword_counts = {"belum_dibuat": 0, "draft": 0, "sudah_dibuat": 0, "dilewati_mirip": 0}
+    # gagal_berulang (2026-08-06, permintaan Agus - "banyak token digunakan padahal tidak
+    # ada artikel terbit") - keyword yg gagal quality gate berkali-kali (lihat
+    # MAX_QUALITY_FAILURES_BEFORE_RETIRE di seo_agent.py), otomatis berhenti dicoba ulang
+    # supaya tidak buang token tanpa henti - ditampilkan di sini SUPAYA KELIHATAN, bukan
+    # diam-diam berhenti tanpa Agus tahu.
+    keyword_counts = {"belum_dibuat": 0, "draft": 0, "sudah_dibuat": 0, "dilewati_mirip": 0, "gagal_berulang": 0}
     async for row in db.seo_keywords.aggregate([
         {"$match": {"site": site}},
         {"$group": {"_id": "$status", "n": {"$sum": 1}}},
@@ -494,6 +499,7 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
         "keyword_draft": keyword_counts["draft"],
         "keyword_sudah_dibuat": keyword_counts["sudah_dibuat"],
         "keyword_dilewati_mirip": keyword_counts["dilewati_mirip"],
+        "keyword_gagal_berulang": keyword_counts["gagal_berulang"],
         "last_generated_at": (last_post or {}).get("created_at"),
         "last_generated_title": (last_post or {}).get("title"),
     }

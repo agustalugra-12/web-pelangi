@@ -116,7 +116,7 @@ export default function CmsBlog() {
             <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Keyword sudah dipakai</p>
             <p className="text-2xl font-display text-teal-deep">{stats.keyword_sudah_dibuat}</p>
           </div>
-          {(stats.last_generated_title || stats.keyword_dilewati_mirip > 0) && (
+          {(stats.last_generated_title || stats.keyword_dilewati_mirip > 0 || stats.keyword_gagal_berulang > 0) && (
             <div className="col-span-2 md:col-span-4 pt-2 border-t border-ink/10 text-sm text-teal-deep/70 space-y-1">
               {stats.last_generated_title && (
                 <p>
@@ -129,6 +129,11 @@ export default function CmsBlog() {
               {stats.keyword_dilewati_mirip > 0 && (
                 <p title="Keyword yang dilewati otomatis karena topiknya terlalu mirip artikel yang sudah terbit (cegah keyword cannibalization).">
                   {stats.keyword_dilewati_mirip} keyword dilewati otomatis (topik mirip artikel yang sudah ada)
+                </p>
+              )}
+              {stats.keyword_gagal_berulang > 0 && (
+                <p title="Keyword yang gagal lolos pengecekan kualitas (fact-check/editor/FAQ) berkali-kali, otomatis dihentikan supaya tidak terus dicoba ulang dan buang token.">
+                  {stats.keyword_gagal_berulang} keyword dihentikan otomatis (gagal berulang kali, hemat token)
                 </p>
               )}
             </div>

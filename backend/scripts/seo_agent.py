@@ -2606,7 +2606,36 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
         raise
 
     if problems:
-        await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "belum_dibuat"}})
+        # Pensiunkan keyword yg BERULANG KALI gagal quality gate (2026-08-06, permintaan
+        # Agus - "banyak sekali token digunakan padahal tidak ada artikel terbit"). Root
+        # cause nyata ditemukan dari log: exclude_ids di main() cuma cegah keyword yg
+        # SAMA dipilih ulang DALAM 1 slot yg sama (lihat catatan get_next_keyword) - tapi
+        # begitu slot itu MENYERAH, keyword-nya di-reset ke "belum_dibuat" TANPA memori
+        # apa pun, jadi slot BERIKUTNYA (cron 2 jam lagi) bisa langsung pilih keyword
+        # "cursed" yg SAMA lagi & ulangi 4x percobaan penuh yg gagal lagi - bisa berulang
+        # TANPA BATAS kalau topiknya memang secara struktural tidak cocok dgn data asli
+        # (mis. skrip minta "cottage 2 kamar" padahal data asli cottage cuma 1 kamar/unit
+        # - GAGAL fact-check itu TIDAK akan pernah berubah ditulis ulang berapa kali pun).
+        # Increment fail_count PERSISTEN (lintas slot/cron run, bukan cuma dalam 1 slot) -
+        # setelah gagal quality gate MAX_QUALITY_FAILURES_BEFORE_RETIRE kali TOTAL,
+        # pensiunkan permanen ke status baru "gagal_berulang" (pola sama persis dgn status
+        # terminal lain yg sudah ada - "ditolak_fasilitas_tidak_ada"/"dilewati_mirip" -
+        # otomatis dikecualikan get_next_keyword krn query-nya cuma ambil status=
+        # "belum_dibuat", TIDAK PERNAH dihapus dari DB, tetap kelihatan utk audit manual).
+        # SENGAJA cuma hitung kegagalan quality-gate (problems non-kosong = sinyal KUAT
+        # topiknya bermasalah), BUKAN exception tak terduga (lihat except Exception di
+        # atas - itu bisa cuma OpenAI timeout sesaat, tidak adil "membunuh" keyword yg
+        # sebenarnya baik-baik saja gara-gara infra flaky sesaat).
+        updated_kw = await db.seo_keywords.find_one_and_update(
+            {"id": keyword_doc["id"]},
+            {"$inc": {"quality_fail_count": 1}, "$set": {"last_fail_reason": "; ".join(problems)[:500]}},
+            return_document=True,
+        )
+        fail_count = (updated_kw or {}).get("quality_fail_count", 1)
+        if fail_count >= MAX_QUALITY_FAILURES_BEFORE_RETIRE:
+            await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "gagal_berulang"}})
+        else:
+            await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "belum_dibuat"}})
         return {"ok": False, "keyword": keyword_doc["keyword"], "keyword_id": keyword_doc["id"], "problems": problems}
 
     slug_base = slugify(article["title"])
@@ -2678,6 +2707,13 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
 
 
 MAX_RETRY_PER_SLOT = 4  # lihat catatan retry-until-sukses di main() di bawah
+
+# Ambang pensiun keyword (2026-08-06) - lihat catatan lengkap di generate_one() bagian
+# `if problems`. 3 dipilih supaya keyword yg genuinely cuma sial 1x (mis. kena AI-slop
+# count kebetulan) masih dapat kesempatan wajar coba ulang, tapi keyword yg SECARA
+# STRUKTURAL tidak cocok dgn data asli (fact-check-nya tidak akan pernah berubah ditulis
+# ulang berapa kali pun) dibatasi maks 3 percobaan penuh seumur hidup, bukan tanpa batas.
+MAX_QUALITY_FAILURES_BEFORE_RETIRE = 3
 
 # Target produksi harian per situs (2026-08-03, permintaan Agus - kampanye sementara:
 # Pelangi naik 10->15/hari, Harmoni turun 10->5/hari, berlaku 2026-08-01 s.d. 2026-09-30,
