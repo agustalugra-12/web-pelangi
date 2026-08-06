@@ -500,8 +500,27 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
         {"created_at": 1, "title": 1}, sort=[("created_at", -1)],
     )
 
+    # Token/biaya AI Blog (2026-08-06, permintaan Agus - "cek ai blok dan ai konten juga
+    # agar transparan") - GLOBAL (kedua situs gabung, bukan per-site) krn _chat/_embed
+    # (scripts/seo_agent.py) dipakai bareng semua situs tanpa konteks site terpisah di
+    # titik itu - cukup utk jawab "berapa biaya AI Blog total", scoping per-site butuh
+    # refactor lebih besar drpd manfaatnya sekarang.
+    today_start_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    usage_today_agg = await db.llm_usage_log.aggregate([
+        {"$match": {"ts": {"$gte": today_start_utc}}},
+        {"$group": {"_id": "$model", "total_tokens": {"$sum": "$total_tokens"}, "cost_usd": {"$sum": "$cost_usd"}, "calls": {"$sum": 1}}},
+        {"$sort": {"cost_usd": -1}},
+    ]).to_list(10)
+    usage_by_model_today = [
+        {"model": r["_id"], "total_tokens": r["total_tokens"], "cost_usd": round(r.get("cost_usd") or 0, 4), "calls": r["calls"]}
+        for r in usage_today_agg
+    ]
+    usage_cost_today_total = round(sum(r["cost_usd"] for r in usage_by_model_today), 4)
+
     return {
         "generated_today": generated_today,
+        "usage_cost_today_total": usage_cost_today_total,
+        "usage_by_model_today": usage_by_model_today,
         "generated_total": generated_total,
         "keyword_belum_dibuat": keyword_counts["belum_dibuat"],
         "keyword_draft": keyword_counts["draft"],
@@ -1413,6 +1432,10 @@ async def on_startup():
     await db.blog_posts.create_index("slug", unique=True)
     await db.blog_posts.create_index("category")
     await db.media_files.create_index("file_id", unique=True)
+    # Pencatatan token/biaya (2026-08-06, permintaan Agus - "cek ai blok... agar
+    # transparan") - lihat _log_usage di scripts/seo_agent.py. TTL 90 hari, sama pola
+    # dgn ai-chat-bot.
+    await db.llm_usage_log.create_index("ts", expireAfterSeconds=90 * 86400)
     await seed_admin()
     await seed_blog_posts()
     await seed_site_content()

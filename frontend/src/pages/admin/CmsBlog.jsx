@@ -116,7 +116,7 @@ export default function CmsBlog() {
             <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold">Keyword sudah dipakai</p>
             <p className="text-2xl font-display text-teal-deep">{stats.keyword_sudah_dibuat}</p>
           </div>
-          {(stats.last_generated_title || stats.keyword_dilewati_mirip > 0 || stats.keyword_gagal_berulang > 0 || stats.keyword_ditolak_tipe_properti_salah > 0) && (
+          {(stats.last_generated_title || stats.keyword_dilewati_mirip > 0 || stats.keyword_gagal_berulang > 0 || stats.keyword_ditolak_tipe_properti_salah > 0 || stats.usage_cost_today_total > 0) && (
             <div className="col-span-2 md:col-span-4 pt-2 border-t border-ink/10 text-sm text-teal-deep/70 space-y-1">
               {stats.last_generated_title && (
                 <p>
@@ -139,6 +139,16 @@ export default function CmsBlog() {
               {stats.keyword_ditolak_tipe_properti_salah > 0 && (
                 <p title="Khusus Pelangi Homestay: keyword yang menyebut 'villa' ditolak SEBELUM ditulis (Pelangi bukan villa) - mencegah biaya draft lengkap yang pasti gagal cek fakta di akhir.">
                   {stats.keyword_ditolak_tipe_properti_salah} keyword ditolak otomatis (salah tipe properti, hemat token)
+                </p>
+              )}
+              {stats.usage_cost_today_total > 0 && (
+                <p title="Total biaya OpenAI AI Blog hari ini (kedua situs gabung) - dipecah per model di bawah.">
+                  Biaya AI Blog hari ini: <span className="font-semibold text-teal-deep">${stats.usage_cost_today_total.toFixed(4)}</span>
+                  {stats.usage_by_model_today?.length > 0 && (
+                    <span className="text-teal-deep/60">
+                      {" "}({stats.usage_by_model_today.map((m) => `${m.model}: $${m.cost_usd.toFixed(4)}`).join(", ")})
+                    </span>
+                  )}
                 </p>
               )}
             </div>

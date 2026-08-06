@@ -354,6 +354,43 @@ def slugify(text: str) -> str:
 # ---------------------------------------------------------------------------
 # OpenAI helpers (httpx langsung - repo ini belum punya dependency openai/litellm)
 # ---------------------------------------------------------------------------
+
+# Pencatatan token/biaya (2026-08-06, permintaan Agus - "cek ai blok dan ai konten juga
+# agar transparan", lanjutan dari usage_tracking.py yg sudah dibangun utk ai-chat-bot hari
+# yg sama). Non-invasif SENGAJA - dipasang di SATU tempat (_chat/_embed, dipakai SEMUA
+# jalur: Writer Agent, fact-check, editor, keyword brainstorm, dedup embedding) bukan di
+# tiap pemanggil - kalau logging-nya sendiri gagal, JANGAN sampai gagalkan generate
+# artikel (dibungkus try/except, murni observability tambahan).
+#
+# Harga per 1M token (2026-08-06, USD, dicocokkan dgn angka yg sudah dipakai/dicatat
+# sesi ini di ai-chat-bot & commit history - BUKAN dari API resmi realtime OpenAI, tidak
+# ada endpoint publik utk itu - kalau harga OpenAI berubah, update manual di sini).
+_MODEL_PRICING_PER_1M = {
+    "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-4.1": (2.00, 8.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-5-mini": (0.25, 2.00),
+    "gpt-5.4-mini": (0.75, 4.50),
+    "text-embedding-3-small": (0.02, 0.0),
+}
+
+
+async def _log_usage(model: str, prompt_tokens: int, completion_tokens: int) -> None:
+    try:
+        price_in, price_out = _MODEL_PRICING_PER_1M.get(model, (0.0, 0.0))
+        cost_usd = (prompt_tokens / 1_000_000) * price_in + (completion_tokens / 1_000_000) * price_out
+        await db.llm_usage_log.insert_one({
+            "ts": datetime.now(timezone.utc),
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "cost_usd": cost_usd,
+        })
+    except Exception as e:
+        print(f"[usage_log] gagal catat: {type(e).__name__}: {e}")
+
+
 async def _chat(system: str, user: str, temperature: float = 0.7) -> str:
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY belum diisi di backend/.env")
@@ -378,7 +415,10 @@ async def _chat(system: str, user: str, temperature: float = 0.7) -> str:
             },
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        data = resp.json()
+        usage = data.get("usage") or {}
+        await _log_usage(CHAT_MODEL, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+        return data["choices"][0]["message"]["content"]
 
 
 async def _embed(texts: list) -> list:
@@ -391,7 +431,10 @@ async def _embed(texts: list) -> list:
             json={"model": EMBED_MODEL, "input": texts},
         )
         resp.raise_for_status()
-        return [d["embedding"] for d in resp.json()["data"]]
+        data = resp.json()
+        usage = data.get("usage") or {}
+        await _log_usage(EMBED_MODEL, usage.get("prompt_tokens", usage.get("total_tokens", 0)), 0)
+        return [d["embedding"] for d in data["data"]]
 
 
 def _cosine(a: list, b: list) -> float:
