@@ -160,6 +160,31 @@ def _keyword_menjanjikan_fasilitas_tidak_ada(keyword: str) -> Optional[str]:
     return fasilitas_match
 
 
+# Gate 6: Property Type Truthfulness (2026-08-06, permintaan Agus - "efisiensi token",
+# ditemukan lewat audit akar masalah kenapa BAHKAN keyword baru sering gagal quality gate).
+# "villa" SENGAJA TIDAK ada di FACILITY_BLACKLIST (lihat catatan di atasnya - Harmoni
+# Hills MEMANG "villa privat", blacklist kata itu salah-tolak keyword Harmoni yang sah).
+# TAPI utk Pelangi (SITE_PERSONA-nya eksplisit "homestay", BUKAN villa), keyword yang
+# menyebut "villa/vila" HAMPIR SELALU nulis draft yang lolos sampai tahap fact_check()
+# (di ujung, SETELAH draft lengkap 900+ kata + fact-check + editor selesai digenerate)
+# baru ketahuan "sebutan 'vila' kurang tepat karena properti bernama Pelangi Homestay" -
+# BUANG PENUH biaya 1 draft lengkap utk kegagalan yang SUDAH BISA DIKETAHUI dari
+# keyword-nya sendiri, sebelum nulis 1 kata pun. Terbukti nyata di data: 3/9 (33%) keyword
+# belum_dibuat Pelangi saat ini mengandung "villa/vila", dan log kegagalan nyata kemarin
+# berisi keyword persis kelas ini ("villa dekat taman botani...", "santai di vila dekat
+# air terjun..."). Cuma berlaku utk Pelangi - Harmoni boleh "villa" sesuai brand-nya
+# sendiri, TIDAK di-gate di sini.
+def _keyword_properti_salah_tipe(site: str, keyword: str) -> Optional[str]:
+    """True (return kata yg match) kalau site="pelangi" DAN keyword menyebut villa/vila -
+    Pelangi Homestay BUKAN villa (lihat SITE_PERSONA), draft dgn framing ini nyaris selalu
+    gagal fact_check() di ujung setelah biaya penuh generate. None kalau aman (termasuk
+    site="harmoni", yang MEMANG villa)."""
+    if site != "pelangi":
+        return None
+    match = re.search(r"\bvill?a\b", keyword.lower())
+    return match.group(0) if match else None
+
+
 CLUSTER_CATEGORY = {
     "Utama": "General", "Harga": "Tips", "Lokasi Wisata": "Wisata", "View": "Wisata",
     "Keluarga": "Tips", "Pasangan": "Tips", "Fasilitas": "Tips", "Aktivitas": "Wisata",
@@ -644,6 +669,16 @@ async def get_next_keyword(site: str, exclude_ids: Optional[set] = None) -> dict
                     {"$set": {
                         "status": "ditolak_fasilitas_tidak_ada", "updated_at": now,
                         "cannibalization_note": f'Gate 1: keyword menjanjikan "{fasilitas_match}" yang tidak dimiliki properti',
+                    }},
+                )
+                continue
+            tipe_salah_match = _keyword_properti_salah_tipe(site, kw_doc["keyword"])
+            if tipe_salah_match:
+                await db.seo_keywords.update_one(
+                    {"id": kw_doc["id"]},
+                    {"$set": {
+                        "status": "ditolak_tipe_properti_salah", "updated_at": now,
+                        "cannibalization_note": f'Gate 6: keyword menyebut "{tipe_salah_match}" - Pelangi Homestay bukan villa (lihat SITE_PERSONA)',
                     }},
                 )
                 continue

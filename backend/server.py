@@ -479,7 +479,14 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
     # MAX_QUALITY_FAILURES_BEFORE_RETIRE di seo_agent.py), otomatis berhenti dicoba ulang
     # supaya tidak buang token tanpa henti - ditampilkan di sini SUPAYA KELIHATAN, bukan
     # diam-diam berhenti tanpa Agus tahu.
-    keyword_counts = {"belum_dibuat": 0, "draft": 0, "sudah_dibuat": 0, "dilewati_mirip": 0, "gagal_berulang": 0}
+    # ditolak_tipe_properti_salah (2026-08-06, Gate 6) - keyword Pelangi yg menyebut
+    # "villa/vila" (Pelangi Homestay bukan villa) ditolak SEBELUM nulis draft penuh -
+    # sebelumnya keyword kelas ini nyaris selalu lolos sampai tahap fact-check di ujung
+    # (buang biaya draft lengkap), sekarang ditolak di gerbang paling awal (murah).
+    keyword_counts = {
+        "belum_dibuat": 0, "draft": 0, "sudah_dibuat": 0, "dilewati_mirip": 0,
+        "gagal_berulang": 0, "ditolak_tipe_properti_salah": 0,
+    }
     async for row in db.seo_keywords.aggregate([
         {"$match": {"site": site}},
         {"$group": {"_id": "$status", "n": {"$sum": 1}}},
@@ -500,6 +507,7 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
         "keyword_sudah_dibuat": keyword_counts["sudah_dibuat"],
         "keyword_dilewati_mirip": keyword_counts["dilewati_mirip"],
         "keyword_gagal_berulang": keyword_counts["gagal_berulang"],
+        "keyword_ditolak_tipe_properti_salah": keyword_counts["ditolak_tipe_properti_salah"],
         "last_generated_at": (last_post or {}).get("created_at"),
         "last_generated_title": (last_post or {}).get("title"),
     }
