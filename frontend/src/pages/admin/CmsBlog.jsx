@@ -17,6 +17,9 @@ export default function CmsBlog() {
   const [basi, setBasi] = useState(null);
   const [cakupan, setCakupan] = useState(null);
   const [expandedCluster, setExpandedCluster] = useState(null);
+  const [seedKeyword, setSeedKeyword] = useState("");
+  const [clusterResult, setClusterResult] = useState(null);
+  const [clusterLoading, setClusterLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -43,6 +46,23 @@ export default function CmsBlog() {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateCluster = async () => {
+    const seed = seedKeyword.trim();
+    if (!seed) return;
+    setClusterLoading(true);
+    setClusterResult(null);
+    try {
+      const { data } = await api.post("/admin/seo-agent/generate-cluster", { seed_keyword: seed });
+      setClusterResult(data);
+      toast.success(`${data.accepted.length} keyword baru ditambahkan ke pool`);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setClusterLoading(false);
     }
   };
 
@@ -544,6 +564,78 @@ export default function CmsBlog() {
           </div>
         </div>
       )}
+
+      {/* Topic Cluster Generator (2026-08-06, permintaan Agus - "dari 1 keyword bisa
+          jadi 15 artikel namun tidak kanibal", PRD "Topic Cluster & Cannibalization
+          Prevention Engine"). Keyword yang lolos LANGSUNG masuk pool ("belum_dibuat") -
+          tidak publish artikel apa pun, cuma nambah kandidat di belakang semua gate
+          keamanan (fasilitas tidak ada, tipe properti salah, kanibalisasi) yang sama
+          dipakai jalur normal - lihat backend generate_keyword_cluster(). */}
+      <div className="bg-paper rounded-2xl border border-ink/10 p-5" data-testid="cluster-generator">
+        <p className="text-xs uppercase tracking-widest text-teal-deep/60 font-semibold mb-1">
+          🧩 Buat Cluster Topik
+        </p>
+        <p className="text-xs text-teal-deep/50 mb-3">
+          Masukkan 1 keyword utama - sistem akan buat sampai 15 variasi sudut pandang
+          (harga, lokasi, keluarga, backpacker, dll) dari topik yang sama, sudah dicek
+          tidak kanibal dengan artikel yang sudah terbit maupun sesama variasi baru ini.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={seedKeyword}
+            onChange={(e) => setSeedKeyword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !clusterLoading && generateCluster()}
+            placeholder="mis. Penginapan Murah Bedugul"
+            className="flex-1 rounded-xl border border-ink/15 px-3 py-2 text-sm"
+            data-testid="cluster-seed-input"
+          />
+          <button
+            onClick={generateCluster}
+            disabled={clusterLoading || !seedKeyword.trim()}
+            className="px-4 py-2 rounded-xl bg-teal-deep text-white text-sm font-semibold disabled:opacity-50"
+            data-testid="cluster-generate-btn"
+          >
+            {clusterLoading ? "Memproses…" : "Buat Cluster Topik"}
+          </button>
+        </div>
+        {clusterResult && (
+          <div className="mt-4 space-y-3 text-sm" data-testid="cluster-result">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-leaf font-semibold mb-1.5">
+                ✅ Diterima ({clusterResult.accepted.length})
+              </p>
+              {clusterResult.accepted.length ? (
+                <ul className="space-y-1">
+                  {clusterResult.accepted.map((a, i) => (
+                    <li key={i} className="text-teal-deep/80">
+                      <span className="font-medium">{a.keyword}</span>{" "}
+                      <span className="text-xs text-teal-deep/50">({a.cluster}{a.is_pillar ? " · Pillar" : ""})</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-teal-deep/50 italic">Tidak ada yang lolos - lihat alasan penolakan di bawah.</p>
+              )}
+            </div>
+            {clusterResult.rejected.length > 0 && (
+              <div>
+                <p className="text-xs uppercase tracking-widest text-red-500 font-semibold mb-1.5">
+                  ✗ Ditolak ({clusterResult.rejected.length})
+                </p>
+                <ul className="space-y-1">
+                  {clusterResult.rejected.map((r, i) => (
+                    <li key={i} className="text-teal-deep/70">
+                      <span className="font-medium">{r.keyword}</span>{" "}
+                      <span className="text-xs text-teal-deep/50">({r.cluster}) — {r.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="bg-paper rounded-2xl border border-ink/10 overflow-hidden">
         {loading ? (

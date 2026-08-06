@@ -195,6 +195,14 @@ CLUSTER_CATEGORY = {
     "Long Stay": "Tips", "Tempat Makan": "Wisata", "Wisata Umum": "Wisata",
 }
 
+# Seed cold-start utk generate_keyword_cluster() (2026-08-06) - dipakai HANYA kalau situs
+# belum py data GSC sama sekali (belum ada cluster berimpression utk dijadikan seed nyata,
+# lihat get_next_keyword) - situs baru/belum sync, bukan kondisi normal harian.
+SEED_KEYWORD_COLD_START = {
+    "pelangi": "penginapan murah di Bedugul",
+    "harmoni": "villa privat di Bedugul",
+}
+
 # Angle per cluster (2026-07-29, revisi manual user - akar masalah "3 artikel isinya hampir
 # identik": SEBELUM ini, SATU system prompt yang SAMA dipakai utk semua cluster, jadi model
 # cenderung menjelaskan ULANG semua kebijakan/fasilitas/pembayaran di SETIAP artikel apa pun
@@ -449,9 +457,25 @@ def _cosine(a: list, b: list) -> float:
 # ---------------------------------------------------------------------------
 CANNIBALIZATION_THRESHOLD = 0.65
 
+# Threshold TERPISAH utk pairwise-within-batch check di generate_keyword_cluster()
+# (2026-08-06) - ditemukan lewat 2x tes live fungsi ini: pakai CANNIBALIZATION_THRESHOLD
+# yang sama (0.65) salah-tolak kandidat lintas cluster BERBEDA (mis. "cuaca di bedugul
+# saat menginap di cottage" vs "itinerary liburan di bedugul menginap di cottage" ke-flag
+# "mirip" padahal jelas beda angle) - PERSIS kelas masalah yang sudah didokumentasi di
+# _keyword_cannibalizes_existing (niche Bedugul sempit, flat threshold salah-tolak variasi
+# angle yg disengaja). Dinaikkan ke 0.85 - MASIH salah-tolak (tes ke-2: "aktivitas seru di
+# sekitar X" vs "fasilitas X" ke-flag mirip di 0.85, padahal jelas angle beda) - kandidat
+# di sini SELALU berbagi ekor frasa panjang yg sama persis (nama properti/lokasi/harga dari
+# seed yang sama, disengaja) jadi cosine dasarnya jauh lebih tinggi drpd perbandingan biasa.
+# Dinaikkan lagi ke 0.92 (angka SAMA dgn FAQ_DEDUP_THRESHOLD hari ini - alasan identik,
+# niche sempit + frasa panjang overlap) - kandidat harus HAMPIR IDENTIK, bukan cuma
+# berbagi kosakata niche, baru ditolak.
+CLUSTER_BATCH_DEDUP_THRESHOLD = 0.92
+
 
 async def _keyword_cannibalizes_existing(
-    site: str, keyword: str, cluster: str, written_cache: Optional[dict] = None
+    site: str, keyword: str, cluster: str, written_cache: Optional[dict] = None,
+    keyword_embedding: Optional[list] = None,
 ) -> Optional[str]:
     """Return keyword ASLI (yang sudah dipakai menulis artikel terbit, di CLUSTER YANG
     SAMA) kalau `keyword` baru ini mirip secara semantik (cosine > CANNIBALIZATION_
@@ -507,7 +531,10 @@ async def _keyword_cannibalizes_existing(
             written_cache[cluster] = (written_kws, written_embs)
     if not written_kws:
         return None
-    kw_emb = (await _embed([keyword]))[0]
+    # keyword_embedding (2026-08-06, Cluster Generator) - kalau pemanggil SUDAH punya
+    # embedding-nya (mis. dari batch _embed() sekaligus banyak kandidat), pakai itu drpd
+    # _embed() lagi di sini - hindari panggilan API redundan utk teks yang sama.
+    kw_emb = keyword_embedding if keyword_embedding is not None else (await _embed([keyword]))[0]
     for w_kw, emb in zip(written_kws, written_embs):
         if _cosine(kw_emb, emb) > CANNIBALIZATION_THRESHOLD:
             return w_kw
@@ -733,7 +760,28 @@ async def get_next_keyword(site: str, exclude_ids: Optional[set] = None) -> dict
 
     picked = await _pick_from_pool()
     if picked is None:
-        await _generate_new_keywords(site, n=10)
+        # Fallback pool-exhaustion DIGANTI cluster-aware (2026-08-06, permintaan Agus -
+        # "1 keyword jadi 15 artikel, tidak kanibal") - SEBELUM ini _generate_new_keywords
+        # brainstorm N keyword LEPAS tersebar acak; sekarang seed dari cluster yang
+        # TERBUKTI diminati (impression GSC nyata, `cluster_scores` sudah dihitung di atas -
+        # reuse, bukan query baru) supaya keyword baru dibangun di sekitar topik yang sudah
+        # jalan, bukan tebakan acak. generate_keyword_cluster JUGA reuse Gate 1/Gate 6/
+        # cannibalization check yang sama persis dgn jalur normal di atas.
+        seed = None
+        if cluster_scores:
+            top_cluster = max(cluster_scores, key=cluster_scores.get)
+            top_kw_doc = await db.seo_keywords.find_one(
+                {"site": site, "status": "sudah_dibuat", "cluster": top_cluster}, {"keyword": 1},
+            )
+            seed = top_kw_doc["keyword"] if top_kw_doc else None
+        if not seed:
+            seed = SEED_KEYWORD_COLD_START.get(site, "penginapan murah di Bedugul")
+        hasil_cluster = await generate_keyword_cluster(site, seed, target_count=15)
+        if not hasil_cluster["accepted"]:
+            # Defense-in-depth (2026-08-06) - cluster generation menghasilkan nol kandidat
+            # yang lolos (kasus langka, mis. semua angle kebetulan kanibal), jangan sampai
+            # generate_one() gagal total krn pool tetap kosong - jatuh ke jalur lama.
+            await _generate_new_keywords(site, n=10)
         picked = await _pick_from_pool()
     if picked is None:
         raise RuntimeError(
@@ -858,6 +906,130 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         )
         accepted += 1
     print(f"  [keyword agent] {accepted}/{len(candidates)} keyword baru diterima (sisanya duplikat semantik)")
+
+
+async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: int = 15) -> dict:
+    """Topic Cluster Generator (2026-08-06, permintaan Agus - "dari 1 keyword bisa jadi 15
+    artikel namun tidak kanibal", PRD "Topic Cluster & Cannibalization Prevention Engine").
+
+    BEDA dari _generate_new_keywords di atas (yang brainstorm N keyword LEPAS, sebar acak
+    ke cluster) - fungsi ini ambil SATU seed keyword lalu bikin sampai `target_count` VARIASI
+    dari topik yang SAMA, satu per angle di CLUSTER_ANGLE (taxonomy yang sudah ada sejak
+    2026-07-29, persis semangat "Angle Generator" PRD - tidak dibuat ulang). Semua hasil
+    ditandai `cluster_group_id` yang SAMA (utk internal-linking jadi 1 hub, lihat
+    pick_internal_links) - inilah yang benar-benar baru: "family" keyword yang saling terkait
+    dgn 1 pillar, bukan sekadar tersebar random di cluster yang dipakai bersama topik lain.
+
+    Safety & cannibalization REUSE fungsi yang sudah ada & teruji (bukan logika baru):
+    Gate 1 (_keyword_menjanjikan_fasilitas_tidak_ada), Gate 6 (_keyword_properti_salah_tipe),
+    _keyword_cannibalizes_existing (cluster-scoped vs artikel TERBIT - lihat docstringnya,
+    3 revisi empiris kenapa HARUS cluster-scoped, bukan flat threshold - niche Bedugul
+    sempit, flat threshold salah-tolak 88% keyword yang sebetulnya angle berbeda).
+    TAMBAHAN (memang belum ada sebelumnya): cek pairwise ANTAR kandidat DALAM SATU batch
+    ini sendiri - supaya 2 angle yang di-generate skrg tidak kebetulan jadi mirip satu
+    sama lain (Module 6 PRD, "Intent Duplicate Checker").
+
+    Return {"accepted": [...], "rejected": [{"keyword","cluster","reason"}, ...]} - dipakai
+    baik dari cron (get_next_keyword fallback, lihat di bawah) maupun endpoint manual admin
+    (server.py) utk transparansi apa yang lolos/ditolak & kenapa."""
+    cluster_list = ", ".join(f'"{c}"' for c in CLUSTER_ANGLE.keys())
+    prompt = (
+        f"Kamu ahli SEO utk penginapan di kawasan Bedugul, Bali. Keyword UTAMA (seed) dari "
+        f"user: \"{seed_keyword}\".\n\n"
+        f"Buat SATU variasi keyword utk SETIAP angle di bawah ini (maksimal {target_count} "
+        f"angle - kalau seed-nya tidak relevan sama sekali dgn suatu angle, boleh lewati "
+        f"angle itu, jangan dipaksakan): {cluster_list}.\n\n"
+        "PENTING: semua variasi HARUS tetap topik/properti yang SAMA dgn seed di atas (bukan "
+        "topik lain) - cuma beda SUDUT PANDANG sesuai fokus angle-nya. Gaya pencarian orang "
+        "Indonesia asli (bukan terjemahan kaku).\n\n"
+        "JANGAN buat keyword yang mengasumsikan/menyiratkan properti punya salah satu dari ini "
+        "(properti TIDAK punya semuanya): menerima hewan peliharaan/pet-friendly, ruang meeting/"
+        "katering untuk acara/corporate, sewa mobil/motor, jemput/antar bandara, paket trip/tur/"
+        "wisata terorganisir (trekking/panen buah/city tour dst yang dijual properti), kolam "
+        "renang/swimming pool (Pelangi maupun Harmoni sama-sama tidak punya).\n\n"
+        f"Fakta area yang boleh dijadikan sudut pandang/entity (BUKAN klaim properti): "
+        f"{BEDUGUL_FACTS} {LANDMARK_FACTS}\n\n"
+        "Klasifikasi tiap keyword ke SALAH SATU: \"Informational\" (mencari info/panduan, blm "
+        "niat booking), \"Commercial\" (membandingkan pilihan), \"Transactional\" (niat pesan/"
+        "booking sekarang).\n\n"
+        'Balas HARUS JSON valid array of object, format PERSIS: '
+        f'[{{"keyword":"...","intent":"Informational"|"Commercial"|"Transactional","cluster":{cluster_list}}}, ...] '
+        "- SATU object per cluster (jangan duplikat cluster dalam array), TIDAK ADA teks lain "
+        "di luar JSON array itu."
+    )
+    raw = await _chat(
+        "Kamu SEO keyword researcher yang teliti, tidak pernah mengarang tempat/fasilitas fiktif. "
+        "Balas HANYA JSON valid, tidak ada markdown code fence atau teks pembuka/penutup.",
+        prompt,
+    )
+    try:
+        parsed = json.loads(raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
+    except json.JSONDecodeError:
+        parsed = []
+    candidates = [(c.get("keyword", "").strip(),
+                   c.get("intent") if c.get("intent") in ("Informational", "Commercial", "Transactional") else "Transactional",
+                   c.get("cluster") if c.get("cluster") in CLUSTER_ANGLE else None)
+                  for c in parsed if isinstance(c, dict) and c.get("keyword", "").strip()]
+    candidates = [c for c in candidates if c[2]][:target_count]  # buang cluster tak dikenal, batasi target_count
+
+    result: dict = {"accepted": [], "rejected": []}
+    if not candidates:
+        return result
+
+    cand_embeds = await _embed([c[0] for c in candidates])
+    written_cache: dict = {}
+    batch_embeds: list = []  # embedding kandidat yg SUDAH diterima di batch ini (pairwise check)
+    cluster_group_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    utama_masuk = False
+
+    for (cand, cand_intent, cand_cluster), cand_emb in zip(candidates, cand_embeds):
+        fasilitas_hit = _keyword_menjanjikan_fasilitas_tidak_ada(cand)
+        if fasilitas_hit:
+            result["rejected"].append({"keyword": cand, "cluster": cand_cluster, "reason": f"menjanjikan fasilitas tidak ada: {fasilitas_hit}"})
+            continue
+        tipe_hit = _keyword_properti_salah_tipe(site, cand)
+        if tipe_hit:
+            result["rejected"].append({"keyword": cand, "cluster": cand_cluster, "reason": f"tipe properti salah: {tipe_hit}"})
+            continue
+        mirip_lama = await _keyword_cannibalizes_existing(site, cand, cand_cluster, written_cache=written_cache, keyword_embedding=cand_emb)
+        if mirip_lama:
+            result["rejected"].append({"keyword": cand, "cluster": cand_cluster, "reason": f"mirip artikel sudah terbit: \"{mirip_lama}\""})
+            continue
+        mirip_batch = next((prev_kw for prev_kw, prev_emb in batch_embeds if _cosine(cand_emb, prev_emb) > CLUSTER_BATCH_DEDUP_THRESHOLD), None)
+        if mirip_batch:
+            result["rejected"].append({"keyword": cand, "cluster": cand_cluster, "reason": f"mirip kandidat lain di batch ini: \"{mirip_batch}\""})
+            continue
+
+        is_pillar = (cand_cluster == "Utama" and not utama_masuk)
+        if is_pillar:
+            utama_masuk = True
+        await db.seo_keywords.update_one(
+            {"site": site, "keyword": cand},
+            {"$setOnInsert": {
+                "id": str(uuid.uuid4()), "site": site, "keyword": cand, "cluster": cand_cluster,
+                "intent": cand_intent, "priority": "Medium", "musiman": False,
+                "status": "belum_dibuat", "artikel_slug": None, "source": "cluster_generated",
+                "created_at": now, "updated_at": now, "embedding": cand_emb,
+                "cluster_group_id": cluster_group_id, "is_pillar": is_pillar,
+            }},
+            upsert=True,
+        )
+        batch_embeds.append((cand, cand_emb))
+        result["accepted"].append({"keyword": cand, "cluster": cand_cluster, "is_pillar": is_pillar})
+
+    # Kalau tidak ada angle "Utama" yang lolos, tandai kandidat PERTAMA yang lolos sbg
+    # pillar (grup tetap butuh 1 hub utk internal-linking, walau bukan angle "Utama").
+    if result["accepted"] and not any(a["is_pillar"] for a in result["accepted"]):
+        first = result["accepted"][0]
+        await db.seo_keywords.update_one(
+            {"site": site, "keyword": first["keyword"], "cluster_group_id": cluster_group_id},
+            {"$set": {"is_pillar": True}},
+        )
+        first["is_pillar"] = True
+
+    print(f"  [cluster generator] seed=\"{seed_keyword}\" -> {len(result['accepted'])}/{len(candidates)} diterima (group {cluster_group_id})")
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -2009,43 +2181,69 @@ def _entity_terkait(keyword: str) -> list:
     return list(terkait)
 
 
-async def pick_internal_links(site: str, cluster: str, keyword: str = "", exclude_slug: str = "") -> list:
+async def pick_internal_links(
+    site: str, cluster: str, keyword: str = "", exclude_slug: str = "",
+    cluster_group_id: Optional[str] = None,
+) -> list:
     candidates = await db.blog_posts.find(
         {"site": site, "published": True, "slug": {"$ne": exclude_slug}},
         {"slug": 1, "title": 1, "category": 1, "seo_keyword": 1},
     ).sort("created_at", -1).to_list(50)
 
-    # Entity match diprioritaskan DULUAN (lebih tepat topical drpd sekadar sesama cluster) -
-    # cek apakah judul/keyword artikel lain menyebut entity yang TERKAIT dgn keyword ini.
+    # Cluster siblings (2026-08-06, Cluster Generator, PRD "Topic Cluster & Cannibalization
+    # Prevention Engine" modul 9) - PALING prioritas, di atas entity/kategori: artikel lain
+    # dari SEED yang SAMA (lihat generate_keyword_cluster) sengaja dirancang jadi 1 hub
+    # topikal - link antar mereka jauh lebih relevan drpd sekadar sesama kategori umum.
+    # Pillar (is_pillar=True) didahulukan urutannya - hub-nya harus konsisten kelink dari
+    # semua supporting article, bukan cuma kadang-kadang lewat rotasi acak.
+    sibling_pool = []
+    if cluster_group_id:
+        sibling_kws = await db.seo_keywords.find(
+            {"site": site, "cluster_group_id": cluster_group_id, "status": "sudah_dibuat", "artikel_slug": {"$ne": None}},
+            {"artikel_slug": 1, "is_pillar": 1},
+        ).to_list(20)
+        pillar_by_slug = {s["artikel_slug"]: s.get("is_pillar", False) for s in sibling_kws}
+        sibling_pool = sorted(
+            (c for c in candidates if c["slug"] in pillar_by_slug),
+            key=lambda c: 0 if pillar_by_slug.get(c["slug"]) else 1,
+        )
+    sibling_slugs = {s["slug"] for s in sibling_pool}
+
+    # Entity match diprioritaskan setelah sibling (lebih tepat topical drpd sekadar sesama
+    # cluster) - cek apakah judul/keyword artikel lain menyebut entity yang TERKAIT dgn
+    # keyword ini.
     entity_pool = []
     if keyword:
         terkait = _entity_terkait(keyword)
         if terkait:
             entity_pool = [
                 c for c in candidates
-                if any(e in (c.get("title", "") + " " + (c.get("seo_keyword") or "")).lower() for e in terkait)
+                if c["slug"] not in sibling_slugs
+                and any(e in (c.get("title", "") + " " + (c.get("seo_keyword") or "")).lower() for e in terkait)
             ]
 
     same_category = [c for c in candidates if c["category"] == CLUSTER_CATEGORY.get(cluster)]
-    # Gabung: entity match dulu, lalu isi sisanya dari same_category (dedup by slug),
-    # fallback ke seluruh candidates kalau keduanya kurang dari 2.
-    pool = entity_pool + [c for c in same_category if c["slug"] not in {e["slug"] for e in entity_pool}]
+    # Gabung: sibling dulu, lalu entity match, lalu isi sisanya dari same_category (dedup
+    # by slug), fallback ke seluruh candidates kalau semuanya kurang dari 2.
+    pool = sibling_pool + entity_pool + [
+        c for c in same_category
+        if c["slug"] not in sibling_slugs and c["slug"] not in {e["slug"] for e in entity_pool}
+    ]
     if len(pool) < 2:
         pool = candidates
     # Rotasi (2026-08-04, PRD "AI Blog Engine v2.0" - "internal link selalu ke 1 artikel
     # sama") - SEBELUM ini `pool[:3]` deterministik, urutan ditentukan created_at DESC
     # yang dibawa dari query awal, jadi artikel PALING BARU di kategori/entity yang sama
     # selalu jadi target link untuk BERBULAN-BULAN sampai ada artikel lebih baru lagi -
-    # link equity tidak tersebar. Entity match (paling relevan topical) tetap DIUTAMAKAN
-    # (selalu masuk kalau ada, tidak ikut diacak keluar), tapi urutan PENGAMBILAN di dalam
-    # tiap grup diacak tiap generate - dari banyak artikel, target link jadi bervariasi
-    # alami tanpa perlu tracking counter/state baru.
+    # link equity tidak tersebar. Sibling & entity match (paling relevan topical) tetap
+    # DIUTAMAKAN (selalu masuk kalau ada, tidak ikut diacak keluar), tapi urutan
+    # PENGAMBILAN di dalam grup "sisa" diacak tiap generate.
     entity_slugs = {e["slug"] for e in entity_pool}
     entity_shuffled = entity_pool.copy()
     random.shuffle(entity_shuffled)
-    sisa_shuffled = [c for c in pool if c["slug"] not in entity_slugs]
+    sisa_shuffled = [c for c in pool if c["slug"] not in entity_slugs and c["slug"] not in sibling_slugs]
     random.shuffle(sisa_shuffled)
-    return (entity_shuffled + sisa_shuffled)[:3]
+    return (sibling_pool + entity_shuffled + sisa_shuffled)[:3]
 
 
 def _normalize_faq_format(content: str) -> str:
@@ -2660,7 +2858,10 @@ async def generate_one(site: str, exclude_ids: Optional[set] = None) -> dict:
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "draft", "updated_at": datetime.now(timezone.utc).isoformat()}})
 
     try:
-        links = await pick_internal_links(site, keyword_doc["cluster"], keyword=keyword_doc["keyword"])
+        links = await pick_internal_links(
+            site, keyword_doc["cluster"], keyword=keyword_doc["keyword"],
+            cluster_group_id=keyword_doc.get("cluster_group_id"),
+        )
         # Cross-brand collision (2026-08-03, permintaan Agus) - Pelangi & Harmoni dicek
         # SEBELUM menulis (bukan skip spt within-site, lihat _cross_brand_collision) supaya
         # Writer Agent tahu kalau brand seberang sudah pernah menulis topik mirip & wajib

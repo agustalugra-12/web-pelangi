@@ -668,6 +668,29 @@ async def admin_seo_agent_cakupan(_: dict = Depends(get_current_user), site: str
     return await cakupan_editorial_lengkap(site)
 
 
+class GenerateClusterIn(BaseModel):
+    seed_keyword: str
+
+
+@api_router.post("/admin/seo-agent/generate-cluster")
+async def admin_seo_agent_generate_cluster(
+    body: GenerateClusterIn, _: dict = Depends(get_current_user), site: str = Depends(get_current_site_admin),
+):
+    """Topic Cluster Generator - trigger manual (2026-08-06, permintaan Agus - "dari 1
+    keyword bisa jadi 15 artikel namun tidak kanibal", PRD "Topic Cluster & Cannibalization
+    Prevention Engine"). Staf/Agus ketik 1 seed keyword, sistem generate sampai 15 variasi
+    angle-nya (reuse scripts.seo_agent.generate_keyword_cluster - SAMA fungsi yang dipakai
+    cron sbg fallback pool-exhaustion, lihat get_next_keyword). Keyword yang lolos LANGSUNG
+    masuk pool ("belum_dibuat") - bukan publish artikel apa pun, cuma nambah kandidat di
+    belakang semua gate keamanan yang sudah ada (Gate 1/6, cannibalization check) - risiko
+    rendah/aman utk auto-insert tanpa langkah approval terpisah."""
+    seed = body.seed_keyword.strip()
+    if not seed:
+        raise HTTPException(400, "seed_keyword tidak boleh kosong")
+    from scripts.seo_agent import generate_keyword_cluster
+    return await generate_keyword_cluster(site, seed, target_count=15)
+
+
 @api_router.get("/admin/content-facts")
 async def admin_content_facts(request: Request, site: str = "pelangi"):
     """Knowledge Base Pelangi/Harmoni utk KONSUMEN LUAR (2026-08-05, permintaan Agus -
