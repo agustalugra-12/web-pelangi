@@ -443,34 +443,28 @@ async def _keyword_cannibalizes_existing(
     (25%) - jauh lebih masuk akal, tidak lagi memblokir variasi angle yang disengaja.
 
     `written_cache` (2026-08-06, permintaan Agus - "efisiensi token") - opsional, dict
-    {cluster: (written_kws, written_embs)} yg BOLEH dilewatkan pemanggil (lihat
-    _pick_from_pool) supaya keyword yg SUDAH ditulis di 1 cluster cuma di-_embed() SEKALI
-    per scan pool, bukan diulang tiap kandidat di cluster yg sama (pool sering py banyak
-    kandidat 1 cluster berturut krn sorted by cluster score) - _embed() dgn cluster besar
-    dulu terpanggil berulang tanpa guna. Default None = perilaku lama (selalu fetch+embed
-    fresh) - dipertahankan supaya pemanggil lain (kalau ada nanti) tidak wajib tahu soal
-    cache ini."""
+    {cluster: (written_kws, written_embs)} DIISI SEKALI oleh pemanggil pertama per cluster
+    (lihat _pick_from_pool) supaya query Mongo utk cluster yg sama tidak diulang tiap
+    kandidat (pool sering py banyak kandidat 1 cluster berturut krn sorted by cluster
+    score). Sejak `embedding` PERSISTEN disimpan di tiap dokumen seo_keywords (lihat
+    catatan _generate_new_keywords/backfill_keyword_embeddings.py), fungsi ini SUDAH TIDAK
+    PERNAH _embed() ulang teks keyword yg sudah ditulis - dibaca langsung dari DB, nol
+    panggilan API utk sisi "written". HANYA keyword baru (`keyword` param) yg di-_embed()
+    tiap panggilan (memang harus, teksnya baru/belum pernah dihitung)."""
     if written_cache is not None and cluster in written_cache:
         written_kws, written_embs = written_cache[cluster]
-        if not written_kws:
-            return None
-        kw_emb = (await _embed([keyword]))[0]
     else:
         written = await db.seo_keywords.find(
-            {"site": site, "status": "sudah_dibuat", "cluster": cluster}, {"keyword": 1},
+            {"site": site, "status": "sudah_dibuat", "cluster": cluster, "embedding": {"$exists": True, "$ne": None}},
+            {"keyword": 1, "embedding": 1},
         ).to_list(1000)
         written_kws = [w["keyword"] for w in written]
-        if not written_kws:
-            if written_cache is not None:
-                written_cache[cluster] = ([], [])
-            return None
-        # Batch SEKALI (keyword baru + seluruh written_kws cluster ini) - hemat 1 API
-        # call dibanding pisah, SEKALIGUS isi cache utk kandidat berikutnya di cluster
-        # yg sama (lihat catatan `written_cache` di docstring).
-        embeds = await _embed([keyword] + written_kws)
-        kw_emb, written_embs = embeds[0], embeds[1:]
+        written_embs = [w["embedding"] for w in written]
         if written_cache is not None:
             written_cache[cluster] = (written_kws, written_embs)
+    if not written_kws:
+        return None
+    kw_emb = (await _embed([keyword]))[0]
     for w_kw, emb in zip(written_kws, written_embs):
         if _cosine(kw_emb, emb) > CANNIBALIZATION_THRESHOLD:
             return w_kw
@@ -709,10 +703,27 @@ async def get_next_keyword(site: str, exclude_ids: Optional[set] = None) -> dict
 async def _generate_new_keywords(site: str, n: int = 10) -> None:
     """Dipanggil kalau 100 keyword awal sudah habis dipakai - AI brainstorm keyword baru
     yang MASIH relevan (penginapan/wisata Bedugul), lalu dicek duplikat semantik terhadap
-    keyword & judul artikel yang sudah ada sebelum dimasukkan sbg 'belum_dibuat'."""
-    existing_kw = await db.seo_keywords.find({"site": site}, {"keyword": 1}).to_list(2000)
-    existing_titles = await db.blog_posts.find({"site": site}, {"title": 1}).to_list(500)
+    keyword & judul artikel yang sudah ada sebelum dimasukkan sbg 'belum_dibuat'.
+
+    Embedding PERSISTEN (2026-08-06, permintaan Agus - "efisiensi token", audit lanjutan
+    stlh Gate 6/written_cache) - SEBELUM ini fungsi ini _embed() ULANG SELURUH histori
+    keyword+judul artikel (skala terus membesar, ~420 dokumen Pelangi saat ini, bertambah
+    tiap hari) SETIAP kali dipanggil (kapan pun pool kosong) - biaya O(n) yg tumbuh
+    selamanya utk data yg TIDAK PERNAH berubah setelah ditulis. Sekarang keyword baru
+    (lihat insert loop di bawah) & judul artikel baru (lihat generate_one()) SELALU simpan
+    `embedding`-nya SEKALI saat dibuat - fungsi ini tinggal BACA field itu dari DB (nol
+    biaya API), bukan hitung ulang. Dokumen lama yg belum py `embedding` (dibuat sebelum
+    fix ini) di-backfill SEKALI lewat scripts/backfill_keyword_embeddings.py, bukan
+    ditambal diam-diam di sini tiap request (supaya biaya backfill-nya jelas & terjadi
+    SEKALI, bukan tersembunyi & berulang)."""
+    existing_kw = await db.seo_keywords.find(
+        {"site": site, "embedding": {"$exists": True, "$ne": None}}, {"keyword": 1, "embedding": 1},
+    ).to_list(2000)
+    existing_titles = await db.blog_posts.find(
+        {"site": site, "embedding": {"$exists": True, "$ne": None}}, {"title": 1, "embedding": 1},
+    ).to_list(500)
     existing_texts = [k["keyword"] for k in existing_kw] + [p["title"] for p in existing_titles]
+    existing_embeds_stored = [k["embedding"] for k in existing_kw] + [p["embedding"] for p in existing_titles]
 
     # Cluster Generator (2026-08-02, PRD "AI Blog V2.0" modul 6) - SEBELUM ini SEMUA keyword
     # hasil generate baru hardcode cluster="Long Tail" tanpa dianalisis, artinya CLUSTER_ANGLE
@@ -778,7 +789,9 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         return
     cand_texts = [c[0] for c in candidates]
     cand_embeds = await _embed(cand_texts)
-    existing_embeds = await _embed(existing_texts) if existing_texts else []
+    # existing_embeds SEKARANG dibaca dari DB (existing_embeds_stored, lihat docstring) -
+    # TIDAK ADA lagi panggilan _embed() utk histori lama di sini.
+    existing_embeds = existing_embeds_stored
 
     now = datetime.now(timezone.utc).isoformat()
     accepted = 0
@@ -793,6 +806,10 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
                 "intent": cand_intent, "priority": "Medium", "musiman": False,
                 "status": "belum_dibuat", "artikel_slug": None, "source": "ai_generated",
                 "created_at": now, "updated_at": now,
+                # Simpan embedding SEKARANG (2026-08-06) - dihitung ULANG SEKALI di sini
+                # drpd reuse cand_emb apa adanya krn urutan candidates/cand_embeds tetap
+                # 1:1 (zip di atas) - aman pakai cand_emb langsung, tidak perlu embed lagi.
+                "embedding": cand_emb,
             }},
             upsert=True,
         )
@@ -2722,6 +2739,12 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
     site_brand_doc = (await db.site_content.find_one({"site": site, "type": "site"}) or {}).get("data", {})
     author_name = f"Tim {site_brand_doc.get('brand') or ('Pelangi Homestay' if site == 'pelangi' else 'Harmoni Hills')}"
 
+    # Embedding judul dihitung & disimpan SEKALI di sini (2026-08-06, permintaan Agus -
+    # "efisiensi token") - dipakai _generate_new_keywords() nanti utk cek duplikat semantik
+    # TANPA perlu embed ulang seluruh histori judul tiap kali dipanggil, lihat catatan
+    # lengkap di docstring _generate_new_keywords.
+    title_embedding = (await _embed([article["title"]]))[0]
+
     doc = {
         "title": article["title"], "excerpt": article["excerpt"], "content": content_final,
         "category": CLUSTER_CATEGORY.get(keyword_doc["cluster"], "General"),
@@ -2747,6 +2770,7 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
             "slop_word_max_count": max(_slop_word_counts(content_final).values(), default=0),
             "sentence_variance_cv": _sentence_cv(content_final),
         },
+        "embedding": title_embedding,
     }
     await db.blog_posts.insert_one(doc)
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {
