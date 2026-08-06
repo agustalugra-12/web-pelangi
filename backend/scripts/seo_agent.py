@@ -845,6 +845,20 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         "katering untuk acara/corporate, sewa mobil/motor, jemput/antar bandara, paket trip/tur/"
         "wisata terorganisir (trekking/panen buah/city tour dst yang dijual properti), kolam "
         "renang/swimming pool (Pelangi maupun Harmoni sama-sama tidak punya).\n\n"
+        # Entity grounding (2026-08-06, permintaan Agus - "produksi lebih lancar tanpa nambah
+        # biaya") - SEBELUM ini prompt fungsi ini TIDAK menyertakan BEDUGUL_FACTS/LANDMARK_
+        # FACTS sama sekali (beda dari generate_keyword_cluster yang sudah - lihat prompt-nya),
+        # jadi keyword hasil generate bebas menyebut nama tempat APAPUN yang terdengar masuk
+        # akal (mis. "Pasar Tradisional Candi Kumbang" - TIDAK ADA di data manapun, ditemukan
+        # nyata di log kegagalan fact-check berkali-kali hari ini) - draft-nya SELALU gagal
+        # fact-check baru ketahuan di ujung, SETELAH biaya penuh 1 artikel terbuang. Ground di
+        # sini (SAMA teks, tidak ada panggilan API tambahan - cuma nambah konteks di prompt
+        # yang SUDAH ada) supaya generator tidak lagi bebas menyebut tempat yang tidak
+        # terverifikasi sejak awal.
+        f"Nama tempat/landmark spesifik yang BOLEH disebut dalam keyword (fakta area "
+        f"terverifikasi, BUKAN daftar lengkap - kalau mau sebut tempat lain di luar ini, "
+        f"jangan sebut nama spesifiknya, cukup istilah umum spt 'tempat wisata sekitar'): "
+        f"{BEDUGUL_FACTS} {LANDMARK_FACTS}\n\n"
         # Intent Classifier (2026-08-02, PRD "AI Blog V2.0" modul 3, extends existing 200
         # seed keywords yang sudah punya klasifikasi asli - lihat catatan di bawah) - SEBELUM
         # ini SEMUA keyword hasil generate baru hardcode "Transactional" tanpa benar-benar
