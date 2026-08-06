@@ -382,7 +382,9 @@ def _cosine(a: list, b: list) -> float:
 CANNIBALIZATION_THRESHOLD = 0.65
 
 
-async def _keyword_cannibalizes_existing(site: str, keyword: str, cluster: str) -> Optional[str]:
+async def _keyword_cannibalizes_existing(
+    site: str, keyword: str, cluster: str, written_cache: Optional[dict] = None
+) -> Optional[str]:
     """Return keyword ASLI (yang sudah dipakai menulis artikel terbit, di CLUSTER YANG
     SAMA) kalau `keyword` baru ini mirip secara semantik (cosine > CANNIBALIZATION_
     THRESHOLD) - None kalau aman ditulis.
@@ -413,15 +415,37 @@ async def _keyword_cannibalizes_existing(site: str, keyword: str, cluster: str) 
     Pasangan vs Booking vs Harga, dst - lihat CLUSTER_CATEGORY & seo_keywords.cluster).
     Dites ulang scr empiris: kasus asli user (semua di cluster Booking) tetap tertangkap
     benar di ambang 0.65 (skor 0.69-0.87), TAPI dampak ke seluruh pool turun jadi 20/81
-    (25%) - jauh lebih masuk akal, tidak lagi memblokir variasi angle yang disengaja."""
-    written = await db.seo_keywords.find(
-        {"site": site, "status": "sudah_dibuat", "cluster": cluster}, {"keyword": 1},
-    ).to_list(1000)
-    if not written:
-        return None
-    written_kws = [w["keyword"] for w in written]
-    embeds = await _embed([keyword] + written_kws)
-    kw_emb, written_embs = embeds[0], embeds[1:]
+    (25%) - jauh lebih masuk akal, tidak lagi memblokir variasi angle yang disengaja.
+
+    `written_cache` (2026-08-06, permintaan Agus - "efisiensi token") - opsional, dict
+    {cluster: (written_kws, written_embs)} yg BOLEH dilewatkan pemanggil (lihat
+    _pick_from_pool) supaya keyword yg SUDAH ditulis di 1 cluster cuma di-_embed() SEKALI
+    per scan pool, bukan diulang tiap kandidat di cluster yg sama (pool sering py banyak
+    kandidat 1 cluster berturut krn sorted by cluster score) - _embed() dgn cluster besar
+    dulu terpanggil berulang tanpa guna. Default None = perilaku lama (selalu fetch+embed
+    fresh) - dipertahankan supaya pemanggil lain (kalau ada nanti) tidak wajib tahu soal
+    cache ini."""
+    if written_cache is not None and cluster in written_cache:
+        written_kws, written_embs = written_cache[cluster]
+        if not written_kws:
+            return None
+        kw_emb = (await _embed([keyword]))[0]
+    else:
+        written = await db.seo_keywords.find(
+            {"site": site, "status": "sudah_dibuat", "cluster": cluster}, {"keyword": 1},
+        ).to_list(1000)
+        written_kws = [w["keyword"] for w in written]
+        if not written_kws:
+            if written_cache is not None:
+                written_cache[cluster] = ([], [])
+            return None
+        # Batch SEKALI (keyword baru + seluruh written_kws cluster ini) - hemat 1 API
+        # call dibanding pisah, SEKALIGUS isi cache utk kandidat berikutnya di cluster
+        # yg sama (lihat catatan `written_cache` di docstring).
+        embeds = await _embed([keyword] + written_kws)
+        kw_emb, written_embs = embeds[0], embeds[1:]
+        if written_cache is not None:
+            written_cache[cluster] = (written_kws, written_embs)
     for w_kw, emb in zip(written_kws, written_embs):
         if _cosine(kw_emb, emb) > CANNIBALIZATION_THRESHOLD:
             return w_kw
@@ -606,6 +630,12 @@ async def get_next_keyword(site: str, exclude_ids: Optional[set] = None) -> dict
             -(INTENT_RATIO_TARGET.get(k.get("intent", "Transactional"), 0) - intent_ratio.get(k.get("intent", "Transactional"), 0)),
         ))
         now = datetime.now(timezone.utc).isoformat()
+        # Cache embedding "keyword sudah ditulis" PER CLUSTER (2026-08-06, permintaan
+        # Agus - "efisiensi token") - pool di-sort per cluster score, jadi kandidat 1
+        # cluster sering nempel berturut-turut. Tanpa cache ini, _keyword_cannibalizes_
+        # existing() re-embed ULANG daftar keyword-yg-sudah-ditulis yg SAMA tiap kandidat
+        # (data-nya tidak berubah sepanjang 1x scan pool ini) - murni waste.
+        written_cache: dict = {}
         for kw_doc in pool:
             fasilitas_match = _keyword_menjanjikan_fasilitas_tidak_ada(kw_doc["keyword"])
             if fasilitas_match:
@@ -617,7 +647,7 @@ async def get_next_keyword(site: str, exclude_ids: Optional[set] = None) -> dict
                     }},
                 )
                 continue
-            dupe_kw = await _keyword_cannibalizes_existing(site, kw_doc["keyword"], kw_doc["cluster"])
+            dupe_kw = await _keyword_cannibalizes_existing(site, kw_doc["keyword"], kw_doc["cluster"], written_cache=written_cache)
             if dupe_kw is None:
                 return kw_doc
             await db.seo_keywords.update_one(
