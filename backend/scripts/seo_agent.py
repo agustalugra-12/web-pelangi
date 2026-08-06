@@ -2438,15 +2438,17 @@ def _intro_template_terdeteksi(content: str) -> bool:
 # 4x). SENGAJA regex GENERIK per KATEGORI fakta (angka+satuan), BUKAN hardcode angka
 # tertentu spt draft PRD asli ("175.000"/"225.000") - hardcode rapuh & basi begitu harga
 # berubah, melanggar prinsip satu-sumber-kebenaran yang dipakai di seluruh file ini
-# (tarif SELALU dibaca live dari DB, bukan ditulis ulang di kode). Harga diberi ambang
-# lebih longgar (>2x, bukan >1x) krn struktur artikel yang SUDAH ADA (intro ringkas +
-# FAQ "berapa harga?" + info praktis) secara wajar menyebut harga 2x tanpa terasa
-# repetitif - baru dianggap masalah kalau muncul PERSIS angka yang sama 3x+.
+# (tarif SELALU dibaca live dari DB, bukan ditulis ulang di kode).
+# Dilonggarkan 2026-08-06 (permintaan Agus, "jangan sampe 4x") - max_ok dinaikkan ke 3
+# semua kategori (sebelumnya 1 utk suhu/jarak/kapasitas, 2 utk harga) - baru dianggap
+# masalah kalau muncul PERSIS angka yang sama 4x+, bukan lagi 2x/3x. Alasan sama dgn
+# longgarkan FAQ-dedup kemarin: gate ini bukan soal akurasi (angka yg diulang tetap
+# angka yg BENAR), cuma soal rasa "berputar-putar" - longgarkan risikonya rendah.
 _FAKTA_REPETISI_PATTERNS = {
-    "suhu (°C)": (r"\d{1,2}\s?[-–]\s?\d{1,2}\s?°?c\b", 1),
-    "jarak (km)": (r"\d+(?:[.,]\d+)?\s?km\b", 1),
-    "kapasitas rombongan (orang)": (r"\d+\s?[-–]\s?\d+\s?orang\b", 1),
-    "harga (Rp)": (r"rp\s?\d[\d.,]*\d|rp\s?\d", 2),
+    "suhu (°C)": (r"\d{1,2}\s?[-–]\s?\d{1,2}\s?°?c\b", 3),
+    "jarak (km)": (r"\d+(?:[.,]\d+)?\s?km\b", 3),
+    "kapasitas rombongan (orang)": (r"\d+\s?[-–]\s?\d+\s?orang\b", 3),
+    "harga (Rp)": (r"rp\s?\d[\d.,]*\d|rp\s?\d", 3),
 }
 
 
@@ -2610,10 +2612,24 @@ async def fact_check(site: str, content: str) -> list:
     system = (
         "Kamu fact-checker konten editorial yang teliti & skeptis. Tugasmu HANYA "
         "membandingkan draft artikel dengan DATA ASLI yang diberikan, cari klaim "
-        "SPESIFIK (harga, ukuran kamar, nama fasilitas, kapasitas, jarak/lokasi) yang "
-        "TIDAK ADA di DATA ASLI atau BERTENTANGAN dengannya. Klaim umum yang wajar "
-        "(mis. 'pemandangan indah', 'suasana tenang', 'udara sejuk') BUKAN masalah - "
-        "fokus HANYA pada angka/nama spesifik yang bisa saja salah/dikarang."
+        "SPESIFIK (harga, ukuran kamar, nama fasilitas, kapasitas) yang TIDAK ADA di "
+        "DATA ASLI atau BERTENTANGAN dengannya - ini SELALU ditolak, tanpa kecuali, "
+        "krn salah di sini langsung merugikan tamu (harga/fasilitas properti sendiri). "
+        "Klaim umum yang wajar (mis. 'pemandangan indah', 'suasana tenang', 'udara "
+        "sejuk') BUKAN masalah.\n\n"
+        "KHUSUS klaim soal AREA/LOKASI SEKITAR (2026-08-06, permintaan Agus - area "
+        "wisata Bedugul luas, wajar artikel sebut nama pasar/desa/jalan/tempat umum "
+        "setempat yang belum tentu ada di daftar landmark terverifikasi kami): kalau "
+        "draft menyebut nama tempat di sekitar Bedugul (radius kira-kira 15km dari "
+        "properti) secara UMUM SAJA (nama tempat, framing 'bisa dikunjungi', 'ada di "
+        "sekitar area', dst) TANPA detail spesifik yang bisa salah (jam operasional "
+        "persis, harga tiket, jarak persis dalam km/menit, atau klaim PROPERTI INI "
+        "menyediakan akses/antar-jemput/paket ke tempat itu) - JANGAN tandai sbg "
+        "masalah walau nama tempat itu tidak ada di DATA ASLI, itu bukan klaim yang "
+        "perlu diverifikasi ketat. TAPI kalau draft menyebut detail SPESIFIK ttg "
+        "tempat itu (jam, harga, jarak persis, atau klaim properti menyediakan "
+        "layanan ke sana) yang TIDAK ada di DATA ASLI - itu TETAP ditolak seperti "
+        "biasa, aturan longgar ini HANYA utk penyebutan nama tempat secara umum."
     )
     user = f"""DATA ASLI ({site}):
 {facts}
