@@ -2499,7 +2499,14 @@ def _dominasi_brand_terdeteksi(content: str, site: str, intent: str) -> Optional
 # gate ini walau kalimatnya beda, bukan cuma yang benar-benar copy-paste. 0.85 tetap
 # menangkap duplikat nyaris identik, tapi tidak lagi menolak sekadar rephrasing wajar utk
 # topik yang memang berulang di semua artikel hotel manapun.
-FAQ_DEDUP_THRESHOLD = 0.85
+# Dinaikkan lagi 0.85 -> 0.92 (2026-08-06, permintaan Agus - "longgarkan" setelah audit
+# nyata: dari 217 percobaan generate hari ini, 157 (72%) gagal di gate INI spesifik -
+# gate paling dominan penyebab 0/1 artikel terbit berkali-kali padahal target 15/hari.
+# SENGAJA fact_check() di bawah TIDAK ikut dilonggarkan - itu gate beda (nangkep klaim
+# yang benar-benar tidak didukung data asli, mis. "cottage dua kamar" padahal aslinya 5
+# unit terpisah 1 kamar), melonggarkan itu = risiko publish info salah ke tamu, bukan
+# cuma soal volume/duplikasi konten seperti gate ini.
+FAQ_DEDUP_THRESHOLD = 0.92
 _FAQ_PATTERN = re.compile(r"\*\*([^*]+\?)\*\*")
 
 
