@@ -2582,10 +2582,14 @@ SLOP_PHRASES_DILARANG = [
     "kenyamanan maksimal", "tanpa harus khawatir",
 ]
 # Kata generik/hampa yg BOLEH muncul sesekali (bukan klise terlarang spt di atas), tapi
-# kalau berulang jadi ciri khas "AI slop" - ambang 3x per artikel (sama spt cap "Kakak"
+# kalau berulang jadi ciri khas "AI slop" - ambang 4x per artikel (sama spt cap "Kakak"
 # maks 5-7x yg sudah ada di prompt, prinsip yg sama: kata netral jadi mencolok kalau
-# dipaksakan berulang-ulang).
+# dipaksakan berulang-ulang). Dilonggarkan 3->4 (2026-08-07, permintaan Agus - "jangan
+# terlalu ketat", audit log nyata: ini salah satu dari 2 penyebab reject terbesar dlm
+# kategori editor, 128x dlm 1 hari) - sama prinsip dgn pelonggaran fakta-berulang di
+# bawah, kata yg diulang tetap kata yg BENAR, cuma soal rasa "berputar-putar".
 SLOP_WORDS_MAX_3X = ["menghadirkan", "memberikan", "menawarkan", "memanjakan"]
+SLOP_WORD_MAX_OK = 3  # baru dianggap masalah kalau > ini (4x+)
 
 
 def _slop_word_counts(content: str) -> dict:
@@ -2600,7 +2604,7 @@ def _slop_word_counts(content: str) -> dict:
 def _slop_phrases_terdeteksi(content: str) -> list:
     lower = content.lower()
     hits = [frasa for frasa in SLOP_PHRASES_DILARANG if frasa in lower]
-    hits += [f"{kata} ({count}x)" for kata, count in _slop_word_counts(content).items() if count >= 3]
+    hits += [f"{kata} ({count}x)" for kata, count in _slop_word_counts(content).items() if count > SLOP_WORD_MAX_OK]
     return hits
 
 
@@ -2631,11 +2635,12 @@ def _variasi_kalimat_kurang(content: str) -> bool:
     kalimat artikel seragam panjangnya - ciri khas tulisan AI generik (mis. semua kalimat
     ~35-40 kata). Threshold 0.25 dipilih konservatif (tulisan manusia natural biasanya CV
     jauh di atas ini) supaya tidak banyak false positive - bisa disesuaikan lagi setelah
-    lihat data artikel nyata pasca-deploy."""
+    lihat data artikel nyata pasca-deploy. Dilonggarkan 0.25->0.20 (2026-08-07, permintaan
+    Agus - "jangan terlalu ketat", bagian dari pelonggaran umum gate editor hari ini)."""
     cv = _sentence_cv(content)
     if cv is None:
         return False  # kurang data utk statistik yang berarti, jangan menebak
-    return cv < 0.25
+    return cv < 0.20
 
 
 def _keyword_stuffing_terdeteksi(content: str, keyword: str) -> bool:
@@ -2704,11 +2709,14 @@ def _intro_template_terdeteksi(content: str) -> bool:
 # masalah kalau muncul PERSIS angka yang sama 4x+, bukan lagi 2x/3x. Alasan sama dgn
 # longgarkan FAQ-dedup kemarin: gate ini bukan soal akurasi (angka yg diulang tetap
 # angka yg BENAR), cuma soal rasa "berputar-putar" - longgarkan risikonya rendah.
+# Dilonggarkan LAGI 3->4 (2026-08-07, permintaan Agus - "jangan terlalu ketat", audit
+# log nyata: ini penyebab reject #2 dlm kategori editor, 94x dlm 1 hari) - alasan sama
+# persis dgn revisi sebelumnya, cuma ambang batasnya dinaikkan lagi satu tingkat.
 _FAKTA_REPETISI_PATTERNS = {
-    "suhu (°C)": (r"\d{1,2}\s?[-–]\s?\d{1,2}\s?°?c\b", 3),
-    "jarak (km)": (r"\d+(?:[.,]\d+)?\s?km\b", 3),
-    "kapasitas rombongan (orang)": (r"\d+\s?[-–]\s?\d+\s?orang\b", 3),
-    "harga (Rp)": (r"rp\s?\d[\d.,]*\d|rp\s?\d", 3),
+    "suhu (°C)": (r"\d{1,2}\s?[-–]\s?\d{1,2}\s?°?c\b", 4),
+    "jarak (km)": (r"\d+(?:[.,]\d+)?\s?km\b", 4),
+    "kapasitas rombongan (orang)": (r"\d+\s?[-–]\s?\d+\s?orang\b", 4),
+    "harga (Rp)": (r"rp\s?\d[\d.,]*\d|rp\s?\d", 4),
 }
 
 
@@ -2732,7 +2740,9 @@ def _fakta_berulang_terdeteksi(content: str) -> list:
 # SUDAH diantisipasi PRD sendiri §10 "Dominance check terlalu ketat"): keyword ber-intent
 # Transactional (fokus Pelangi/Harmoni, mis. "Review Pelangi Homestay") WAJAR dominasi
 # tinggi, dikasih ambang lebih longgar drpd Informational/Commercial.
-DOMINANCE_THRESHOLD_BY_INTENT = {"Informational": 0.35, "Commercial": 0.35, "Transactional": 0.60}
+# Dilonggarkan 0.35/0.60 -> 0.40/0.65 (2026-08-07, permintaan Agus - "jangan terlalu
+# ketat", bagian dari pelonggaran umum gate editor hari ini).
+DOMINANCE_THRESHOLD_BY_INTENT = {"Informational": 0.40, "Commercial": 0.40, "Transactional": 0.65}
 
 
 def _dominasi_brand_terdeteksi(content: str, site: str, intent: str) -> Optional[str]:
