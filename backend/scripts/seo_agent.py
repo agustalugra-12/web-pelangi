@@ -466,29 +466,68 @@ def _cosine(a: list, b: list) -> float:
 # rebuild") - fix di sini SARINGAN KODE, model bahkan tidak pernah ditawari angle yang
 # tidak relevan (bukan cuma diminta menghindarinya).
 #
+# Upgrade ke Entity Type (2026-08-07, permintaan Agus - PRD "Entity Intelligence &
+# Dynamic Topic Engine" yang dia kirim: AI Blog seharusnya Entity-Centric bukan cuma
+# Keyword-Centric). SCOPED - bukan bangun Entity Registry/scoring engine/dynamic-
+# article-count penuh spt PRD asli (itu sistem paralel baru, redundan dgn infra yang
+# SUDAH ADA & berisiko over-engineering utk 2 properti sendiri - alasan yang sama
+# persis kenapa PRD "16-Agent" lama sudah ditolak). Yang benar-benar baru & bernilai
+# dari PRD itu: kategori entitas LEBIH DARI SEKADAR "akomodasi vs bukan" (biner lama)
+# - sekarang beberapa TIPE, tiap tipe punya daftar angle sendiri, reuse CLUSTER_ANGLE
+# yang SUDAH ADA (persis Module 3/4 PRD "Allowed/Forbidden Topic"), bukan taxonomy
+# paralel baru.
+ENTITY_TYPE_ACCOMMODATION = "Accommodation"  # default - properti sendiri, SEMUA angle boleh (perilaku lama)
+
 # Angle yang maknanya HANYA masuk akal utk pengalaman MENGINAP (audiens/durasi tamu
-# properti) - tidak relevan sama sekali utk entitas fasilitas umum non-akomodasi.
-ACCOMMODATION_ONLY_ANGLES = {"View", "Keluarga", "Pasangan", "Day Use", "Backpacker", "Long Stay", "Booking"}
+# properti) - tidak relevan sama sekali utk entitas non-akomodasi APAPUN jenisnya.
+NON_ACCOMMODATION_FORBIDDEN_ANGLES = {"View", "Keluarga", "Pasangan", "Day Use", "Backpacker", "Long Stay", "Booking"}
 
-# Penanda entitas FASILITAS UMUM di sekitar Bedugul yang BUKAN akomodasi (ATM/bank/
-# bengkel/dst) - dipakai buat sapuan cepat & murah (bukan panggilan LLM tambahan,
-# supaya tidak nambah biaya) sebelum keyword cluster dibuat. Sengaja daftar TERBATAS
-# & spesifik (bukan generic classifier) - kalau seed TIDAK match salah satu, default
-# tetap dianggap "Accommodation" (perilaku lama, aman utk mayoritas seed yang memang
-# soal properti/kamar/wisata Bedugul).
-NON_ACCOMMODATION_MARKERS = (
-    "atm", "bank", "bengkel", "spbu", "pom bensin", "apotek", "klinik", "puskesmas",
-    "kantor pos", "terminal", "minimarket", "indomaret", "alfamart", "pasar",
-    "bengkel las", "tambal ban", "bengkel motor", "bengkel mobil",
-)
+# Penanda per tipe entitas (2026-08-07, diperluas dari daftar ATM/bank/bengkel lama +
+# 6 landmark yang baru diberi fakta terverifikasi hari ini - Kebun Raya/Blooms Garden/
+# Secret Garden Village/Bali Farm House/SILA'S Agrotourism/Pura Batu Meringgit/Pura
+# Teratai Bang/Gunung Tapak/air terjun Leke-Leke SEMUANYA sempat lolos jadi keyword
+# "Day Use"/"menginap" krn belum ada di penanda manapun - fakta sudah benar tapi
+# modifier-nya masih salah kategori, gap yang sama persis yang PRD ini soroti).
+# Sengaja daftar TERBATAS & spesifik per marker (bukan classifier generik/LLM
+# tambahan - biaya nol, sama prinsip dgn versi biner sebelumnya) - kalau seed TIDAK
+# match satupun, default tetap "Accommodation" (perilaku lama, aman utk mayoritas
+# seed yang memang soal properti/kamar Pelangi/Harmoni sendiri).
+ENTITY_TYPE_MARKERS: dict = {
+    "Financial Service": ("atm", "bank"),
+    "Automotive": ("bengkel", "spbu", "pom bensin", "tambal ban"),
+    "Government Office": ("kantor pos", "kantor desa", "kantor kelurahan", "kantor camat", "puskesmas"),
+    "Religious Place": ("pura batu meringgit", "pura teratai bang", "kelenteng"),
+    "Retail": ("indomaret", "alfamart", "minimarket", "pasar"),
+    "Health Service": ("apotek", "klinik"),
+    "Tourist Attraction": (
+        "kebun raya", "the blooms garden", "secret garden village", "bali farm house",
+        "the sila's agrotourism", "sila's agrotourism", "air terjun leke", "gunung tapak", "bukit tapak",
+    ),
+    "Transport Hub": ("terminal",),
+}
 
 
-def _klasifikasi_seed_akomodasi(seed_keyword: str) -> bool:
-    """True kalau seed soal properti/menginap (perilaku lama, semua angle boleh),
-    False kalau soal fasilitas umum non-akomodasi (ATM/bank/bengkel/dst - angle
-    audiens-menginap WAJIB disaring, lihat ACCOMMODATION_ONLY_ANGLES)."""
+def _klasifikasi_entity_type(seed_keyword: str) -> str:
+    """Return nama tipe entitas dari ENTITY_TYPE_MARKERS kalau ada yang cocok,
+    default "Accommodation" (perilaku lama, semua angle CLUSTER_ANGLE boleh) kalau
+    seed tidak match penanda manapun - berarti seed soal properti/kamar sendiri."""
     seed_lower = seed_keyword.lower()
-    return not any(marker in seed_lower for marker in NON_ACCOMMODATION_MARKERS)
+    for entity_type, markers in ENTITY_TYPE_MARKERS.items():
+        if any(marker in seed_lower for marker in markers):
+            return entity_type
+    return ENTITY_TYPE_ACCOMMODATION
+
+
+def _angle_terlarang_untuk_entity_type(entity_type: str) -> set:
+    """Angle yang DILARANG utk tipe entitas ini. "Accommodation" = set kosong (semua
+    angle boleh, perilaku lama). Tipe non-akomodasi APAPUN pakai daftar terlarang yang
+    SAMA (NON_ACCOMMODATION_FORBIDDEN_ANGLES) - dites langsung ke kasus ATM & terbukti
+    benar (lihat commit sebelumnya), belum ada bukti perlu daftar berbeda per tipe -
+    jangan bikin variasi yang belum terbukti perlu (prinsip yang sama dgn kenapa PRD
+    asli tidak dibangun penuh)."""
+    if entity_type == ENTITY_TYPE_ACCOMMODATION:
+        return set()
+    return NON_ACCOMMODATION_FORBIDDEN_ANGLES
 
 
 CANNIBALIZATION_THRESHOLD = 0.65
@@ -982,14 +1021,14 @@ async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: i
     Return {"accepted": [...], "rejected": [{"keyword","cluster","reason"}, ...]} - dipakai
     baik dari cron (get_next_keyword fallback, lihat di bawah) maupun endpoint manual admin
     (server.py) utk transparansi apa yang lolos/ditolak & kenapa."""
-    # Kategori seed MENENTUKAN angle mana yang bahkan ditawarkan ke model (lihat
-    # ACCOMMODATION_ONLY_ANGLES) - bukan cuma diminta menghindari, supaya model tidak
-    # bisa "memaksakan" modifier menginap (Keluarga/Pasangan/Day Use/dst) ke entitas
-    # yang bukan akomodasi (ATM/bank/bengkel/dst).
-    seed_akomodasi = _klasifikasi_seed_akomodasi(seed_keyword)
-    angle_tersedia = CLUSTER_ANGLE if seed_akomodasi else {
-        k: v for k, v in CLUSTER_ANGLE.items() if k not in ACCOMMODATION_ONLY_ANGLES
-    }
+    # Tipe entitas seed MENENTUKAN angle mana yang bahkan ditawarkan ke model (lihat
+    # ENTITY_TYPE_MARKERS/_angle_terlarang_untuk_entity_type) - bukan cuma diminta
+    # menghindari, supaya model tidak bisa "memaksakan" modifier menginap (Keluarga/
+    # Pasangan/Day Use/dst) ke entitas yang bukan akomodasi (ATM/bank/bengkel/Kebun
+    # Raya/dst - berbagai tipe, bukan cuma satu kategori "bukan akomodasi" generik).
+    entity_type = _klasifikasi_entity_type(seed_keyword)
+    angle_terlarang = _angle_terlarang_untuk_entity_type(entity_type)
+    angle_tersedia = {k: v for k, v in CLUSTER_ANGLE.items() if k not in angle_terlarang}
     cluster_list = ", ".join(f'"{c}"' for c in angle_tersedia.keys())
     prompt = (
         f"Kamu ahli SEO utk penginapan di kawasan Bedugul, Bali. Keyword UTAMA (seed) dari "
@@ -1034,7 +1073,7 @@ async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: i
     # baris ini cuma buang cluster tak dikenal/None & batasi target_count.
     candidates = [c for c in candidates if c[2]][:target_count]
 
-    result: dict = {"accepted": [], "rejected": []}
+    result: dict = {"accepted": [], "rejected": [], "entity_type": entity_type}
     if not candidates:
         return result
 
@@ -1090,7 +1129,7 @@ async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: i
         )
         first["is_pillar"] = True
 
-    print(f"  [cluster generator] seed=\"{seed_keyword}\" -> {len(result['accepted'])}/{len(candidates)} diterima (group {cluster_group_id})")
+    print(f"  [cluster generator] seed=\"{seed_keyword}\" (entity_type={entity_type}) -> {len(result['accepted'])}/{len(candidates)} diterima (group {cluster_group_id})")
     return result
 
 
