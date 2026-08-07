@@ -455,6 +455,42 @@ def _cosine(a: list, b: list) -> float:
 # ---------------------------------------------------------------------------
 # 1. Keyword Agent
 # ---------------------------------------------------------------------------
+# Smart Keyword Modifier & Intent Validation (2026-08-07, bug nyata dilaporkan Agus -
+# generate_keyword_cluster() men-tempel SEMUA 17 angle CLUSTER_ANGLE ke seed APAPUN,
+# ketahuan lewat contoh nyata di DB: "ATM & bank ramah keluarga di Bedugul", "bengkel
+# mobil untuk pasangan yang sedang berlibur", "ATM & bank untuk day use" - modifier
+# audiens-menginap (Keluarga/Pasangan/Day Use/dst) dipaksakan ke entitas yang bukan
+# akomodasi. Prompt SUDAH bilang "boleh lewati angle kalau tidak relevan, jangan
+# dipaksakan" tapi model TIDAK selalu patuh - sama kelas bug dgn temuan sesi lalu
+# ("aturan di prompt yang tidak selalu diikuti model butuh guard di level KODE, bukan
+# rebuild") - fix di sini SARINGAN KODE, model bahkan tidak pernah ditawari angle yang
+# tidak relevan (bukan cuma diminta menghindarinya).
+#
+# Angle yang maknanya HANYA masuk akal utk pengalaman MENGINAP (audiens/durasi tamu
+# properti) - tidak relevan sama sekali utk entitas fasilitas umum non-akomodasi.
+ACCOMMODATION_ONLY_ANGLES = {"View", "Keluarga", "Pasangan", "Day Use", "Backpacker", "Long Stay", "Booking"}
+
+# Penanda entitas FASILITAS UMUM di sekitar Bedugul yang BUKAN akomodasi (ATM/bank/
+# bengkel/dst) - dipakai buat sapuan cepat & murah (bukan panggilan LLM tambahan,
+# supaya tidak nambah biaya) sebelum keyword cluster dibuat. Sengaja daftar TERBATAS
+# & spesifik (bukan generic classifier) - kalau seed TIDAK match salah satu, default
+# tetap dianggap "Accommodation" (perilaku lama, aman utk mayoritas seed yang memang
+# soal properti/kamar/wisata Bedugul).
+NON_ACCOMMODATION_MARKERS = (
+    "atm", "bank", "bengkel", "spbu", "pom bensin", "apotek", "klinik", "puskesmas",
+    "kantor pos", "terminal", "minimarket", "indomaret", "alfamart", "pasar",
+    "bengkel las", "tambal ban", "bengkel motor", "bengkel mobil",
+)
+
+
+def _klasifikasi_seed_akomodasi(seed_keyword: str) -> bool:
+    """True kalau seed soal properti/menginap (perilaku lama, semua angle boleh),
+    False kalau soal fasilitas umum non-akomodasi (ATM/bank/bengkel/dst - angle
+    audiens-menginap WAJIB disaring, lihat ACCOMMODATION_ONLY_ANGLES)."""
+    seed_lower = seed_keyword.lower()
+    return not any(marker in seed_lower for marker in NON_ACCOMMODATION_MARKERS)
+
+
 CANNIBALIZATION_THRESHOLD = 0.65
 
 # Threshold TERPISAH utk pairwise-within-batch check di generate_keyword_cluster()
@@ -946,7 +982,15 @@ async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: i
     Return {"accepted": [...], "rejected": [{"keyword","cluster","reason"}, ...]} - dipakai
     baik dari cron (get_next_keyword fallback, lihat di bawah) maupun endpoint manual admin
     (server.py) utk transparansi apa yang lolos/ditolak & kenapa."""
-    cluster_list = ", ".join(f'"{c}"' for c in CLUSTER_ANGLE.keys())
+    # Kategori seed MENENTUKAN angle mana yang bahkan ditawarkan ke model (lihat
+    # ACCOMMODATION_ONLY_ANGLES) - bukan cuma diminta menghindari, supaya model tidak
+    # bisa "memaksakan" modifier menginap (Keluarga/Pasangan/Day Use/dst) ke entitas
+    # yang bukan akomodasi (ATM/bank/bengkel/dst).
+    seed_akomodasi = _klasifikasi_seed_akomodasi(seed_keyword)
+    angle_tersedia = CLUSTER_ANGLE if seed_akomodasi else {
+        k: v for k, v in CLUSTER_ANGLE.items() if k not in ACCOMMODATION_ONLY_ANGLES
+    }
+    cluster_list = ", ".join(f'"{c}"' for c in angle_tersedia.keys())
     prompt = (
         f"Kamu ahli SEO utk penginapan di kawasan Bedugul, Bali. Keyword UTAMA (seed) dari "
         f"user: \"{seed_keyword}\".\n\n"
@@ -982,9 +1026,13 @@ async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: i
         parsed = []
     candidates = [(c.get("keyword", "").strip(),
                    c.get("intent") if c.get("intent") in ("Informational", "Commercial", "Transactional") else "Transactional",
-                   c.get("cluster") if c.get("cluster") in CLUSTER_ANGLE else None)
+                   c.get("cluster") if c.get("cluster") in angle_tersedia else None)
                   for c in parsed if isinstance(c, dict) and c.get("keyword", "").strip()]
-    candidates = [c for c in candidates if c[2]][:target_count]  # buang cluster tak dikenal, batasi target_count
+    # Jaring pengaman kedua (bukan cuma andalkan model tidak "ditawari" angle terlarang
+    # di atas) - kalau model tetap balas nama angle akomodasi-saja walau tidak ada di
+    # daftar yang ditawarkan, cek in angle_tersedia di atas SUDAH menolaknya (None),
+    # baris ini cuma buang cluster tak dikenal/None & batasi target_count.
+    candidates = [c for c in candidates if c[2]][:target_count]
 
     result: dict = {"accepted": [], "rejected": []}
     if not candidates:
