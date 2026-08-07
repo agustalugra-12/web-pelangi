@@ -3276,6 +3276,24 @@ async def main():
     args = ap.parse_args()
     sites = ["pelangi", "harmoni"] if args.site == "all" else [args.site]
 
+    # Self-heal keyword yg macet permanen di status "draft" (2026-08-07, ditemukan nyata
+    # via audit log - 3 keyword macet 3 jam s/d 5 HARI, salah satunya sejak 2026-08-02).
+    # Guard except Exception di generate_one() (2026-07-28) TIDAK menutup SEMUA jalur -
+    # proses bisa mati di tengah jalan tanpa sempat masuk except sama sekali (mis. OOM
+    # killer, systemd/cron timeout, atau proses lama yg ke-kill manual) - status "draft"
+    # yg di-set di AWAL generate_one() jadi permanen, keyword itu HILANG selamanya krn
+    # get_next_keyword() cuma pilih status="belum_dibuat". 30 menit dipilih karena 1
+    # percobaan generate_one() (termasuk fact-check/editor/auto-fix FAQ) wajar selesai
+    # dalam hitungan detik-menit, bukan puluhan menit - kalau masih "draft" setelah 30
+    # menit, hampir pasti proses yg menanganinya sudah mati, bukan masih jalan.
+    stale_draft_cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    stale_draft_result = await db.seo_keywords.update_many(
+        {"status": "draft", "updated_at": {"$lt": stale_draft_cutoff}},
+        {"$set": {"status": "belum_dibuat"}},
+    )
+    if stale_draft_result.modified_count:
+        print(f"[self-heal] {stale_draft_result.modified_count} keyword macet di status 'draft' >30 menit - dikembalikan ke 'belum_dibuat'.")
+
     # try/except per situs (2026-07-28) - sebelumnya satu error (mis. OpenAI ReadTimeout,
     # sudah pernah kejadian nyata di log) di pelangi bikin harmoni IKUT SKIP di run yang
     # sama (loop crash total, --site all cuma 1 proses Python) - artikel harmoni jadi
