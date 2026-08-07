@@ -3003,6 +3003,67 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
         if editor_issues:
             problems.append("editor: " + "; ".join(editor_issues))
         faq_dedup_issues = await _faq_duplikat_terdeteksi(site, content_final)
+
+        # Auto-fix FAQ duplikat (2026-08-07, permintaan Agus - "apa lagi yang
+        # menghalangi artikel tidak terbit" - audit log nyata: FAQ duplikat adalah
+        # penyebab reject #1 sejauh ini (227x dalam 1 hari, lebih banyak dari editor/
+        # fact-check digabung). Root cause: writer terus menulis 4-5 pertanyaan FAQ
+        # generik yang sama (sarapan/anak-anak/jarak bandara/pembatalan) di HAMPIR
+        # SEMUA artikel - wajar krn itu pertanyaan paling "jelas" utk homestay kecil,
+        # tapi begitu ratusan artikel sudah terbit, ruang pertanyaan generik itu jenuh.
+        # Instruksi prompt ("maks 1 FAQ generik dari 4") SUDAH ADA tapi tidak selalu
+        # dipatuhi - sama pola dgn auto-fix slop-word di atas: SATU percobaan revisi
+        # BERTARGET (minta model ganti HANYA FAQ yang kedapatan duplikat, dgn
+        # pertanyaan lain yang SPESIFIK ke fokus artikel ini - bukan tulis ulang
+        # semua), lalu validasi ULANG PENUH sebelum diterima. Fact-check TIDAK
+        # disentuh di sini (sama alasan dgn slop-fix) - kalau ADA fact_issues juga,
+        # itu butuh koreksi substansi lebih berisiko, biarkan reject-&-requeue biasa.
+        if faq_dedup_issues and not fact_issues:
+            faq_fix_user = f"""Draft artikel ini (JSON) punya FAQ yang TERLALU MIRIP dengan FAQ di artikel lain yang sudah terbit:
+{chr(10).join(faq_dedup_issues)}
+
+Tulis ULANG HANYA blok FAQ yang disebut di atas, ganti dengan pertanyaan LAIN yang SPESIFIK ke
+fokus artikel ini (keyword: "{keyword_doc['keyword']}", angle: {keyword_doc['cluster']}) - BUKAN
+pertanyaan generik kebijakan umum (sarapan/anak-anak/jarak bandara/pembatalan) kecuali memang
+belum ada FAQ generik lain di draft ini. JANGAN ubah paragraf/sub-judul lain, JANGAN ubah FAQ
+yang TIDAK disebut di atas, JANGAN mengarang fakta baru - tetap harus bisa dijawab jujur dari
+DATA ASLI yang sama.
+
+JSON artikel:
+{json.dumps({"title": article["title"], "excerpt": article["excerpt"], "content": article["content"], "tags": article.get("tags", [])}, ensure_ascii=False)}
+
+Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content, tags)."""
+            faq_fix_system = (
+                "Kamu editor konten profesional Bahasa Indonesia untuk penginapan di Bedugul, Bali. "
+                "Tugasmu HANYA ganti FAQ yang diminta - JANGAN mengarang fakta baru, JANGAN mengubah "
+                "bagian lain yang tidak diminta."
+            )
+            try:
+                raw_faq_fix = await _chat(faq_fix_system, faq_fix_user, temperature=0.6)
+                fixed = _parse_json_response(raw_faq_fix)
+                fixed_content_norm = _normalize_faq_format(fixed["content"])
+                fixed_final = _inject_links(fixed_content_norm, links, WA_BY_SITE[site], article.get("_maps_url"))
+                fixed_faq_issues = await _faq_duplikat_terdeteksi(site, fixed_final)
+                if not fixed_faq_issues:
+                    fixed_problems = quality_check(fixed, fixed_final)
+                    fixed_fact_issues = await fact_check(site, fixed_final)
+                    if not fixed_fact_issues and not fixed_problems:
+                        fixed_link_issues = await _internal_links_valid(site, fixed_final)
+                        fixed_editor_issues = await editor_review(fixed_final, keyword_doc["keyword"], site=site, intent=keyword_doc.get("intent", "Transactional"))
+                        if not fixed_link_issues and not fixed_editor_issues:
+                            article["title"], article["excerpt"], article["content"] = fixed["title"], fixed["excerpt"], fixed_content_norm
+                            content_final = fixed_final
+                            faq_dedup_issues = []
+                            print(f"  [FAQ auto-fix] berhasil - keyword \"{keyword_doc['keyword']}\"")
+                        else:
+                            print(f"  [FAQ auto-fix] revisi gagal validasi ulang (link/editor): {fixed_link_issues} {fixed_editor_issues}")
+                    else:
+                        print(f"  [FAQ auto-fix] revisi ditolak - muncul masalah fact-check/quality baru")
+                else:
+                    print(f"  [FAQ auto-fix] revisi masih duplikat setelah dicoba")
+            except Exception:
+                pass  # gagal revisi/parse - lanjut pakai draft asli, biar quality gate normal yang menolak
+
         if faq_dedup_issues:
             problems.append("FAQ duplikat: " + "; ".join(faq_dedup_issues))
     except Exception:
