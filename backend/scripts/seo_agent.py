@@ -40,7 +40,7 @@ import sys
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 from typing import Optional, Dict
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -1241,11 +1241,16 @@ async def refresh_landmark_facts(name: str, source_url: Optional[str] = None) ->
 
 async def _landmark_facts_block() -> str:
     """Dipanggil oleh _fetch_site_facts di bawah - kumpulkan fakta landmark yang SUDAH
-    di-crawl (db.landmark_facts, diisi via refresh_landmark_facts di atas) jadi 1 blok
-    teks dgn SUMBER & TANGGAL CRAWL eksplisit disebut (2026-08-03, permintaan Agus -
-    "Source Citation": tiap fakta wajib source_url + last_crawled + confidence). Kosong
-    kalau belum ada landmark yang di-crawl sama sekali (jujur - belum aktif sampai
-    staf/owner isi source_url pertama via endpoint admin)."""
+    di-crawl (db.landmark_facts, diisi via refresh_landmark_facts di atas ATAU otomatis
+    via _verify_local_entity, lihat docstring-nya) jadi 1 blok teks dgn SUMBER & TANGGAL
+    CRAWL eksplisit disebut (2026-08-03, permintaan Agus - "Source Citation": tiap fakta
+    wajib source_url + last_crawled + confidence). Kosong kalau belum ada landmark yang
+    di-crawl sama sekali.
+
+    Entry verified_via="serper_auto" (2026-08-08) ditandai eksplisit beda dari yang
+    dikonfirmasi manual staf - sumbernya dipilih otomatis (hasil teratas Serper), jadi
+    modelnya diberi tahu utk sedikit lebih hati-hati drpd sumber yang sudah direview
+    manusia, tanpa perlu menolak total (tetap lebih baik drpd tidak ada data)."""
     entries = await db.landmark_facts.find({}).to_list(50)
     if not entries:
         return ""
@@ -1253,9 +1258,10 @@ async def _landmark_facts_block() -> str:
     for e in entries:
         age_days = (datetime.now(timezone.utc) - datetime.fromisoformat(e["last_crawled"])).days
         confidence = "masih segar" if age_days < LANDMARK_FACT_MAX_AGE_DAYS else f"SUDAH {age_days} hari, mungkin basi - verifikasi manual dulu kalau dipakai"
+        sumber_label = "auto dari Serper, belum direview manusia" if e.get("verified_via") == "serper_auto" else "dikonfirmasi manual staf"
         heading_text = "; ".join(e.get("headings", [])[:8])
         lines.append(
-            f"- {e['name']} (sumber: {e['source_url']}, di-crawl {e['last_crawled'][:10]}, "
+            f"- {e['name']} (sumber: {e['source_url']} [{sumber_label}], di-crawl {e['last_crawled'][:10]}, "
             f"{confidence}): {heading_text}"
         )
     return (
@@ -1708,19 +1714,20 @@ async def cakupan_editorial_lengkap(site: str) -> dict:
 # dgn API sederhana, jauh lebih murah & tanpa syarat billing GCP.
 #
 # Budget kredit (2026-07-28, permintaan user) - user cuma punya 2400 kredit Serper
-# SEKALI PAKAI (bukan kuota bulanan yang reset), diminta dijaga bertahan 2 tahun,
-# TERLEPAS dari berapa pun volume artikel (naik dari 6/hari ke 14/hari - 7 situs x
-# 2 - per permintaan user 2026-07-28, kemungkinan naik lagi ke depan). Cap 3
-# kredit/hari (BUKAN 3 dari total artikel per hari, tapi hard limit harian yang
-# SAMA berapa pun jumlah artikel) cukup utk 730 hari (2190 dari 2400 kredit, sisa
-# buffer 210) - di volume 14/hari, ~21% artikel dapat analisis kompetitor; kalau
-# naik ke 20+/hari, proporsinya makin kecil tapi kredit tetap bertahan 2 tahun sama
-# persis (lihat perhitungan yg sudah dijelaskan ke user). Artikel yang tidak
-# kebagian slot TETAP ditulis normal TANPA analisis kompetitor (bukan gagal, cuma
-# skip - graceful degradation yang sama seperti kalau API down).
+# SEKALI PAKAI (bukan kuota bulanan yang reset). Cap harian = hard limit HARIAN yang
+# SAMA berapa pun jumlah artikel/pemakai (bukan jatah per artikel) - dibagi rata
+# terhadap SERPER_TARGET_DAYS supaya kredit habis persis sesuai target durasi,
+# TERLEPAS dari volume artikel. Dipakai BERSAMA oleh _search_competitors (analisis
+# kompetitor) & _verify_local_entity (fact-check tempat lokal, di bawah) - satu pool
+# db.serper_usage yang sama, SENGAJA tidak dipisah per fitur (permintaan Agus
+# 2026-08-08 - "kombinasikan") supaya total kredit tetap 1 batas yang dijaga.
+# Dipercepat 2 tahun -> 1 tahun (2026-08-08, permintaan Agus, bagian dari
+# menambah _verify_local_entity supaya jatah harian lebih longgar utk 2 fitur
+# sekaligus) - cap harian otomatis naik 3 -> 6/hari, kredit total (2400) TIDAK
+# berubah, cuma dipakai 2x lebih cepat sesuai target baru.
 SERPER_TOTAL_CREDITS = 2400
-SERPER_TARGET_DAYS = 2 * 365
-SERPER_DAILY_CAP = SERPER_TOTAL_CREDITS // SERPER_TARGET_DAYS  # = 3/hari
+SERPER_TARGET_DAYS = 1 * 365
+SERPER_DAILY_CAP = SERPER_TOTAL_CREDITS // SERPER_TARGET_DAYS  # = 6/hari
 
 
 async def _serper_budget_ok() -> bool:
@@ -1755,6 +1762,84 @@ async def _search_competitors(keyword: str) -> list:
         )
         resp.raise_for_status()
         return resp.json().get("organic", [])
+
+
+async def _verify_local_entity(name: str, context: str = "Bedugul Bali") -> Optional[dict]:
+    """Auto-verifikasi fakta tempat lokal via Serper (2026-08-08, permintaan Agus -
+    "fact checknya bisa cek link google... tanpa aku harus upload datanya"). Sebelumnya
+    landmark_facts CUMA bisa diisi manual staf lewat refresh_landmark_facts (source_url
+    wajib dikonfirmasi manual - lihat docstring-nya, sengaja begitu krn "salah pilih
+    sumber lebih berbahaya drpd tidak ada data"). Fungsi ini melonggarkan itu SECARA
+    SADAR atas persetujuan eksplisit Agus: source dipilih otomatis dari hasil teratas
+    Serper, TAPI tetap lewat pipeline citation yang SAMA (source_url + last_crawled +
+    confidence umur di _landmark_facts_block) - kalau salah, tetap transparan & bisa
+    dikoreksi manual kapan pun lewat /admin/landmark-sources yang sudah ada, ditandai
+    verified_via="serper_auto" supaya beda dari yang dikonfirmasi manual staf.
+
+    Sekali diverifikasi & di-cache ke db.landmark_facts, SEMUA artikel berikutnya (situs
+    mana pun, kapan pun selama masih < LANDMARK_FACT_MAX_AGE_DAYS) otomatis dapat
+    aksesnya lewat _landmark_facts_block() TANPA panggilan Serper lagi utk entity yang
+    sama - inilah "data semuanya bisa terakses" yang diminta: biaya Serper cuma SEKALI
+    per tempat baru, bukan per artikel. Dipanggil dari fact_check() (lihat
+    unverified_entities) begitu draft menyebut tempat spesifik yang tidak ada di DATA
+    ASLI - hasilnya tidak menyelamatkan draft yang SEDANG gagal (kesederhanaan, hindari
+    bedah ulang alur retry yang sudah ada), tapi tersedia utk percobaan BERIKUTNYA
+    keyword yg sama (cron slot ~2 jam lagi) maupun artikel lain yg sebut tempat sama.
+
+    Berbagi 1 pool budget yang SAMA dgn _search_competitors (lihat _serper_budget_ok,
+    SERPER_TARGET_DAYS) - gagal-diam (return None) kalau API key kosong/budget habis/
+    request gagal, TIDAK PERNAH menggagalkan alur generate_one yang memanggilnya."""
+    existing = await db.landmark_facts.find_one({"name": name})
+    if existing and existing.get("last_crawled"):
+        age_days = (datetime.now(timezone.utc) - datetime.fromisoformat(existing["last_crawled"])).days
+        if age_days < LANDMARK_FACT_MAX_AGE_DAYS:
+            return existing
+    if not SERPER_API_KEY or not await _serper_budget_ok():
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15) as http:
+            resp = await http.post(
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+                json={"q": f"{name} {context}", "num": 5, "gl": "id", "hl": "id"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        print(f'[_verify_local_entity] gagal cari "{name}": {type(e).__name__}: {e}')
+        return None
+    organic = data.get("organic") or []
+    kg = data.get("knowledgeGraph") or {}
+    if not organic and not kg:
+        return None
+    snippets = []
+    if kg:
+        kg_attrs = kg.get("attributes") or {}
+        kg_parts = [kg.get("title", ""), kg.get("type", ""), kg.get("description", "")]
+        kg_parts += [f"{k}: {v}" for k, v in kg_attrs.items()]
+        joined = " | ".join(p for p in kg_parts if p)
+        if joined:
+            snippets.append(joined)
+    for r in organic[:3]:
+        snip = r.get("snippet", "")
+        if snip:
+            snippets.append(snip)
+    if not snippets:
+        return None
+    source_url = (organic[0].get("link") if organic else None) or kg.get("website") \
+        or f"https://www.google.com/search?q={quote(f'{name} {context}')}"
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "name": name, "source_url": source_url, "last_crawled": now,
+        "headings": snippets[:8], "word_count": sum(len(s.split()) for s in snippets),
+        "verified_via": "serper_auto",
+    }
+    await db.landmark_facts.update_one({"name": name}, {"$set": doc}, upsert=True)
+    await db.landmark_sources.update_one(
+        {"name": name}, {"$set": {"name": name, "source_url": source_url, "verified_via": "serper_auto"}}, upsert=True,
+    )
+    print(f'[_verify_local_entity] "{name}" di-cache dari Serper (sumber: {source_url})')
+    return doc
 
 
 async def _fetch_competitor_page(url: str) -> dict:
@@ -2896,7 +2981,7 @@ async def editor_review(content: str, keyword: str, site: str = "", intent: str 
     return problems
 
 
-async def fact_check(site: str, content: str) -> list:
+async def fact_check(site: str, content: str) -> tuple:
     """Verifikasi draft FINAL terhadap DATA ASLI SEBELUM publish (2026-07-28, jawaban
     konkret utk "AI melakukan fact-check sebelum publikasi") - lapis KEDUA, lapis
     PERTAMA (instruksi anti-mengarang di system prompt Writer Agent) sudah ada sejak
@@ -2916,7 +3001,14 @@ async def fact_check(site: str, content: str) -> list:
     TIDAK BISA DIBEDAKAN di artikel yang terbit - outage diam-diam berarti nol verifikasi
     fakta tanpa jejak sama sekali. Sekarang error menghasilkan 1 issue sintetis yang
     memblokir publish (sama spt kalau fact-checker beneran menemukan klaim tak didukung) -
-    lebih aman menunda publish drpd terbit tanpa verifikasi."""
+    lebih aman menunda publish drpd terbit tanpa verifikasi.
+
+    Return (issues, unverified_entities) - elemen kedua ditambah 2026-08-08 (permintaan
+    Agus, "fact checknya bisa cek link google... tanpa aku harus upload datanya"): model
+    yang SAMA (satu panggilan, tidak nambah biaya) juga diminta sebutkan nama tempat
+    SPESIFIK yang jadi penyebab reject, supaya caller (generate_one) bisa auto-verifikasi
+    lewat _verify_local_entity - draft KALI INI tetap gagal seperti biasa, tapi
+    percobaan/artikel berikutnya yg sebut tempat sama sudah dapat datanya."""
     facts = await _fetch_site_facts(site)
     system = (
         "Kamu fact-checker konten editorial yang teliti & skeptis. Tugasmu HANYA "
@@ -2947,15 +3039,17 @@ DRAFT ARTIKEL (final, siap terbit):
 {content}
 
 Balas HARUS JSON valid (tanpa markdown code fence):
-{{"issues": ["klaim spesifik yang TIDAK didukung DATA ASLI, kalau ada", "..."]}}
-Array "issues" KOSONG kalau semua klaim spesifik di draft sudah sesuai/didukung DATA ASLI."""
+{{"issues": ["klaim spesifik yang TIDAK didukung DATA ASLI, kalau ada", "..."], "unverified_entities": ["nama tempat/bisnis SPESIFIK (BUKAN Pelangi Homestay/Harmoni Hills sendiri) yang jadi penyebab salah satu issue di atas, kalau ada - nama tempat SAJA, tanpa embel-embel"]}}
+Array "issues" KOSONG kalau semua klaim spesifik di draft sudah sesuai/didukung DATA ASLI. "unverified_entities" KOSONG kalau tidak ada issue yang soal tempat spesifik pihak lain."""
     try:
         raw = await _chat(system, user, temperature=0.2)
         result = _parse_json_response(raw)
-        return [i for i in result.get("issues", []) if i]
+        issues = [i for i in result.get("issues", []) if i]
+        entities = [e for e in result.get("unverified_entities", []) if e]
+        return issues, entities
     except Exception as e:
         print(f"[fact-check] gagal, publish DITUNDA demi keamanan: {type(e).__name__}: {e}")
-        return ["fact-check gagal dijalankan (error API/parse) - publish ditunda demi keamanan"]
+        return ["fact-check gagal dijalankan (error API/parse) - publish ditunda demi keamanan"], []
 
 
 # ---------------------------------------------------------------------------
@@ -2983,7 +3077,7 @@ async def generate_one(site: str, exclude_ids: Optional[set] = None) -> dict:
         content_final = _inject_links(article["content"], links, WA_BY_SITE[site], article.get("_maps_url"))
 
         problems = quality_check(article, content_final)
-        fact_issues = await fact_check(site, content_final)
+        fact_issues, unverified_entities = await fact_check(site, content_final)
         if fact_issues:
             problems.append("fact-check: " + "; ".join(fact_issues))
         link_issues = await _internal_links_valid(site, content_final)
@@ -3039,7 +3133,7 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
                         article["title"], article["excerpt"], article["content"] = fixed["title"], fixed["excerpt"], fixed_content_norm
                         content_final = fixed_final
                         problems = quality_check(article, content_final)
-                        fact_issues = await fact_check(site, content_final)
+                        fact_issues, unverified_entities = await fact_check(site, content_final)
                         if fact_issues:
                             problems.append("fact-check: " + "; ".join(fact_issues))
                         link_issues = await _internal_links_valid(site, content_final)
@@ -3095,7 +3189,8 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
                 fixed_faq_issues = await _faq_duplikat_terdeteksi(site, fixed_final)
                 if not fixed_faq_issues:
                     fixed_problems = quality_check(fixed, fixed_final)
-                    fixed_fact_issues = await fact_check(site, fixed_final)
+                    fixed_fact_issues, fixed_unverified_entities = await fact_check(site, fixed_final)
+                    unverified_entities = fixed_unverified_entities or unverified_entities
                     if not fixed_fact_issues and not fixed_problems:
                         fixed_link_issues = await _internal_links_valid(site, fixed_final)
                         fixed_editor_issues = await editor_review(fixed_final, keyword_doc["keyword"], site=site, intent=keyword_doc.get("intent", "Transactional"))
@@ -3103,6 +3198,7 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
                             article["title"], article["excerpt"], article["content"] = fixed["title"], fixed["excerpt"], fixed_content_norm
                             content_final = fixed_final
                             faq_dedup_issues = []
+                            unverified_entities = []
                             print(f"  [FAQ auto-fix] berhasil - keyword \"{keyword_doc['keyword']}\"")
                         else:
                             print(f"  [FAQ auto-fix] revisi gagal validasi ulang (link/editor): {fixed_link_issues} {fixed_editor_issues}")
@@ -3157,6 +3253,23 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
             await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "gagal_berulang"}})
         else:
             await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "belum_dibuat"}})
+
+        # Auto-verifikasi tempat lokal via Serper (2026-08-08, permintaan Agus) - draft
+        # KALI INI tetap gagal (di atas), tapi kalau salah satu penyebabnya adalah tempat
+        # spesifik yang belum ada di DATA ASLI, verifikasi & cache SEKARANG supaya
+        # percobaan berikutnya (keyword sama, cron slot ~2 jam lagi, ATAU artikel lain
+        # yang sebut tempat sama) sudah punya faktanya - lihat _verify_local_entity.
+        # Cap 3 entitas/artikel gagal (bukan tak terbatas) - _verify_local_entity sendiri
+        # sudah dibatasi budget harian bersama (_serper_budget_ok), cap di sini murni
+        # cegah 1 draft yang menyebut banyak nama sekaligus menghabiskan jatah harian
+        # sendirian. Gagal-diam per entity (try/except) - tidak pernah mengubah hasil
+        # reject di atas, murni usaha tambahan di baliknya.
+        for ent in unverified_entities[:3]:
+            try:
+                await _verify_local_entity(ent)
+            except Exception as e:
+                print(f'  [auto-verify] gagal verifikasi "{ent}": {type(e).__name__}: {e}')
+
         return {"ok": False, "keyword": keyword_doc["keyword"], "keyword_id": keyword_doc["id"], "problems": problems}
 
     slug_base = slugify(article["title"])

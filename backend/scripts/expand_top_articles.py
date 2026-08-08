@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.seo_agent import (  # noqa: E402
     db, SITE_DOMAIN, _chat, _parse_json_response, _fetch_site_facts, quality_check, fact_check,
-    _normalize_faq_format, _internal_links_valid,
+    _normalize_faq_format, _internal_links_valid, _verify_local_entity,
 )
 from scripts import prerender_home as _prerender  # noqa: E402
 
@@ -155,7 +155,7 @@ async def run(site: str, limit: int = MAX_PER_RUN) -> None:
             expanded["content"] = _normalize_faq_format(expanded["content"])
         new_count = len(expanded.get("content", "").split())
         problems = quality_check(expanded, expanded.get("content", ""))
-        fact_issues = await fact_check(site, expanded.get("content", ""))
+        fact_issues, unverified_entities = await fact_check(site, expanded.get("content", ""))
         if fact_issues:
             problems.append("fact-check: " + "; ".join(fact_issues))
         link_issues = await _internal_links_valid(site, expanded.get("content", ""))
@@ -163,6 +163,13 @@ async def run(site: str, limit: int = MAX_PER_RUN) -> None:
             problems.extend(link_issues)
         if problems:
             print(f"[{site}] skip {post['slug']}: hasil expand gagal quality/fact check ({problems})")
+            # Sama seperti generate_one (seo_agent.py) - cache fakta tempat yang jadi
+            # penyebab reject supaya percobaan expand berikutnya sudah punya datanya.
+            for ent in unverified_entities[:3]:
+                try:
+                    await _verify_local_entity(ent)
+                except Exception as e:
+                    print(f'  [auto-verify] gagal verifikasi "{ent}": {type(e).__name__}: {e}')
             continue
         if new_count <= old_count:
             print(f"[{site}] skip {post['slug']}: hasil expand tidak lebih panjang ({new_count} vs {old_count} kata)")
