@@ -2837,24 +2837,42 @@ async def _internal_links_valid(site: str, content: str) -> list:
 # bilang "sudah lengkap" walau sebenarnya belum, sama tidak reliable-nya dgn hallucination.
 # Skor ini INFORMASIONAL (tampil di dashboard CMS utk staf), TIDAK memblokir publish -
 # beda dari duplicate/stuffing di bawah yang memang genuine tanda kualitas buruk.
-INTENT_PATTERNS = {
-    "harga": r"rp\s?[\d.,]+|harga",
-    "jam/check-in": r"jam\s?\d|check-?in|check-?out|wita|buka\s",
-    "parkir": r"parkir",
+#
+# Dipisah UNIVERSAL vs ACCOMMODATION_ONLY (2026-08-08, Modul 6 PRD Agus "prioritas
+# perbaikan kualitas artikel") - SEBELUM ini SEMUA 8 pattern dicek utk SEMUA artikel
+# tanpa pandang topik, termasuk "parkir"/"kontak-booking"/"harga"/"jam-checkin" yang
+# HANYA masuk akal utk artikel soal properti sendiri - artikel informational ttg
+# entitas pihak ketiga (candi/landmark/dst, lihat write_article/quality_check yang
+# SUDAH entity-aware) SENGAJA tidak lagi diminta bahas parkir/booking (Modul 2+3 SUDAH
+# melarang keras itu) - kalau intent_coverage_score tetap pakai checklist lama, skor &
+# "kurang" yang tampil ke staf di CMS jadi MISLEADING (artikel yang justru BENAR
+# mengikuti aturan baru malah kelihatan "kurang lengkap").
+INTENT_PATTERNS_UNIVERSAL = {
     "maps/lokasi": r"google\.com/maps|maps\.app|peta\b|lokasi",
     "tips": r"\btips\b",
     "faq": r"\*\*[^*]+\?\*\*",
     "sekitar/nearby": r"dekat\b|sekitar\b|berjarak",
+}
+INTENT_PATTERNS_ACCOMMODATION_ONLY = {
+    "harga": r"rp\s?[\d.,]+|harga",
+    "jam/check-in": r"jam\s?\d|check-?in|check-?out|wita|buka\s",
+    "parkir": r"parkir",
     "kontak/booking": r"wa\.me|whatsapp",
 }
+# Backward-compat alias - beberapa tempat lain (kalau ada) mungkin masih import nama lama.
+INTENT_PATTERNS = {**INTENT_PATTERNS_UNIVERSAL, **INTENT_PATTERNS_ACCOMMODATION_ONLY}
 
 
-def intent_coverage_score(content: str) -> dict:
+def intent_coverage_score(content: str, entity_type: str = ENTITY_TYPE_ACCOMMODATION) -> dict:
     lower = content.lower()
+    patterns = (
+        INTENT_PATTERNS if entity_type == ENTITY_TYPE_ACCOMMODATION
+        else INTENT_PATTERNS_UNIVERSAL
+    )
     tercakup, kurang = [], []
-    for label, pattern in INTENT_PATTERNS.items():
+    for label, pattern in patterns.items():
         (tercakup if re.search(pattern, lower) else kurang).append(label)
-    skor = round(len(tercakup) / len(INTENT_PATTERNS) * 100)
+    skor = round(len(tercakup) / len(patterns) * 100)
     return {"skor_persen": skor, "tercakup": tercakup, "kurang": kurang}
 
 
@@ -3475,7 +3493,7 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
         # Intent Coverage Score (2026-07-29, roadmap AI Grow item 3) - informasional,
         # TIDAK memblokir publish (lihat catatan di intent_coverage_score) - tampil di
         # dashboard CMS supaya staf tahu artikel mana yang masih kurang lengkap intent-nya.
-        "intent_coverage": intent_coverage_score(content_final),
+        "intent_coverage": intent_coverage_score(content_final, entity_type=entity_type),
         # Content Health (2026-07-31, PRD "AI Blog V2" modul 15) - SENGAJA BUKAN skor
         # "AI Detection %" (tidak ada metode AI-detection yang reliable, apalagi utk
         # Bahasa Indonesia - lihat catatan di write_article). Angka REAL & bisa
