@@ -30,6 +30,7 @@ Jalankan manual: `venv/bin/python -m scripts.seo_agent --site pelangi --count 1`
 """
 import argparse
 import asyncio
+import difflib
 import json
 import math
 import os
@@ -1788,12 +1789,32 @@ async def _verify_local_entity(name: str, context: str = "Bedugul Bali") -> Opti
 
     Berbagi 1 pool budget yang SAMA dgn _search_competitors (lihat _serper_budget_ok,
     SERPER_TARGET_DAYS) - gagal-diam (return None) kalau API key kosong/budget habis/
-    request gagal, TIDAK PERNAH menggagalkan alur generate_one yang memanggilnya."""
-    existing = await db.landmark_facts.find_one({"name": name})
-    if existing and existing.get("last_crawled"):
-        age_days = (datetime.now(timezone.utc) - datetime.fromisoformat(existing["last_crawled"])).days
-        if age_days < LANDMARK_FACT_MAX_AGE_DAYS:
-            return existing
+    request gagal, TIDAK PERNAH menggagalkan alur generate_one yang memanggilnya.
+
+    Pencocokan cache LONGGAR, bukan exact-match (2026-08-08, permintaan Agus - "kalau
+    sudah punya jangan cari lagi"): fact_check() (pemanggil fungsi ini) mengekstrak nama
+    entity lewat LLM bebas per giliran - variasi penyebutan wajar terjadi antar artikel
+    ("Joger Luwus" vs "Joger Luwus Bedugul" vs "Joger") walau tempat yang dimaksud SAMA.
+    Exact-match string akan salah anggap itu 3 entity beda & Serper dipanggil 3x utk
+    tempat yang sama - dicocokkan dgn substring + fuzzy ratio (difflib, GRATIS, tanpa
+    panggilan API tambahan - beda dari opsi embedding yang justru nambah biaya demi
+    hemat biaya lain, kontraproduktif) SEBELUM memutuskan perlu cari baru atau tidak."""
+    semua = await db.landmark_facts.find({}, {"name": 1, "last_crawled": 1}).to_list(200)
+    norm = name.strip().lower()
+    existing_name = None
+    for e in semua:
+        en = (e.get("name") or "").strip().lower()
+        if not en:
+            continue
+        if norm == en or norm in en or en in norm or difflib.SequenceMatcher(None, norm, en).ratio() > 0.82:
+            existing_name = e["name"]
+            break
+    if existing_name:
+        existing = await db.landmark_facts.find_one({"name": existing_name})
+        if existing and existing.get("last_crawled"):
+            age_days = (datetime.now(timezone.utc) - datetime.fromisoformat(existing["last_crawled"])).days
+            if age_days < LANDMARK_FACT_MAX_AGE_DAYS:
+                return existing
     if not SERPER_API_KEY or not await _serper_budget_ok():
         return None
     try:
