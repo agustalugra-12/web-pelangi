@@ -2174,6 +2174,36 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
     competitor_result = await analyze_competitors(keyword, site=site)
     maps_url = await _maps_url_for_site(site)
 
+    # Entity-aware Knowledge Injection (2026-08-08, Modul 2+6 PRD Agus "prioritas
+    # perbaikan kualitas artikel") - SEBELUM ini SEMUA artikel (apa pun topiknya) pakai
+    # instruksi SAMA "properti WAJIB disebut di 1-2 sub-judul" tanpa pandang bulu - utk
+    # keyword yang genuinely soal properti sendiri (Accommodation) itu wajar, TAPI utk
+    # artikel yang topiknya murni informational ttg entitas pihak ketiga (candi/landmark/
+    # sekolah/dst - lihat 4 artikel nyata yang direvisi hari ini krn awalnya premisnya
+    # sendiri tidak masuk akal) memaksakan penyebutan properti di sub-judul TERTENTU
+    # terasa dipaksakan/spam, bukan konten informasional genuine. entity_type dihitung
+    # SEKALI di sini (reuse _klasifikasi_entity_type yang sudah ada & teruji, TIDAK ADA
+    # panggilan API tambahan) - dipakai di bawah utk pilih instruksi proporsi yang sesuai.
+    entity_type = _klasifikasi_entity_type(keyword)
+    if entity_type == ENTITY_TYPE_ACCOMMODATION:
+        proporsi_properti_instruksi = (
+            "Apakah properti hanya disebut di 1-2 sub-judul saja (bukan di semua)?"
+        )
+    else:
+        proporsi_properti_instruksi = (
+            f'Keyword ini soal entitas PIHAK KETIGA (terklasifikasi "{entity_type}"), BUKAN '
+            "soal properti sendiri - artikel ini WAJIB tetap konten informasional genuine ttg "
+            "topik itu (bukan artikel terselubung ttg properti). LARANGAN KERAS (bukan sekadar "
+            "opsional): JANGAN PERNAH buat sub-judul apa pun (dgn judul/isi apa pun) yang isinya "
+            "membahas penginapan/tempat menginap/kamar/fasilitas properti - PERSIS 6 sub-judul "
+            "WAJIB seluruhnya (6/6, bukan 4-5) tentang topik pihak ketiga ini saja, sama seperti "
+            "larangan sub-judul kebijakan generik di ATURAN TAMBAHAN di atas. JANGAN PERNAH buat "
+            "FAQ soal penginapan/kamar/rombongan juga - 4 FAQ WAJIB seluruhnya soal topik ini. "
+            "Penyebutan penginapan/Pelangi Homestay/Harmoni Hills HANYA BOLEH sbg maksimal 1 "
+            "kalimat pendek di paragraf PENUTUP saja (CTA, bukan sub-judul/FAQ) - artikel BOLEH "
+            "0 kali menyebut properti kalau memang tidak ada celah natural bahkan di penutup."
+        )
+
     # Editorial Writing Standard (2026-07-28, permintaan user, diringkas dari pedoman
     # panjang yang diberikan) - target BUKAN "supaya tidak terdeteksi AI detector"
     # (tidak pernah jadi tujuan di sistem ini sejak awal), tapi standar editorial
@@ -2220,8 +2250,8 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "Kalau ada yang kurang dari semua pengecekan ini, revisi dulu sebelum kirim. "
         "TAMBAHAN (2026-08-04, PRD AI Blog v2.0): apakah paragraf pembuka BENAR-BENAR tidak "
         "menyebut nama properti? Apakah dari 6 sub-judul, MAYORITAS (4-5) benar-benar tentang "
-        "topik/destinasi, bukan tentang properti? Apakah properti hanya disebut di 1-2 sub-judul "
-        "saja (bukan di semua)? Apakah ada harga/suhu/jarak/kapasitas yang kamu tulis LEBIH dari "
+        f"topik/destinasi, bukan tentang properti? {proporsi_properti_instruksi} Apakah ada "
+        "harga/suhu/jarak/kapasitas yang kamu tulis LEBIH dari "
         "sekali dgn angka yang sama? Kalau ADA salah satu yang jawabannya tidak sesuai target, "
         "revisi dulu.\n\n"
         # Editorial Standard v2 (2026-07-29, permintaan user) - target artikel jadi "halaman
@@ -2730,11 +2760,36 @@ async def _resize_to_webp(png_bytes: bytes, max_width: int = 1200, quality: int 
 # ---------------------------------------------------------------------------
 # 7. Quality Gate - rule-based, BUKAN AI menilai AI
 # ---------------------------------------------------------------------------
-def quality_check(article: dict, content_with_links: str) -> list:
+_SUBJUDUL_PENGINAPAN_PATTERN = re.compile(
+    r"\b(menginap|penginapan|homestay|hills|kamar|akomodasi)\b", re.IGNORECASE,
+)
+
+
+def quality_check(article: dict, content_with_links: str, entity_type: str = ENTITY_TYPE_ACCOMMODATION) -> list:
+    """entity_type (2026-08-08, Modul 2+3 PRD Agus "prioritas perbaikan kualitas artikel") -
+    lapis KODE (bukan cuma prompt) yang menolak sub-judul ttg penginapan/kamar utk artikel
+    yang topiknya entitas pihak ketiga (Tourist Attraction/Retail/dst) - prompt SUDAH
+    melarang keras ini (lihat write_article, proporsi_properti_instruksi) TAPI TERBUKTI
+    tidak 100% dipatuhi lewat tes langsung (2 draft berturut, 1 taat 1 tidak - draft kedua
+    tetap bikin sub-judul "Pilihan Menginap Dekat Pura Batu Meringgit" walau instruksi
+    eksplisit melarang) - pola yang SAMA persis dgn semua guard "prompt-only tidak cukup
+    reliable" yang sudah terbukti di seluruh sistem hari ini, solusinya sama: reject &
+    requeue via kode, bukan cuma percaya instruksi diikuti."""
     problems = []
     word_count = len(content_with_links.split())
     if word_count < 600:
         problems.append(f"kurang dari 600 kata (dapat {word_count})")
+    if entity_type != ENTITY_TYPE_ACCOMMODATION:
+        # Cek SEMUA blok **...** (sub-judul MAUPUN pertanyaan FAQ - format FAQ di sistem
+        # ini "**pertanyaan asli?**", jadi keduanya sama-sama tertangkap regex ini,
+        # SENGAJA tidak dibedakan - larangan di prompt eksplisit mencakup keduanya: "4
+        # FAQ WAJIB seluruhnya soal topik ini", bukan cuma sub-judul badan artikel).
+        blok_bermasalah = [s for s in re.findall(r"\*\*([^*]+)\*\*", article.get("content", "")) if _SUBJUDUL_PENGINAPAN_PATTERN.search(s)]
+        if blok_bermasalah:
+            problems.append(
+                f'sub-judul/FAQ ttg penginapan/kamar TIDAK BOLEH ada utk topik entitas pihak '
+                f'ketiga (entity_type="{entity_type}"): {blok_bermasalah}'
+            )
     # Bug nyata ditemukan (2026-07-26): model kadang menulis placeholder literal
     # "**Pertanyaan?**" lalu pertanyaan aslinya di baris *italic* terpisah, bukan
     # pertanyaan asli LANGSUNG di dalam **...** seperti diminta prompt - regex ini
@@ -3185,7 +3240,8 @@ async def generate_one(site: str, exclude_ids: Optional[set] = None) -> dict:
         article["content"] = _normalize_faq_format(article["content"])
         content_final = _inject_links(article["content"], links, WA_BY_SITE[site], article.get("_maps_url"))
 
-        problems = quality_check(article, content_final)
+        entity_type = _klasifikasi_entity_type(keyword_doc["keyword"])
+        problems = quality_check(article, content_final, entity_type=entity_type)
         fact_issues, unverified_entities = await fact_check(site, content_final)
         if fact_issues:
             problems.append("fact-check: " + "; ".join(fact_issues))
@@ -3241,7 +3297,7 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
                     if not _slop_phrases_terdeteksi(fixed_final):
                         article["title"], article["excerpt"], article["content"] = fixed["title"], fixed["excerpt"], fixed_content_norm
                         content_final = fixed_final
-                        problems = quality_check(article, content_final)
+                        problems = quality_check(article, content_final, entity_type=entity_type)
                         fact_issues, unverified_entities = await fact_check(site, content_final)
                         if fact_issues:
                             problems.append("fact-check: " + "; ".join(fact_issues))
