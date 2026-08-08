@@ -499,22 +499,51 @@ ENTITY_TYPE_MARKERS: dict = {
     "Government Office": ("kantor pos", "kantor desa", "kantor kelurahan", "kantor camat", "puskesmas"),
     "Religious Place": ("pura batu meringgit", "pura teratai bang", "kelenteng"),
     "Retail": ("indomaret", "alfamart", "minimarket", "pasar"),
-    "Health Service": ("apotek", "klinik"),
+    # "rumah sakit" (2026-08-08, PRD "Intent/Entity Validation" - insiden nyata: artikel
+    # "Mencari Rumah Sakit di Bedugul Bali" lolos tanpa entitas terklasifikasi krn cuma
+    # apotek/klinik yang terdaftar) ditambahkan di sini, BUKAN kategori baru - sama-sama
+    # layanan kesehatan pihak ketiga, aturan larangan angle yang sama berlaku.
+    "Health Service": ("apotek", "klinik", "rumah sakit", "puskesmas"),
     "Tourist Attraction": (
         "kebun raya", "the blooms garden", "secret garden village", "bali farm house",
         "the sila's agrotourism", "sila's agrotourism", "air terjun leke", "gunung tapak", "bukit tapak",
+        # Ulun Danu Beratan (2026-08-08) - landmark UTAMA Bedugul, sebelumnya TIDAK ADA di
+        # marker manapun sama sekali (gap nyata: artikel "Cara Booking Tiket Pura Beratan
+        # Online" lolos tanpa entitas terklasifikasi). Masuk Tourist Attraction (bukan
+        # Religious Place) krn ini objek wisata BERBAYAR/ticketed sungguhan (beda dari
+        # pura batu meringgit/pura teratai bang yang pura lokal biasa) - "Booking" angle
+        # TETAP terlarang utk non-Accommodation (lihat NON_ACCOMMODATION_FORBIDDEN_ANGLES),
+        # klaim spesifik soal cara beli tiket/online tetap harus lolos fact-check dulu.
+        "ulun danu", "pura beratan", "pura ulun danu",
     ),
     "Transport Hub": ("terminal",),
+    # Education (2026-08-08, insiden nyata: "Panduan Lengkap Cara Daftar SD di Bedugul
+    # untuk Orang Tua" - blog homestay menulis panduan pendaftaran sekolah, tidak ada
+    # hubungannya sama sekali dgn penginapan/wisata) - kategori BARU, bukan sekadar
+    # nambah marker ke kategori lama, krn benar2 tidak ada kategori pendidikan sebelumnya.
+    # "sd"/"tk" (2 huruf) AMAN dipakai sekarang - _klasifikasi_entity_type di atas sudah
+    # upgrade ke word-boundary regex (2026-08-08), bukan substring polos lagi, jadi tidak
+    # akan salah tangkap fragmen di tengah kata lain. Insiden nyata yang jadi alasan ini
+    # ditambahkan: "Cara Daftar SD di Bedugul" pakai singkatan telanjang "SD", bukan
+    # "sekolah dasar" - tanpa marker ini keyword itu lolos tanpa terklasifikasi.
+    "Education": ("sd negeri", "sekolah dasar", "smp negeri", "sekolah menengah", "paud", "kampus", "universitas", "sekolah", "sd", "tk"),
 }
 
 
 def _klasifikasi_entity_type(seed_keyword: str) -> str:
     """Return nama tipe entitas dari ENTITY_TYPE_MARKERS kalau ada yang cocok,
     default "Accommodation" (perilaku lama, semua angle CLUSTER_ANGLE boleh) kalau
-    seed tidak match penanda manapun - berarti seed soal properti/kamar sendiri."""
+    seed tidak match penanda manapun - berarti seed soal properti/kamar sendiri.
+
+    Word-boundary regex (2026-08-08, sebelumnya substring polos `marker in seed_lower`) -
+    upgrade ini SUPAYA marker singkat/rawan tabrakan (mis. "sd") bisa dipakai dgn aman
+    tanpa resiko salah tangkap di tengah kata lain (naive substring match "sd" bisa
+    kena kata apa pun yang kebetulan mengandung fragmen itu). `\b` di boundary phrase
+    multi-kata (mis. "kebun raya") tetap benar - cuma menjaga batas AWAL/AKHIR frasa
+    penuh, spasi di tengah tetap literal."""
     seed_lower = seed_keyword.lower()
     for entity_type, markers in ENTITY_TYPE_MARKERS.items():
-        if any(marker in seed_lower for marker in markers):
+        if any(re.search(rf"\b{re.escape(marker)}\b", seed_lower) for marker in markers):
             return entity_type
     return ENTITY_TYPE_ACCOMMODATION
 
@@ -529,6 +558,47 @@ def _angle_terlarang_untuk_entity_type(entity_type: str) -> set:
     if entity_type == ENTITY_TYPE_ACCOMMODATION:
         return set()
     return NON_ACCOMMODATION_FORBIDDEN_ANGLES
+
+
+# Intent Validation Engine (2026-08-08, PRD Agus "prioritas perbaikan kualitas artikel" -
+# insiden nyata: "Cara Booking Indomaret Dekat Kebun Raya Bedugul" & "Panduan Lengkap Cara
+# Daftar SD di Bedugul" TERBIT sbg artikel penuh - premisnya sendiri tidak masuk akal
+# [minimarket tidak "dibooking", homestay blog menulis panduan pendaftaran sekolah] tapi
+# TIDAK ADA satu titik pun dalam pipeline yang cek APAKAH modifier "booking/daftar/pesan"
+# di keyword masuk akal utk entitas yang disebut. Root cause: _klasifikasi_entity_type +
+# _angle_terlarang_untuk_entity_type di atas SUDAH ADA (2026-08-07) dan SUDAH cukup utk
+# menolak "Cara Booking Indomaret" (Retail + angle "Booking" = terlarang) - TAPI cuma
+# dipanggil di generate_keyword_cluster (jalur manual/fallback), TIDAK PERNAH di
+# _generate_new_keywords (jalur UTAMA, dipanggil tiap pool "belum_dibuat" habis) - di
+# situlah kedua contoh nyata di atas lolos.
+_TRANSAKSI_MODIFIER_PATTERN = re.compile(
+    r"cara\s+(booking|pesan|reservasi|daftar|beli\s*tiket|memesan|mendaftar)"
+    r"|\bbooking\s+(online|tiket)?\b|\breservasi\b|\bpre.?order\b",
+    re.IGNORECASE,
+)
+
+
+def _validasi_intent_keyword(keyword: str) -> Optional[str]:
+    """Cek APAKAH kombinasi modifier transaksional + entitas di keyword ini masuk akal,
+    SEBELUM keyword masuk pool. Return alasan penolakan (str) kalau TIDAK valid, None
+    kalau valid (termasuk semua keyword soal properti sendiri - Accommodation selalu
+    lolos, booking/pesan memang alur bisnis wajar utk itu).
+
+    Reuse penuh _klasifikasi_entity_type/NON_ACCOMMODATION_FORBIDDEN_ANGLES yang sudah
+    ada & TERBUKTI benar (kasus ATM sebelumnya) - fungsi ini cuma nambah JALUR pengecekan
+    baru (langsung dari TEKS keyword, bukan cluster/angle yang dipilih model sendiri -
+    model bisa saja tidak menandai cluster="Booking" scr eksplisit walau teksnya jelas
+    transaksional, jadi cek teks langsung sbg lapis tambahan, bukan pengganti)."""
+    entity_type = _klasifikasi_entity_type(keyword)
+    if entity_type == ENTITY_TYPE_ACCOMMODATION:
+        return None
+    if _TRANSAKSI_MODIFIER_PATTERN.search(keyword):
+        return (
+            f'keyword menyiratkan transaksi ("booking"/"pesan"/"daftar"/"reservasi") dengan '
+            f'entitas pihak ketiga terklasifikasi "{entity_type}" - properti tidak py kendali/'
+            f'data atas transaksi ini, resiko tinggi mengarang detail (jam/harga/prosedur)'
+        )
+    return None
 
 
 CANNIBALIZATION_THRESHOLD = 0.65
@@ -976,7 +1046,16 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
 
     now = datetime.now(timezone.utc).isoformat()
     accepted = 0
+    intent_rejected = 0
     for (cand, cand_intent, cand_cluster), cand_emb in zip(candidates, cand_embeds):
+        # Intent Validation Engine (2026-08-08) - dicek DULUAN (murni regex+dict lookup,
+        # tanpa biaya) sebelum dupe-check yang butuh embedding - lihat _validasi_intent_
+        # keyword utk penjelasan lengkap & insiden nyata yang mendasarinya.
+        alasan_tolak = _validasi_intent_keyword(cand)
+        if alasan_tolak:
+            intent_rejected += 1
+            print(f"  [keyword agent] DITOLAK (intent invalid): \"{cand}\" - {alasan_tolak}")
+            continue
         is_dupe = any(_cosine(cand_emb, e) > 0.88 for e in existing_embeds)
         if is_dupe:
             continue
@@ -995,7 +1074,7 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
             upsert=True,
         )
         accepted += 1
-    print(f"  [keyword agent] {accepted}/{len(candidates)} keyword baru diterima (sisanya duplikat semantik)")
+    print(f"  [keyword agent] {accepted}/{len(candidates)} keyword baru diterima ({intent_rejected} ditolak intent invalid, sisanya duplikat semantik)")
 
 
 async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: int = 15) -> dict:
@@ -1086,6 +1165,15 @@ async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: i
     utama_masuk = False
 
     for (cand, cand_intent, cand_cluster), cand_emb in zip(candidates, cand_embeds):
+        # Intent Validation Engine (2026-08-08) - lapis TAMBAHAN di atas gating angle_
+        # terlarang_untuk_entity_type yang sudah ada di fungsi ini (entity_type/angle_
+        # tersedia di atas) - itu cek LABEL cluster yang model pilih sendiri, ini cek TEKS
+        # keyword langsung (jaga2 model tidak konsisten menandai cluster="Booking" walau
+        # teksnya transaksional). Lihat _validasi_intent_keyword utk detail lengkap.
+        intent_invalid = _validasi_intent_keyword(cand)
+        if intent_invalid:
+            result["rejected"].append({"keyword": cand, "cluster": cand_cluster, "reason": f"intent tidak valid: {intent_invalid}"})
+            continue
         fasilitas_hit = _keyword_menjanjikan_fasilitas_tidak_ada(cand)
         if fasilitas_hit:
             result["rejected"].append({"keyword": cand, "cluster": cand_cluster, "reason": f"menjanjikan fasilitas tidak ada: {fasilitas_hit}"})
