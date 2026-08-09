@@ -496,9 +496,23 @@ NON_ACCOMMODATION_FORBIDDEN_ANGLES = {"View", "Keluarga", "Pasangan", "Day Use",
 ENTITY_TYPE_MARKERS: dict = {
     "Financial Service": ("atm", "bank"),
     "Automotive": ("bengkel", "spbu", "pom bensin", "tambal ban"),
-    "Government Office": ("kantor pos", "kantor desa", "kantor kelurahan", "kantor camat", "puskesmas"),
+    # "kantor polisi"/"polsek"/"polres" (2026-08-10, audit lanjutan permintaan Agus -
+    # gap ditemukan sebelum sempat jadi insiden nyata, belum ada keyword/artikel jenis
+    # ini yang pernah dibuat sistem, dicek langsung ke db.blog_posts kosong total) -
+    # tanpa marker ini, keyword soal kantor polisi akan default ke "Accommodation"
+    # (semua angle boleh, termasuk "Pasangan"/"Day Use"/"Booking" yang jelas tidak masuk
+    # akal utk kantor polisi) - sama root cause dgn kantor pos/desa/kelurahan/camat yang
+    # sudah lebih dulu ada di sini.
+    "Government Office": ("kantor pos", "kantor desa", "kantor kelurahan", "kantor camat", "puskesmas", "kantor polisi", "polsek", "polres", "kantor imigrasi", "samsat", "disdukcapil"),
     "Religious Place": ("pura batu meringgit", "pura teratai bang", "kelenteng"),
     "Retail": ("indomaret", "alfamart", "minimarket", "pasar"),
+    # Restaurant (2026-08-10, kategori BARU - audit lanjutan permintaan Agus, gap
+    # ditemukan SEBELUM jadi insiden: artikel restoran yang sudah terbit sejauh ini
+    # [mis. "Rumah Makan Bli Wayan", "Rumah Makan Mentari"] kebetulan semua angle-nya
+    # masuk akal, TAPI tanpa kategori ini tidak ada JAMINAN sistemik - keyword restoran
+    # baru bisa saja lolos dgn angle "Pasangan"/"Day Use"/"Booking" krn default ke
+    # Accommodation sama seperti kantor polisi di atas sebelum diperbaiki.
+    "Restaurant": ("restoran", "rumah makan", "warung makan", "kedai kopi", "kafe", "cafe"),
     # "rumah sakit" (2026-08-08, PRD "Intent/Entity Validation" - insiden nyata: artikel
     # "Mencari Rumah Sakit di Bedugul Bali" lolos tanpa entitas terklasifikasi krn cuma
     # apotek/klinik yang terdaftar) ditambahkan di sini, BUKAN kategori baru - sama-sama
