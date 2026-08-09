@@ -495,7 +495,11 @@ NON_ACCOMMODATION_FORBIDDEN_ANGLES = {"View", "Keluarga", "Pasangan", "Day Use",
 # seed yang memang soal properti/kamar Pelangi/Harmoni sendiri).
 ENTITY_TYPE_MARKERS: dict = {
     "Financial Service": ("atm", "bank"),
-    "Automotive": ("bengkel", "spbu", "pom bensin", "tambal ban"),
+    # "pompa bensin" (2026-08-10, audit "cek semua cluster" - varian urutan kata dari
+    # "pom bensin" yang sudah ada, TIDAK ke-match krn regex word-boundary butuh frasa
+    # PERSIS - keyword nyata "pompa bensin dengan view pegunungan di Bedugul" lolos ke
+    # Accommodation tanpa marker ini).
+    "Automotive": ("bengkel", "spbu", "pom bensin", "pompa bensin", "tambal ban"),
     # "kantor polisi"/"polsek"/"polres" (2026-08-10, audit lanjutan permintaan Agus -
     # gap ditemukan sebelum sempat jadi insiden nyata, belum ada keyword/artikel jenis
     # ini yang pernah dibuat sistem, dicek langsung ke db.blog_posts kosong total) -
@@ -504,7 +508,21 @@ ENTITY_TYPE_MARKERS: dict = {
     # akal utk kantor polisi) - sama root cause dgn kantor pos/desa/kelurahan/camat yang
     # sudah lebih dulu ada di sini.
     "Government Office": ("kantor pos", "kantor desa", "kantor kelurahan", "kantor camat", "puskesmas", "kantor polisi", "polsek", "polres", "kantor imigrasi", "samsat", "disdukcapil"),
-    "Religious Place": ("pura batu meringgit", "pura teratai bang", "kelenteng"),
+    # "masjid" (2026-08-10, audit "cek semua cluster" - insiden PALING mencolok yang
+    # ditemukan: keyword nyata "masjid untuk pasangan di bedugul" & "masjid di bedugul
+    # untuk ibadah jangka panjang" sudah ADA di pool [belum_dibuat, belum sempat jadi
+    # artikel] - persis contoh absurd yang dikhawatirkan PRD Agus, tapi ini KEJADIAN
+    # NYATA bukan hipotetis. Dicek dulu tidak ada risiko false-positive - SEMUA 10
+    # keyword ber-"masjid" di pool memang masjid sbg SUBJEK, tidak ada satu pun pola
+    # "villa/hotel dekat masjid" [beda dari kasus "pura" di bawah yang punya banyak
+    # keyword lokasi villa dekat pura, makanya pura TIDAK dijadikan marker bare kata
+    # generik, tetap per-nama spesifik]. "pura puncak candi mas"/"pura pucak sangkur" -
+    # 2 pura BERNAMA yang sudah ada keyword nyata di pool tapi belum terdaftar (sama
+    # pola dgn "ulun danu"/"pura beratan"/"batu meringgit"/"teratai bang" yang sudah
+    # lebih dulu ada) - keyword "pura puncak candi mas bedugul day use wisata budaya"
+    # & "cara booking tiket kunjungan pura puncak candi mas bedugul" lolos ke
+    # Accommodation tanpa ini.
+    "Religious Place": ("pura batu meringgit", "pura teratai bang", "kelenteng", "masjid", "pura puncak candi mas", "pura pucak sangkur"),
     "Retail": ("indomaret", "alfamart", "minimarket", "pasar"),
     # Restaurant (2026-08-10, kategori BARU - audit lanjutan permintaan Agus, gap
     # ditemukan SEBELUM jadi insiden: artikel restoran yang sudah terbit sejauh ini
@@ -517,7 +535,12 @@ ENTITY_TYPE_MARKERS: dict = {
     # "Mencari Rumah Sakit di Bedugul Bali" lolos tanpa entitas terklasifikasi krn cuma
     # apotek/klinik yang terdaftar) ditambahkan di sini, BUKAN kategori baru - sama-sama
     # layanan kesehatan pihak ketiga, aturan larangan angle yang sama berlaku.
-    "Health Service": ("apotek", "klinik", "rumah sakit", "puskesmas"),
+    # "apotik" (varian ejaan "apotek", TIDAK ke-match tanpa ini krn word-boundary butuh
+    # ejaan persis) & "dokter" (2026-08-10, audit "cek semua cluster" - keyword nyata
+    # "apotik di bedugul untuk pasangan wisata" & "dokter di bedugul untuk pasangan
+    # muda"/"dokter di bedugul untuk konsultasi singkat day use" lolos ke Accommodation
+    # tanpa marker ini).
+    "Health Service": ("apotek", "apotik", "klinik", "rumah sakit", "puskesmas", "dokter"),
     "Tourist Attraction": (
         "kebun raya", "the blooms garden", "secret garden village", "bali farm house",
         "the sila's agrotourism", "sila's agrotourism", "air terjun leke", "gunung tapak", "bukit tapak",
@@ -540,8 +563,32 @@ ENTITY_TYPE_MARKERS: dict = {
     # akan salah tangkap fragmen di tengah kata lain. Insiden nyata yang jadi alasan ini
     # ditambahkan: "Cara Daftar SD di Bedugul" pakai singkatan telanjang "SD", bukan
     # "sekolah dasar" - tanpa marker ini keyword itu lolos tanpa terklasifikasi.
-    "Education": ("sd negeri", "sekolah dasar", "smp negeri", "sekolah menengah", "paud", "kampus", "universitas", "sekolah", "sd", "tk"),
+    # "sma"/"smp" bare (2026-08-10, audit "cek semua cluster" - sama pola dgn "sd"/"tk"
+    # di atas: keyword nyata "SMA di Bedugul dengan pemandangan pegunungan"/"SMP di
+    # Bedugul cocok untuk anak pasangan muda" pakai singkatan telanjang, tidak match
+    # "smp negeri"/"sekolah menengah" yang sudah ada).
+    "Education": ("sd negeri", "sekolah dasar", "smp negeri", "sekolah menengah", "paud", "kampus", "universitas", "sekolah", "sd", "tk", "sma", "smp"),
 }
+
+
+# Kata akomodasi EKSPLISIT (2026-08-10, bug nyata ditemukan lewat audit penuh - permintaan
+# Agus "cek semua cluster") - "villa dekat kebun raya bedugul" & "villa dekat Pura Ulun
+# Danu Beratan" (~30+ keyword ASLI di pool, salah satu angle paling bernilai utk bisnis
+# ini) SALAH terklasifikasi jadi "Tourist Attraction" krn cuma cek "ada marker match di
+# mana pun di teks", tanpa peduli keyword-nya SEBENARNYA tentang properti sendiri (villa/
+# hotel) dgn landmark cuma sbg PENANDA LOKASI. Akibatnya angle "Pasangan"/"Booking"/"Day
+# Use" (yang justru relevan & bernilai utk villa dekat landmark romantis) ikut DIBLOKIR
+# secara keliru. Kata-kata di bawah, kalau muncul di keyword, artinya keyword itu PASTI
+# tentang properti sendiri - menang MUTLAK di atas marker landmark/entitas pihak ketiga
+# apa pun yang ikut disebut, TIDAK PERNAH sebaliknya (landmark sbg subjek keyword TIDAK
+# PERNAH menyebut kata-kata ini, lihat kasus nyata "masjid untuk pasangan"/"pura X day
+# use" yang justru TIDAK mengandung kata2 ini sama sekali - makanya override ini aman).
+_ACCOMMODATION_PRIORITY_WORDS = (
+    "hotel", "villa", "homestay", "cottage", "penginapan", "guesthouse", "guest house",
+    "resort", "losmen", "glamping", "akomodasi", "bungalow",
+    "tempat menginap", "tempat nginap", "tempat inap", "tempat tidur", "tempat nginep",
+    "menginap", "nginap", "nginep",
+)
 
 
 def _klasifikasi_entity_type(seed_keyword: str) -> str:
@@ -556,6 +603,8 @@ def _klasifikasi_entity_type(seed_keyword: str) -> str:
     multi-kata (mis. "kebun raya") tetap benar - cuma menjaga batas AWAL/AKHIR frasa
     penuh, spasi di tengah tetap literal."""
     seed_lower = seed_keyword.lower()
+    if any(re.search(rf"\b{re.escape(w)}\b", seed_lower) for w in _ACCOMMODATION_PRIORITY_WORDS):
+        return ENTITY_TYPE_ACCOMMODATION
     for entity_type, markers in ENTITY_TYPE_MARKERS.items():
         if any(re.search(rf"\b{re.escape(marker)}\b", seed_lower) for marker in markers):
             return entity_type
