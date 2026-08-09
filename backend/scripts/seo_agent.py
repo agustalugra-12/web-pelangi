@@ -544,6 +544,14 @@ ENTITY_TYPE_MARKERS: dict = {
     "Tourist Attraction": (
         "kebun raya", "the blooms garden", "secret garden village", "bali farm house",
         "the sila's agrotourism", "sila's agrotourism", "air terjun leke", "gunung tapak", "bukit tapak",
+        # "air terjun" BARE (2026-08-10, audit pool Pelangi - permintaan Agus "cek pool
+        # pelangi juga") - beda dari "gunung"/"kebun" yang SENGAJA tidak dijadikan
+        # marker bare (resiko tinggi nabrak "villa dekat gunung/kebun X" yang legit),
+        # "air terjun" AMAN krn _ACCOMMODATION_PRIORITY_WORDS di atas sudah melindungi
+        # SEMUA kasus "hotel/vila dekat air terjun X" (diverifikasi eksplisit) - yang
+        # tersisa ("backpacker ke air terjun bedugul", "air terjun bedugul cocok utk
+        # keluarga") murni soal air terjunnya sbg SUBJEK, bukan penginapan.
+        "air terjun",
         # Ulun Danu Beratan (2026-08-08) - landmark UTAMA Bedugul, sebelumnya TIDAK ADA di
         # marker manapun sama sekali (gap nyata: artikel "Cara Booking Tiket Pura Beratan
         # Online" lolos tanpa entitas terklasifikasi). Masuk Tourist Attraction (bukan
@@ -584,7 +592,11 @@ ENTITY_TYPE_MARKERS: dict = {
 # PERNAH menyebut kata-kata ini, lihat kasus nyata "masjid untuk pasangan"/"pura X day
 # use" yang justru TIDAK mengandung kata2 ini sama sekali - makanya override ini aman).
 _ACCOMMODATION_PRIORITY_WORDS = (
-    "hotel", "villa", "homestay", "cottage", "penginapan", "guesthouse", "guest house",
+    # "vila" (2026-08-10, audit pool Pelangi - varian ejaan satu-L dari "villa" yang
+    # ternyata dipakai nyata di pool: "santai di vila dekat air terjun di bedugul" -
+    # tanpa ini keyword itu SALAH lolos ke Tourist Attraction begitu "air terjun" jadi
+    # marker bare, krn kata akomodasinya sendiri tidak terdeteksi override).
+    "hotel", "villa", "vila", "homestay", "cottage", "penginapan", "guesthouse", "guest house",
     "resort", "losmen", "glamping", "akomodasi", "bungalow",
     "tempat menginap", "tempat nginap", "tempat inap", "tempat tidur", "tempat nginep",
     "menginap", "nginap", "nginep",
