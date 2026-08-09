@@ -3237,7 +3237,7 @@ Array "issues" KOSONG kalau semua klaim spesifik di draft sudah sesuai/didukung 
 # ---------------------------------------------------------------------------
 # 8. Orkestrasi + publish
 # ---------------------------------------------------------------------------
-SITE_DOMAIN = {"pelangi": "pelangihomestay.com", "harmoni": "harmoniby.pelangihomestay.com"}
+SITE_DOMAIN = {"pelangi": "pelangihomestay.com", "harmoni": "harmonihillsvillage.com"}
 
 
 async def generate_one(site: str, exclude_ids: Optional[set] = None) -> dict:

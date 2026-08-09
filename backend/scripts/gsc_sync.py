@@ -7,9 +7,10 @@ sinkron 1x/hari sudah lebih dari cukup.
 
 Auth: service account (backend/secrets/gsc_credentials.json, TIDAK di-commit - lihat
 .gitignore backend/secrets/), ditambahkan sebagai user permission "Full" di kedua
-property GSC (pelangihomestay.com, harmoniby.pelangihomestay.com) langsung dari GSC UI
-oleh owner - service account TIDAK bisa self-provision akses ini, harus ditambahkan
-manual sekali oleh pemilik property.
+property GSC (pelangihomestay.com, harmonihillsvillage.com - GANTI dari
+harmoniby.pelangihomestay.com 2026-08-10, situs Harmoni pindah ke domain sendiri)
+langsung dari GSC UI oleh owner - service account TIDAK bisa self-provision akses ini,
+harus ditambahkan manual sekali oleh pemilik property.
 
 Jalankan manual: `venv/bin/python -m scripts.gsc_sync --site all`
 """
@@ -36,7 +37,7 @@ SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
 # Sama seperti SITE_DOMAIN di seo_agent.py - situs baru wajib ditambahkan di kedua
 # tempat (tidak di-share lewat import supaya 2 script ini tetap independen satu sama
 # lain, konsisten dgn pola yang sudah ada di proyek ini).
-SITE_DOMAIN = {"pelangi": "pelangihomestay.com", "harmoni": "harmoniby.pelangihomestay.com"}
+SITE_DOMAIN = {"pelangi": "pelangihomestay.com", "harmoni": "harmonihillsvillage.com"}
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]

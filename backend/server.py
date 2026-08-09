@@ -144,7 +144,7 @@ DEFAULT_SITE = os.environ.get("DEFAULT_SITE", "pelangi")
 
 # Sama seperti SITE_DOMAIN di scripts/gsc_sync.py & scripts/seo_agent.py (2026-07-28) -
 # dipakai admin_gsc_summary utk mencocokkan slug artikel ke URL yang disimpan GSC.
-GSC_SITE_DOMAIN = {"pelangi": "pelangihomestay.com", "harmoni": "harmoniby.pelangihomestay.com"}
+GSC_SITE_DOMAIN = {"pelangi": "pelangihomestay.com", "harmoni": "harmonihillsvillage.com"}
 
 
 def _resolve_site_from_host(request: Request) -> str:
