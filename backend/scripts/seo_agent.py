@@ -972,6 +972,27 @@ async def get_next_keyword(site: str, exclude_ids: Optional[set] = None) -> dict
                     }},
                 )
                 continue
+            # Gate 7 - Angle-Entity (2026-08-10) - Angle-Entity Gate baru di
+            # _generate_new_keywords cuma menyaring kandidat BARU mulai sekarang, TIDAK
+            # menyentuh 141 keyword yang audit "cek semua cluster" temukan SUDAH nyasar
+            # ke pool sebelum gate itu ada (mis. "masjid untuk pasangan di bedugul",
+            # cluster="Pasangan" pada entity_type="Religious Place"). Tanpa cek di SINI
+            # juga, baris2 lama itu tetap bisa kepilih & ditulis jadi artikel asli -
+            # get_next_keyword() adalah satu2nya titik final sebelum keyword benar2
+            # dipakai nulis, jadi ini gate WAJIB, bukan opsional. Ditulis reuse fungsi yg
+            # sama persis (bukan logic baru) & mengikuti pola relabel-status Gate 1/6 di
+            # atas - baris lama otomatis "self-heal" (ke-skip & diberi status baru) begitu
+            # giliran dia muncul di rotasi, tanpa perlu script migrasi terpisah.
+            angle_terlarang_match = _angle_terlarang_untuk_entity_type(_klasifikasi_entity_type(kw_doc["keyword"]))
+            if kw_doc.get("cluster") in angle_terlarang_match:
+                await db.seo_keywords.update_one(
+                    {"id": kw_doc["id"]},
+                    {"$set": {
+                        "status": "ditolak_angle_entity_salah", "updated_at": now,
+                        "cannibalization_note": f'Gate 7: angle "{kw_doc.get("cluster")}" terlarang utk entitas non-akomodasi di keyword ini',
+                    }},
+                )
+                continue
             dupe_kw = await _keyword_cannibalizes_existing(site, kw_doc["keyword"], kw_doc["cluster"], written_cache=written_cache)
             if dupe_kw is None:
                 return kw_doc
@@ -1127,6 +1148,7 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
     now = datetime.now(timezone.utc).isoformat()
     accepted = 0
     intent_rejected = 0
+    angle_rejected = 0
     for (cand, cand_intent, cand_cluster), cand_emb in zip(candidates, cand_embeds):
         # Intent Validation Engine (2026-08-08) - dicek DULUAN (murni regex+dict lookup,
         # tanpa biaya) sebelum dupe-check yang butuh embedding - lihat _validasi_intent_
@@ -1135,6 +1157,24 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         if alasan_tolak:
             intent_rejected += 1
             print(f"  [keyword agent] DITOLAK (intent invalid): \"{cand}\" - {alasan_tolak}")
+            continue
+        # Angle-Entity Gate (2026-08-10, bug nyata ditemukan lewat audit "cek semua
+        # cluster" Agus) - jalur INI (pool-refill utama, dipanggil cron tiap kali pool
+        # "belum_dibuat" habis) TIDAK PERNAH mengecek _angle_terlarang_untuk_entity_type
+        # sama sekali, beda dari generate_keyword_cluster (jalur manual/fallback) yang
+        # SUDAH benar filter `angle_tersedia` SEBELUM model memilih. Model brainstorm
+        # bebas pilih cluster dari SEMUA 17 CLUSTER_ANGLE (line ~1056) TANPA tahu
+        # kandidat yang dihasilkannya bisa jadi soal entitas pihak ketiga - keyword spt
+        # "Kebun Raya Bedugul cocok untuk pasangan romantis" (cluster="Pasangan") lolos
+        # _validasi_intent_keyword (itu cuma cek modifier TRANSAKSIONAL spt "booking/
+        # pesan", bukan "pasangan"/"keluarga"/"day use"/dst) - inilah CELAH NYATA yang
+        # bisa menghasilkan persis kelas artikel absurd yang dikhawatirkan ("kantor
+        # polisi untuk honeymoon"), lolos dari jalur PALING SERING dipakai sistem.
+        entity_type_cand = _klasifikasi_entity_type(cand)
+        angle_terlarang_cand = _angle_terlarang_untuk_entity_type(entity_type_cand)
+        if cand_cluster in angle_terlarang_cand:
+            angle_rejected += 1
+            print(f'  [keyword agent] DITOLAK (angle "{cand_cluster}" terlarang utk entity_type="{entity_type_cand}"): "{cand}"')
             continue
         is_dupe = any(_cosine(cand_emb, e) > 0.88 for e in existing_embeds)
         if is_dupe:
@@ -1154,7 +1194,7 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
             upsert=True,
         )
         accepted += 1
-    print(f"  [keyword agent] {accepted}/{len(candidates)} keyword baru diterima ({intent_rejected} ditolak intent invalid, sisanya duplikat semantik)")
+    print(f"  [keyword agent] {accepted}/{len(candidates)} keyword baru diterima ({intent_rejected} ditolak intent invalid, {angle_rejected} ditolak angle terlarang, sisanya duplikat semantik)")
 
 
 async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: int = 15) -> dict:

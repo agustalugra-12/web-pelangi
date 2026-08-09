@@ -484,9 +484,13 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
     # "villa/vila" (Pelangi Homestay bukan villa) ditolak SEBELUM nulis draft penuh -
     # sebelumnya keyword kelas ini nyaris selalu lolos sampai tahap fact-check di ujung
     # (buang biaya draft lengkap), sekarang ditolak di gerbang paling awal (murah).
+    # ditolak_angle_entity_salah (2026-08-10, Gate 7) - keyword yg angle-nya (mis.
+    # "Pasangan"/"Day Use"/"Booking") tidak masuk akal utk entitas non-akomodasi yang
+    # dibicarakan (mis. "masjid untuk pasangan", "kantor polisi day use") - lihat
+    # _angle_terlarang_untuk_entity_type di seo_agent.py.
     keyword_counts = {
         "belum_dibuat": 0, "draft": 0, "sudah_dibuat": 0, "dilewati_mirip": 0,
-        "gagal_berulang": 0, "ditolak_tipe_properti_salah": 0,
+        "gagal_berulang": 0, "ditolak_tipe_properti_salah": 0, "ditolak_angle_entity_salah": 0,
     }
     async for row in db.seo_keywords.aggregate([
         {"$match": {"site": site}},
@@ -528,6 +532,7 @@ async def admin_seo_agent_stats(_: dict = Depends(get_current_user), site: str =
         "keyword_dilewati_mirip": keyword_counts["dilewati_mirip"],
         "keyword_gagal_berulang": keyword_counts["gagal_berulang"],
         "keyword_ditolak_tipe_properti_salah": keyword_counts["ditolak_tipe_properti_salah"],
+        "keyword_ditolak_angle_entity_salah": keyword_counts["ditolak_angle_entity_salah"],
         "last_generated_at": (last_post or {}).get("created_at"),
         "last_generated_title": (last_post or {}).get("title"),
     }
