@@ -523,14 +523,19 @@ ENTITY_TYPE_MARKERS: dict = {
     # & "cara booking tiket kunjungan pura puncak candi mas bedugul" lolos ke
     # Accommodation tanpa ini.
     "Religious Place": ("pura batu meringgit", "pura teratai bang", "kelenteng", "masjid", "pura puncak candi mas", "pura pucak sangkur"),
-    "Retail": ("indomaret", "alfamart", "minimarket", "pasar"),
+    # "joger" (2026-08-10, ditemukan saat backfill entity_type db.landmark_facts) - toko
+    # oleh-oleh terkenal, nama merek jadi tidak match kata generik apa pun sebelumnya.
+    "Retail": ("indomaret", "alfamart", "minimarket", "pasar", "joger"),
     # Restaurant (2026-08-10, kategori BARU - audit lanjutan permintaan Agus, gap
     # ditemukan SEBELUM jadi insiden: artikel restoran yang sudah terbit sejauh ini
     # [mis. "Rumah Makan Bli Wayan", "Rumah Makan Mentari"] kebetulan semua angle-nya
     # masuk akal, TAPI tanpa kategori ini tidak ada JAMINAN sistemik - keyword restoran
     # baru bisa saja lolos dgn angle "Pasangan"/"Day Use"/"Booking" krn default ke
     # Accommodation sama seperti kantor polisi di atas sebelum diperbaiki.
-    "Restaurant": ("restoran", "rumah makan", "warung makan", "kedai kopi", "kafe", "cafe"),
+    # "rumah rusa" (2026-08-10, ditemukan saat backfill entity_type db.landmark_facts) -
+    # nama resto "Rumah Rusa By The Lake" tidak mengandung frasa "rumah makan" persis,
+    # jadi tidak ke-match tanpa nama spesifik ini.
+    "Restaurant": ("restoran", "rumah makan", "warung makan", "kedai kopi", "kafe", "cafe", "rumah rusa"),
     # "rumah sakit" (2026-08-08, PRD "Intent/Entity Validation" - insiden nyata: artikel
     # "Mencari Rumah Sakit di Bedugul Bali" lolos tanpa entitas terklasifikasi krn cuma
     # apotek/klinik yang terdaftar) ditambahkan di sini, BUKAN kategori baru - sama-sama
@@ -1394,6 +1399,12 @@ async def refresh_landmark_facts(name: str, source_url: Optional[str] = None) ->
         {"$set": {
             "name": name, "source_url": source_url, "last_crawled": now,
             "headings": raw_text, "word_count": page.get("word_count", 0),
+            # entity_type (2026-08-10, respons ke PRD "Knowledge Base Baturiti" Agus -
+            # bukan database besar baru, upgrade minimal ke sistem verifikasi yang SUDAH
+            # jalan) - reuse _klasifikasi_entity_type yang sudah ada & teruji, BUKAN
+            # taksonomi baru terpisah. Dipakai _landmark_facts_block() di bawah utk
+            # kasih tahu Writer Agent kategori tempat ini + jadi dasar "nearby entity".
+            "entity_type": _klasifikasi_entity_type(name),
         }},
         upsert=True,
     )
@@ -1414,7 +1425,16 @@ async def _landmark_facts_block() -> str:
     Entry verified_via="serper_auto" (2026-08-08) ditandai eksplisit beda dari yang
     dikonfirmasi manual staf - sumbernya dipilih otomatis (hasil teratas Serper), jadi
     modelnya diberi tahu utk sedikit lebih hati-hati drpd sumber yang sudah direview
-    manusia, tanpa perlu menolak total (tetap lebih baik drpd tidak ada data)."""
+    manusia, tanpa perlu menolak total (tetap lebih baik drpd tidak ada data).
+
+    entity_type + "entity terdekat" (2026-08-10, respons ke PRD "Knowledge Base
+    Baturiti" Agus - lihat diskusi, disepakati JANGAN bangun database besar proaktif
+    di muka, upgrade minimal sistem reaktif yang sudah jalan) - "entity terdekat" DI
+    SINI SENGAJA cuma daftar nama entity lain yang SUDAH terverifikasi nyata (bukan
+    klaim jarak/waktu tempuh spesifik yang tidak pernah diverifikasi per pasangan
+    tempat - itu tetap harus lewat LANDMARK_FACTS manual spt Handara Gate kalau
+    memang dibutuhkan) - tujuannya kasih Writer Agent KANDIDAT utk internal
+    linking/konteks "sama-sama ada di kawasan Bedugul", bukan fakta jarak baru."""
     entries = await db.landmark_facts.find({}).to_list(50)
     if not entries:
         return ""
@@ -1424,15 +1444,21 @@ async def _landmark_facts_block() -> str:
         confidence = "masih segar" if age_days < LANDMARK_FACT_MAX_AGE_DAYS else f"SUDAH {age_days} hari, mungkin basi - verifikasi manual dulu kalau dipakai"
         sumber_label = "auto dari Serper, belum direview manusia" if e.get("verified_via") == "serper_auto" else "dikonfirmasi manual staf"
         heading_text = "; ".join(e.get("headings", [])[:8])
+        entity_type = e.get("entity_type") or _klasifikasi_entity_type(e["name"])
+        nearby = [o["name"] for o in entries if o["name"] != e["name"] and o.get("entity_type") == entity_type][:4]
+        nearby_text = f" | entity lain terverifikasi kategori sama: {', '.join(nearby)}" if nearby else ""
         lines.append(
-            f"- {e['name']} (sumber: {e['source_url']} [{sumber_label}], di-crawl {e['last_crawled'][:10]}, "
-            f"{confidence}): {heading_text}"
+            f"- {e['name']} [{entity_type}] (sumber: {e['source_url']} [{sumber_label}], di-crawl {e['last_crawled'][:10]}, "
+            f"{confidence}): {heading_text}{nearby_text}"
         )
     return (
         "\n\nFAKTA LANDMARK DARI SUMBER EKSTERNAL (di-crawl dari situs asli, BUKAN dari "
         "training data - kalau ada info harga/jam buka spesifik di sini, itu LEBIH "
         "TERPERCAYA drpd asumsi umum, TAPI kalau ditandai 'mungkin basi', WAJIB frasakan "
-        "sbg perkiraan/sarankan cek ulang, jangan sebut sbg pasti):\n" + "\n".join(lines)
+        "sbg perkiraan/sarankan cek ulang, jangan sebut sbg pasti. '[Kategori]' = entity_type "
+        "utk konteks angle yang relevan. 'entity lain terverifikasi kategori sama' = kandidat "
+        "internal link/penyebutan terkait, BUKAN klaim jarak - jangan sebut jarak/waktu tempuh "
+        "spesifik kecuali memang tertulis di fakta sumbernya):\n" + "\n".join(lines)
     )
 
 
@@ -2017,6 +2043,8 @@ async def _verify_local_entity(name: str, context: str = "Bedugul Bali") -> Opti
         "name": name, "source_url": source_url, "last_crawled": now,
         "headings": snippets[:8], "word_count": sum(len(s.split()) for s in snippets),
         "verified_via": "serper_auto",
+        # entity_type (2026-08-10) - lihat catatan sama di refresh_landmark_facts di atas.
+        "entity_type": _klasifikasi_entity_type(name),
     }
     await db.landmark_facts.update_one({"name": name}, {"$set": doc}, upsert=True)
     await db.landmark_sources.update_one(
