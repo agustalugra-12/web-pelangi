@@ -3690,11 +3690,23 @@ MAX_QUALITY_FAILURES_BEFORE_RETIRE = 3
 _TARGET_HARIAN_DEFAULT = 10
 _TARGET_HARIAN_KAMPANYE = {"pelangi": 15, "harmoni": 5}
 _KAMPANYE_MULAI = date(2026, 8, 1)
-_KAMPANYE_SELESAI = date(2026, 9, 30)
+_KAMPANYE_SELESAI = date(2026, 8, 10)
+
+# Fase 2 - POTONG BIAYA (2026-08-10, permintaan Agus langsung - "hari ini ada biaya
+# cukup tinggi, mulai besok masing masing 2 artikel saja") - target 15/5 fase kampanye
+# di atas TIDAK diubah/dihapus retroaktif (hari 2026-08-10 tetap pakai 15/5 spt yg
+# sudah jalan), cuma DIPERSINGKAT selesainya jadi 2026-08-10, disambung fase baru
+# 2/2 mulai 2026-08-11 s.d. akhir periode kampanye asli (2026-09-30) - Agus bisa minta
+# naik lagi kapan saja, tinggal ubah angka/tanggal di sini.
+_TARGET_HARIAN_HEMAT = {"pelangi": 2, "harmoni": 2}
+_HEMAT_MULAI = date(2026, 8, 11)
+_HEMAT_SELESAI = date(2026, 9, 30)
 
 
 def _target_harian(site: str, hari_ini: Optional[date] = None) -> int:
     hari_ini = hari_ini or datetime.now(timezone.utc).date()
+    if _HEMAT_MULAI <= hari_ini <= _HEMAT_SELESAI:
+        return _TARGET_HARIAN_HEMAT.get(site, _TARGET_HARIAN_DEFAULT)
     if _KAMPANYE_MULAI <= hari_ini <= _KAMPANYE_SELESAI:
         return _TARGET_HARIAN_KAMPANYE.get(site, _TARGET_HARIAN_DEFAULT)
     return _TARGET_HARIAN_DEFAULT
