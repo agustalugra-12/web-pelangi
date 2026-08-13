@@ -61,7 +61,7 @@ def _site_domains() -> dict:
 
 
 async def _fetch_content(domain: str) -> dict:
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         r = await client.get(f"https://{domain}/api/content")
         r.raise_for_status()
         return r.json()
@@ -79,14 +79,14 @@ async def _fetch_blog_list(domain: str, limit: Optional[int] = None) -> list:
     # (None -> pakai default backend 50), krn itu memang benar 50 artikel terbaru yang
     # dimaksud tampil ke pengunjung, bukan bug yang sama.
     params = {"limit": limit} if limit else {}
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         r = await client.get(f"https://{domain}/api/blog", params=params)
         r.raise_for_status()
         return r.json()
 
 
 async def _fetch_blog_detail(domain: str, slug: str) -> dict:
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         r = await client.get(f"https://{domain}/api/blog/{slug}")
         r.raise_for_status()
         return r.json()

@@ -3,10 +3,23 @@ import { useLang } from "@/context/LanguageContext";
 import LegalLayout from "@/components/site/LegalLayout";
 import { LEGAL_CONTENT } from "@/i18n/legal";
 
+// 2026-08-13, bug nyata ditemukan Agus ("harmonihillsvillage.com yang tampil web
+// pelangi") - LEGAL_CONTENT (i18n/legal.js) ditulis HARDCODE "Pelangi Homestay" di
+// puluhan tempat (privacy/terms/cancellation/refund/house-rules/payment-info x2 bahasa),
+// halaman legal Harmoni jadi salah sebut brand di sepanjang isi. Daripada edit satu-satu
+// puluhan string tersebar (rawan kelewat/typo), substitusi terpusat di SATU titik render
+// ini - site.brand SUDAH resolve benar per-domain (lihat ContentContext, fetch GET
+// /content), "Pelangi Homestay" di teks manapun diganti brand situs yang sedang aktif.
+// Untuk Pelangi sendiri ini no-op (site.brand === "Pelangi Homestay" persis).
+function withBrand(text, brand) {
+  if (typeof text !== "string" || !brand || brand === "Pelangi Homestay") return text;
+  return text.replaceAll("Pelangi Homestay", brand);
+}
+
 // Renders inline `**bold**` and `<a href>` markers safely.
 // We keep it minimal: bold via ** ** only.
-function renderInline(text) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+function renderInline(text, brand) {
+  const parts = withBrand(text, brand).split(/(\*\*[^*]+\*\*)/g);
   return parts.map((p, i) => {
     if (/^\*\*[^*]+\*\*$/.test(p)) return <strong key={i}>{p.slice(2, -2)}</strong>;
     return <span key={i}>{p}</span>;
@@ -15,12 +28,12 @@ function renderInline(text) {
 
 function renderBody(body, site, lang) {
   return body.map((b, i) => {
-    if (typeof b === "string") return <p key={i}>{renderInline(b)}</p>;
+    if (typeof b === "string") return <p key={i}>{renderInline(b, site.brand)}</p>;
     if (b && b.list) {
       return (
         <ul key={i}>
           {b.list.map((li, j) => (
-            <li key={j}>{renderInline(li)}</li>
+            <li key={j}>{renderInline(li, site.brand)}</li>
           ))}
         </ul>
       );
@@ -61,13 +74,14 @@ export default function LegalPage({ slug }) {
   const { lang } = useLang();
   const { site } = useContent();
   const content = LEGAL_CONTENT[lang]?.[slug] || LEGAL_CONTENT.id[slug];
+  const title = withBrand(content.title, site.brand);
 
   return (
     <LegalLayout
-      title={content.title}
-      description={content.description}
-      breadcrumb={[{ label: content.title }]}
-      hero={content.hero}
+      title={title}
+      description={withBrand(content.description, site.brand)}
+      breadcrumb={[{ label: title }]}
+      hero={withBrand(content.hero, site.brand)}
     >
       {content.showLastUpdated && (
         <p>
@@ -83,7 +97,7 @@ export default function LegalPage({ slug }) {
       )}
       {content.sections.map((s, i) => (
         <div key={i}>
-          <h2>{s.h}</h2>
+          <h2>{withBrand(s.h, site.brand)}</h2>
           {renderBody(s.body, site, lang)}
         </div>
       ))}

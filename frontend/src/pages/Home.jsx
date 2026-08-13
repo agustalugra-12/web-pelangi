@@ -279,7 +279,10 @@ export default function Home() {
           </ul>
         </div>
         <div className="rounded-3xl overflow-hidden shadow-paper border border-ink/5">
-          <iframe title="Pelangi Homestay Map" src={site.mapEmbed} className="w-full h-80" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+          {/* 2026-08-13, bug nyata ditemukan Agus - title hardcode "Pelangi Homestay Map"
+              walau halaman ini dipakai bersama Harmoni juga (site.brand SUDAH dipakai
+              pola sama persis di alt= img signage & about section di atas). */}
+          <iframe title={`${site.brand} Map`} src={site.mapEmbed} className="w-full h-80" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
         </div>
       </section>
 

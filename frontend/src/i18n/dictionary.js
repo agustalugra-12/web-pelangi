@@ -77,7 +77,11 @@ export const DICTIONARY = {
       galleryEyebrow: "Galeri",
       galleryTitle: "Sudut",
       galleryItalic: "favorit",
-      gallerySub: "Sekilas suasana Pelangi Homestay dan Bedugul di sekitarnya.",
+      // (2026-08-13, bug nyata ditemukan Agus - "harmonihillsvillage.com yang tampil web
+      // pelangi") - sebelumnya hardcode "Pelangi Homestay" walau string ini dipakai
+      // bersama Harmoni juga (beda dari galleryTitle/aboutAreaBody dkk di file ini yang
+      // SUDAH sengaja brand-neutral) - dibuat neutral juga supaya konsisten.
+      gallerySub: "Sekilas suasana homestay dan Bedugul di sekitarnya.",
       exploreEyebrow: "Explore",
       exploreTitle: "Jelajahi",
       exploreItalic: "Bedugul",
@@ -381,7 +385,7 @@ export const DICTIONARY = {
       galleryEyebrow: "Gallery",
       galleryTitle: "Favourite",
       galleryItalic: "corners",
-      gallerySub: "A glimpse of Pelangi Homestay and Bedugul around us.",
+      gallerySub: "A glimpse of the homestay and Bedugul around us.",
       exploreEyebrow: "Explore",
       exploreTitle: "Discover",
       exploreItalic: "Bedugul",
