@@ -3696,10 +3696,15 @@ _KAMPANYE_SELESAI = date(2026, 8, 10)
 # cukup tinggi, mulai besok masing masing 2 artikel saja") - target 15/5 fase kampanye
 # di atas TIDAK diubah/dihapus retroaktif (hari 2026-08-10 tetap pakai 15/5 spt yg
 # sudah jalan), cuma DIPERSINGKAT selesainya jadi 2026-08-10, disambung fase baru
-# 2/2 mulai 2026-08-11 s.d. akhir periode kampanye asli (2026-09-30) - Agus bisa minta
-# naik lagi kapan saja, tinggal ubah angka/tanggal di sini.
-_TARGET_HARIAN_HEMAT = {"pelangi": 2, "harmoni": 2}
-_HEMAT_MULAI = date(2026, 8, 11)
+# 2/2 mulai 2026-08-11.
+#
+# Fase 3 - NAIK LAGI (2026-08-12, permintaan Agus langsung - "ai blog 3/hari") - 2/2
+# di atas TIDAK diubah/dihapus retroaktif (11 Agustus tetap 2/2 spt yg sudah jalan),
+# cuma DIPERSINGKAT selesainya jadi 2026-08-11, disambung 3/3 mulai 2026-08-12 s.d.
+# akhir periode kampanye asli (2026-09-30) - Agus bisa minta ubah lagi kapan saja,
+# tinggal ubah angka/tanggal di sini.
+_TARGET_HARIAN_HEMAT = {"pelangi": 3, "harmoni": 3}
+_HEMAT_MULAI = date(2026, 8, 12)
 _HEMAT_SELESAI = date(2026, 9, 30)
 
 
