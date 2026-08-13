@@ -11,8 +11,8 @@ export const LEGAL_CONTENT = {
     privacy: {
       title: "Kebijakan Privasi",
       description:
-        "Kebijakan privasi Pelangi Homestay: bagaimana kami mengumpulkan, menggunakan, dan melindungi data tamu.",
-      hero: "Kami menghormati privasi Anda. Halaman ini menjelaskan bagaimana Pelangi Homestay mengumpulkan, menggunakan, dan melindungi data pribadi yang Anda berikan saat menggunakan website ini atau melakukan reservasi.",
+        "Kebijakan privasi {{BRAND}}: bagaimana kami mengumpulkan, menggunakan, dan melindungi data tamu.",
+      hero: "Kami menghormati privasi Anda. Halaman ini menjelaskan bagaimana {{BRAND}} mengumpulkan, menggunakan, dan melindungi data pribadi yang Anda berikan saat menggunakan website ini atau melakukan reservasi.",
       sections: [
         {
           h: "1. Pengumpulan Data",
@@ -104,8 +104,8 @@ export const LEGAL_CONTENT = {
     terms: {
       title: "Syarat & Ketentuan",
       description:
-        "Syarat dan ketentuan reservasi serta menginap di Pelangi Homestay, Bedugul, Bali.",
-      hero: "Dengan melakukan reservasi di Pelangi Homestay, Anda dianggap telah membaca, memahami, dan menyetujui syarat dan ketentuan berikut.",
+        "Syarat dan ketentuan reservasi serta menginap di {{BRAND}}, Bedugul, Bali.",
+      hero: "Dengan melakukan reservasi di {{BRAND}}, Anda dianggap telah membaca, memahami, dan menyetujui syarat dan ketentuan berikut.",
       sections: [
         {
           h: "1. Reservasi",
@@ -183,7 +183,7 @@ export const LEGAL_CONTENT = {
         {
           h: "7. Force Majeure",
           body: [
-            "Pelangi Homestay tidak bertanggung jawab atas ketidaknyamanan yang diakibatkan oleh keadaan kahar (bencana alam, gangguan listrik/air dari penyedia, pandemi, tindakan pemerintah, dan sebab lain di luar kendali kami). Dalam kondisi ini, kami akan berupaya memberikan solusi terbaik.",
+            "{{BRAND}} tidak bertanggung jawab atas ketidaknyamanan yang diakibatkan oleh keadaan kahar (bencana alam, gangguan listrik/air dari penyedia, pandemi, tindakan pemerintah, dan sebab lain di luar kendali kami). Dalam kondisi ini, kami akan berupaya memberikan solusi terbaik.",
           ],
         },
         {
@@ -205,7 +205,7 @@ export const LEGAL_CONTENT = {
           ],
         },
         {
-          h: "10. Hak Pelangi Homestay",
+          h: "10. Hak {{BRAND}}",
           body: [
             {
               list: [
@@ -221,7 +221,7 @@ export const LEGAL_CONTENT = {
     cancellation: {
       title: "Kebijakan Pembatalan",
       description:
-        "Kebijakan pembatalan reservasi Pelangi Homestay: syarat, tenggat waktu, dan proses.",
+        "Kebijakan pembatalan reservasi {{BRAND}}: syarat, tenggat waktu, dan proses.",
       hero: "Kami memahami rencana perjalanan bisa berubah. Kebijakan pembatalan berikut berlaku untuk seluruh reservasi langsung melalui website resmi.",
       sections: [
         {
@@ -267,8 +267,8 @@ export const LEGAL_CONTENT = {
     refund: {
       title: "Kebijakan Pengembalian Dana",
       description:
-        "Kebijakan pengembalian dana (refund) untuk reservasi Pelangi Homestay yang dibatalkan sesuai syarat.",
-      hero: "Kebijakan berikut menjelaskan bagaimana dan kapan pengembalian dana akan diproses oleh Pelangi Homestay setelah pembatalan reservasi.",
+        "Kebijakan pengembalian dana (refund) untuk reservasi {{BRAND}} yang dibatalkan sesuai syarat.",
+      hero: "Kebijakan berikut menjelaskan bagaimana dan kapan pengembalian dana akan diproses oleh {{BRAND}} setelah pembatalan reservasi.",
       sections: [
         {
           h: "1. Nominal Refund",
@@ -312,7 +312,7 @@ export const LEGAL_CONTENT = {
     houseRules: {
       title: "Peraturan Rumah",
       description:
-        "Peraturan menginap di Pelangi Homestay agar semua tamu nyaman dan aman.",
+        "Peraturan menginap di {{BRAND}} agar semua tamu nyaman dan aman.",
       hero: "Beberapa aturan sederhana untuk memastikan pengalaman menginap yang aman, nyaman, dan menyenangkan bagi semua tamu.",
       sections: [
         {
@@ -341,7 +341,7 @@ export const LEGAL_CONTENT = {
         {
           h: "3. Hewan Peliharaan",
           body: [
-            "Pelangi Homestay tidak menerima hewan peliharaan (kecuali service animal dengan pemberitahuan sebelumnya).",
+            "{{BRAND}} tidak menerima hewan peliharaan (kecuali service animal dengan pemberitahuan sebelumnya).",
           ],
         },
         {
@@ -359,7 +359,7 @@ export const LEGAL_CONTENT = {
         {
           h: "6. Barang Berharga",
           body: [
-            "Pelangi Homestay tidak bertanggung jawab atas kehilangan barang berharga. Kami menyarankan menyimpan barang berharga di tempat yang aman.",
+            "{{BRAND}} tidak bertanggung jawab atas kehilangan barang berharga. Kami menyarankan menyimpan barang berharga di tempat yang aman.",
           ],
         },
         {
@@ -385,7 +385,7 @@ export const LEGAL_CONTENT = {
     payment: {
       title: "Informasi Pembayaran",
       description:
-        "Metode pembayaran, keamanan transaksi, dan Payment Gateway resmi Pelangi Homestay.",
+        "Metode pembayaran, keamanan transaksi, dan Payment Gateway resmi {{BRAND}}.",
       hero: "Kami menerima pembayaran melalui kanal resmi menggunakan Payment Gateway terpercaya dengan koneksi terenkripsi.",
       sections: [
         {
@@ -456,8 +456,8 @@ export const LEGAL_CONTENT = {
     privacy: {
       title: "Privacy Policy",
       description:
-        "Pelangi Homestay privacy policy: how we collect, use, and protect guest data.",
-      hero: "We respect your privacy. This page explains how Pelangi Homestay collects, uses, and protects the personal data you share when using this website or making a reservation.",
+        "{{BRAND}} privacy policy: how we collect, use, and protect guest data.",
+      hero: "We respect your privacy. This page explains how {{BRAND}} collects, uses, and protects the personal data you share when using this website or making a reservation.",
       sections: [
         {
           h: "1. Data Collection",
@@ -549,8 +549,8 @@ export const LEGAL_CONTENT = {
     terms: {
       title: "Terms & Conditions",
       description:
-        "Terms and conditions for booking and staying at Pelangi Homestay, Bedugul, Bali.",
-      hero: "By making a reservation at Pelangi Homestay, you are considered to have read, understood, and agreed to the following terms and conditions.",
+        "Terms and conditions for booking and staying at {{BRAND}}, Bedugul, Bali.",
+      hero: "By making a reservation at {{BRAND}}, you are considered to have read, understood, and agreed to the following terms and conditions.",
       sections: [
         {
           h: "1. Reservation",
@@ -628,7 +628,7 @@ export const LEGAL_CONTENT = {
         {
           h: "7. Force Majeure",
           body: [
-            "Pelangi Homestay is not liable for inconvenience caused by force majeure (natural disasters, external electricity/water disruptions, pandemics, government actions, and other causes beyond our control). In such cases we will do our best to provide a fair solution.",
+            "{{BRAND}} is not liable for inconvenience caused by force majeure (natural disasters, external electricity/water disruptions, pandemics, government actions, and other causes beyond our control). In such cases we will do our best to provide a fair solution.",
           ],
         },
         {
@@ -650,7 +650,7 @@ export const LEGAL_CONTENT = {
           ],
         },
         {
-          h: "10. Pelangi Homestay's Rights",
+          h: "10. {{BRAND}} Rights",
           body: [
             {
               list: [
@@ -666,7 +666,7 @@ export const LEGAL_CONTENT = {
     cancellation: {
       title: "Cancellation Policy",
       description:
-        "Pelangi Homestay cancellation policy: terms, deadlines, and process.",
+        "{{BRAND}} cancellation policy: terms, deadlines, and process.",
       hero: "We know travel plans can change. The following cancellation policy applies to all direct reservations made through our official website.",
       sections: [
         {
@@ -712,8 +712,8 @@ export const LEGAL_CONTENT = {
     refund: {
       title: "Refund Policy",
       description:
-        "Refund policy for Pelangi Homestay reservations cancelled under our terms.",
-      hero: "The following policy explains how and when refunds are processed by Pelangi Homestay after a reservation is cancelled.",
+        "Refund policy for {{BRAND}} reservations cancelled under our terms.",
+      hero: "The following policy explains how and when refunds are processed by {{BRAND}} after a reservation is cancelled.",
       sections: [
         {
           h: "1. Refund Amount",
@@ -757,7 +757,7 @@ export const LEGAL_CONTENT = {
     houseRules: {
       title: "House Rules",
       description:
-        "House rules at Pelangi Homestay so every guest feels safe and comfortable.",
+        "House rules at {{BRAND}} so every guest feels safe and comfortable.",
       hero: "A few simple rules to make sure every guest enjoys a safe, comfortable, and pleasant stay.",
       sections: [
         {
@@ -786,7 +786,7 @@ export const LEGAL_CONTENT = {
         {
           h: "3. Pets",
           body: [
-            "Pelangi Homestay does not accept pets (except service animals with prior notice).",
+            "{{BRAND}} does not accept pets (except service animals with prior notice).",
           ],
         },
         {
@@ -804,7 +804,7 @@ export const LEGAL_CONTENT = {
         {
           h: "6. Valuables",
           body: [
-            "Pelangi Homestay is not liable for loss of valuables. We recommend keeping valuables in a secure place.",
+            "{{BRAND}} is not liable for loss of valuables. We recommend keeping valuables in a secure place.",
           ],
         },
         {
@@ -830,7 +830,7 @@ export const LEGAL_CONTENT = {
     payment: {
       title: "Payment Information",
       description:
-        "Payment methods, transaction security, and the official Pelangi Homestay Payment Gateway.",
+        "Payment methods, transaction security, and the official {{BRAND}} Payment Gateway.",
       hero: "We accept payments through official channels using a trusted Payment Gateway with an encrypted connection.",
       sections: [
         {

@@ -4,16 +4,21 @@ import LegalLayout from "@/components/site/LegalLayout";
 import { LEGAL_CONTENT } from "@/i18n/legal";
 
 // 2026-08-13, bug nyata ditemukan Agus ("harmonihillsvillage.com yang tampil web
-// pelangi") - LEGAL_CONTENT (i18n/legal.js) ditulis HARDCODE "Pelangi Homestay" di
-// puluhan tempat (privacy/terms/cancellation/refund/house-rules/payment-info x2 bahasa),
-// halaman legal Harmoni jadi salah sebut brand di sepanjang isi. Daripada edit satu-satu
-// puluhan string tersebar (rawan kelewat/typo), substitusi terpusat di SATU titik render
-// ini - site.brand SUDAH resolve benar per-domain (lihat ContentContext, fetch GET
-// /content), "Pelangi Homestay" di teks manapun diganti brand situs yang sedang aktif.
-// Untuk Pelangi sendiri ini no-op (site.brand === "Pelangi Homestay" persis).
+// pelangi") - LEGAL_CONTENT (i18n/legal.js) awalnya ditulis HARDCODE "Pelangi Homestay"
+// di puluhan tempat (privacy/terms/cancellation/refund/house-rules/payment-info x2
+// bahasa), halaman legal Harmoni jadi salah sebut brand di sepanjang isi.
+//
+// Perbaikan v1 (string-match "Pelangi Homestay" literal) SEMPAT dipakai tapi rapuh -
+// permintaan Agus lanjutan "pisahkan kedua brand agar tidak tercampur": kalau suatu saat
+// wording brand berubah/typo, match literal itu diam-diam berhenti berfungsi tanpa
+// error apa pun. Sekarang legal.js TIDAK PERNAH lagi menulis nama brand tertentu sama
+// sekali - SEMUA teks memakai token eksplisit `{{BRAND}}` (lihat i18n/legal.js), jadi
+// pemisahan brand terlihat jelas di source (bukan implisit lewat kecocokan string) &
+// mustahil "kelewat nyambung" ke brand yang salah - token yang tidak tersubstitusi akan
+// terlihat JELAS di halaman (literal "{{BRAND}}" tampil ke tamu), bukan gagal diam-diam.
 function withBrand(text, brand) {
-  if (typeof text !== "string" || !brand || brand === "Pelangi Homestay") return text;
-  return text.replaceAll("Pelangi Homestay", brand);
+  if (typeof text !== "string" || !brand) return text;
+  return text.replaceAll("{{BRAND}}", brand);
 }
 
 // Renders inline `**bold**` and `<a href>` markers safely.
