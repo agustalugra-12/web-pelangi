@@ -1598,11 +1598,21 @@ async def _fetch_pms_room_prices(site: str) -> Optional[Dict[str, dict]]:
         return None
 
 
-async def _fetch_site_facts(site: str) -> str:
+async def _fetch_site_facts(site: str, cluster: str = "") -> str:
+    """Fetch business facts. cluster parameter enables context efficiency (2026-08-20,
+    PRD Intelligence V2 §12) - hanya kirim data yg relevan dgn topik artikel.
+    tanpa cluster = kirim SEMUA (backward compatible utk fact-check)."""
     site_doc = (await db.site_content.find_one({"site": site, "type": "site"}) or {}).get("data", {})
     rooms_doc = (await db.site_content.find_one({"site": site, "type": "rooms"}) or {}).get("data", [])
     faqs_doc = (await db.site_content.find_one({"site": site, "type": "faqs"}) or {}).get("data", [])
     testimonials_doc = (await db.site_content.find_one({"site": site, "type": "testimonials"}) or {}).get("data", [])
+
+    # Context Efficiency: tentukan section mana yg relevan berdasarkan cluster
+    # Tanpa cluster = kirim semua (backward compatible)
+    send_rooms = not cluster or cluster in ("Booking", "Keluarga", "Pasangan", "Backpacker", "Long Stay", "Harga")
+    send_landmarks = not cluster or cluster in ("Aktivitas", "Cuaca", "Destinasi", "Outdoor", "Edukasi")
+    send_faqs = not cluster or cluster in ("Booking", "Keluarga", "Pasangan")
+    send_testimonials = not cluster or cluster in ("Booking",)
 
     lines = [
         f"Nama brand: {site_doc.get('brand', '')}",
@@ -1650,41 +1660,40 @@ async def _fetch_site_facts(site: str) -> str:
     landmark_block = await _landmark_facts_block()
     if landmark_block:
         lines.append(landmark_block)
-    # Harga LIVE dari PMS (2026-08-05) - lihat _fetch_pms_room_prices, MENGGANTIKAN
-    # priceFrom/priceFromDayUse dari db.site_content yg terbukti bisa basi (audit langsung
-    # Agus menemukan CMS di sini 175rb/225rb vs PMS 150rb/200rb, beda persis harga sarapan).
-    # None kalau PMS tidak terjangkau saat ini - fallback ke field CMS lama spy generate
-    # konten tetap jalan (gagal-diam), bukan pernah dianggap error keras.
-    pms_prices = await _fetch_pms_room_prices(site)
-    for r in rooms_doc:
-        # Day Use & Menginap SENGAJA dipisah (2026-07-29, revisi manual user menemukan Day
-        # Use disebut-sebut di artikel tapi TIDAK PERNAH dijelaskan harga/jamnya krn memang
-        # tidak pernah ada di data ini sebelumnya) - priceFromDayUse baru ditambahkan ke CMS.
-        room_name = r.get("name", "")
-        pms_row = None
-        if pms_prices:
-            pms_row = next((row for tipe, row in pms_prices.items() if tipe.lower() in room_name.lower()), None)
-        if pms_row:
-            harga_dasar = f"Rp{pms_row['tarif_menginap']:,}".replace(",", ".")
-            harga_dayuse = f"Rp{pms_row['tarif']:,}".replace(",", ".")
-            if pms_row.get("tarif_menginap_dengan_sarapan"):
-                harga_sarapan = f"Rp{pms_row['tarif_menginap_dengan_sarapan']:,}".replace(",", ".")
-                harga_line = f"harga Menginap {harga_dasar}/malam TANPA sarapan, {harga_sarapan}/malam SUDAH TERMASUK sarapan"
+    # Harga LIVE dari PMS (2026-08-05) - filter by cluster
+    if send_rooms:
+        pms_prices = await _fetch_pms_room_prices(site)
+        for r in rooms_doc:
+            # Day Use & Menginap SENGAJA dipisah (2026-07-29, revisi manual user menemukan Day
+            # Use disebut-sebut di artikel tapi TIDAK PERNAH dijelaskan harga/jamnya krn memang
+            # tidak pernah ada di data ini sebelumnya) - priceFromDayUse baru ditambahkan ke CMS.
+            room_name = r.get("name", "")
+            pms_row = None
+            if pms_prices:
+                pms_row = next((row for tipe, row in pms_prices.items() if tipe.lower() in room_name.lower()), None)
+            if pms_row:
+                harga_dasar = f"Rp{pms_row['tarif_menginap']:,}".replace(",", ".")
+                harga_dayuse = f"Rp{pms_row['tarif']:,}".replace(",", ".")
+                if pms_row.get("tarif_menginap_dengan_sarapan"):
+                    harga_sarapan = f"Rp{pms_row['tarif_menginap_dengan_sarapan']:,}".replace(",", ".")
+                    harga_line = f"harga Menginap {harga_dasar}/malam TANPA sarapan, {harga_sarapan}/malam SUDAH TERMASUK sarapan"
+                else:
+                    harga_line = f"harga Menginap {harga_dasar}/malam (properti ini tidak menyediakan opsi sarapan)"
+                harga_line += f" | harga Day Use (6 jam) {harga_dayuse}"
             else:
-                harga_line = f"harga Menginap {harga_dasar}/malam (properti ini tidak menyediakan opsi sarapan)"
-            harga_line += f" | harga Day Use (6 jam) {harga_dayuse}"
-        else:
-            harga_line = (
-                f"harga Menginap mulai {r.get('priceFrom')}/malam | harga Day Use (6 jam) mulai "
-                f"{r.get('priceFromDayUse', '-')}"
-            )
-        lines.append(
-            f"Tipe kamar: {room_name} | ukuran {r.get('size')} | kapasitas {r.get('capacity')} | "
+                harga_line = (
+                    f"harga Menginap mulai {r.get('priceFrom')}/malam | harga Day Use (6 jam) mulai "
+                    f"{r.get('priceFromDayUse', '-')}"
+                )
+            lines.append(
+                f"Tipe kamar: {room_name} | ukuran {r.get('size')} | kapasitas {r.get('capacity')} | "
             f"{harga_line} | fasilitas: {', '.join(r.get('facilities', []))}"
         )
-    for f in faqs_doc:
-        lines.append(f"FAQ - {f.get('q')}: {f.get('a')}")
-    if testimonials_doc:
+    # FAQ & Testimonials - filter by cluster
+    if send_faqs:
+        for f in faqs_doc:
+            lines.append(f"FAQ - {f.get('q')}: {f.get('a')}")
+    if send_testimonials and testimonials_doc:
         # SEMUA testimoni ASLI disediakan, bukan cuma testimonials_doc[0] (2026-07-30, bug
         # nyata ditemukan: sebelumnya SELALU cuma testimoni pertama yang dikirim ke Writer
         # Agent, jadi SEMUA artikel yang pernah kutip testimoni pasti kutip "Rina & Aldo" yang
@@ -2378,7 +2387,7 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
                          sibling_collision: Optional[dict] = None, model: str = "") -> dict:
     # Default: pakai WRITER_MODEL (Gemini) utk penulisan, lebih murah & cepat drpd CHAT_MODEL
     use_model = model or WRITER_MODEL
-    facts = await _fetch_site_facts(site)
+    facts = await _fetch_site_facts(site, cluster=keyword_doc.get("cluster", ""))
     keyword = keyword_doc["keyword"]
     competitor_result = await analyze_competitors(keyword, site=site)
     maps_url = await _maps_url_for_site(site)
@@ -2536,6 +2545,17 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "CTA: tutup artikel dengan ajakan SPESIFIK & natural (mis. \"Tanya langsung ketersediaan "
         "kamar untuk tanggal liburan Kakak\"), BUKAN kalimat generik seperti \"Chat sekarang lewat "
         "WhatsApp\" saja. Muncul SATU KALI saja di penutup, jangan diulang di tengah artikel.\n\n"
+        "COMMERCIAL TRANSITION (2026-08-20, PRD Intelligence V2): Jangan masukkan bisnis secara "
+        "tiba-tiba. Gunakan pola 5-step funnel:\n"
+        "1. Reader Need → identifikasi kebutuhan pembaca (mis. 'Butuh tempat menginap setelah "
+        "hiking di Bedugul?')\n"
+        "2. Information → berikan info berguna ttg topik (aktivitas, lokasi, tips)\n"
+        "3. Problem → tunjukkan masalah umum (mis. 'Banyak penginapan jauh dari pusat wisata')\n"
+        "4. Relevant Solution → properti sebagai solusi ALAMI (mis. 'Pelangi Homestay cuma 5 "
+        "menit dari Danau Beratan')\n"
+        "5. Business → CTA natural (booking, tanya ketersediaan)\n"
+        "Pola ini membuat penyebutan properti terasa RELEVAN, bukan dipaksakan. Properti harus "
+        "muncul sebagai JAWABAN atas kebutuhan pembaca, bukan sebagai topik utama artikel.\n\n"
         "TESTIMONI: kalau ada \"Testimoni tamu asli\" di DATA ASLI DAN relevan dgn topik artikel "
         "ini, boleh dikutip singkat sbg social proof - JANGAN PERNAH mengarang testimoni baru yang "
         "tidak ada di DATA ASLI. Kalau tidak ada testimoni yang benar-benar relevan dgn topik "
