@@ -745,6 +745,40 @@ def _validasi_intent_keyword(keyword: str) -> Optional[str]:
     return None
 
 
+# Secondary Intent Classification (2026-08-20, PRD Intelligence V2 §2)
+# Keyword bisa punya 2 intent sekaligus (mis. "harga cottage pelangi homestay" =
+# Informational [harga = info] + Transactional [cottage = akomodasi]).
+# Rule-based, zero API cost.
+_TRANSACTION_MODIFIERS = re.compile(r"\b(booking|pesan|reservasi|daftar|beli| sewa|rental)\b", re.I)
+_INFORMATION_MODIFIERS = re.compile(r"\b(cara|tips|tutorial|panduan|review|perbandingan|rekomendasi|informasi|apa\s+itu|kenapa|bagaimana|kapan|dimana|berapa)\b", re.I)
+_COMMERCIAL_MODIFIERS = re.compile(r"\b(harga|promo|diskon|murah|terjangkau|budget|biaya|tarif|paket)\b", re.I)
+
+
+def _klasifikasi_secondary_intent(keyword: str, primary_intent: str) -> Optional[str]:
+    """Klasifikasi secondary intent berdasarkan pattern keyword.
+    Return None kalau tidak ada secondary intent yg signifikan."""
+    has_transaction = bool(_TRANSACTION_MODIFIERS.search(keyword))
+    has_information = bool(_INFORMATION_MODIFIERS.search(keyword))
+    has_commercial = bool(_COMMERCIAL_MODIFIERS.search(keyword))
+
+    if primary_intent == "Transactional":
+        if has_information:
+            return "Informational"
+        if has_commercial:
+            return "Commercial"
+    elif primary_intent == "Informational":
+        if has_transaction:
+            return "Transactional"
+        if has_commercial:
+            return "Commercial"
+    elif primary_intent == "Commercial":
+        if has_information:
+            return "Informational"
+        if has_transaction:
+            return "Transactional"
+    return None
+
+
 CANNIBALIZATION_THRESHOLD = 0.65
 
 # Threshold TERPISAH utk pairwise-within-batch check di generate_keyword_cluster()
@@ -2432,7 +2466,10 @@ async def generate_strategy(site: str, keyword_doc: dict, model: str = "") -> Op
         cluster = keyword_doc.get("cluster", "General")
         intent = keyword_doc.get("intent", "Informational")
 
-        user = f"Keyword: {keyword}\nCluster: {cluster}\nIntent: {intent}\n\nDATA BISNIS:\n{facts[:2000]}"
+        # Secondary Intent (2026-08-20, PRD V2 §2) - rule-based, zero cost
+        secondary_intent = _klasifikasi_secondary_intent(keyword, intent)
+
+        user = f"Keyword: {keyword}\nCluster: {cluster}\nIntent: {intent}\nSecondary Intent: {secondary_intent or 'tidak ada'}\n\nDATA BISNIS:\n{facts[:2000]}"
 
         use_model = model or WRITER_MODEL
         writer_temperature = 0.3 if "gemini" in use_model else 0.5
@@ -2812,6 +2849,7 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
     # suntikkan ke user prompt sbg blueprint. Writer HARUS mengikuti strategy, bukan nebak.
     # Kalau strategy None (fallback), writer jalan seperti biasa (backward compatible).
     if strategy:
+        secondary = strategy.get('secondary_intent', '')
         strategy_block = (
             f"\nARTICLE STRATEGY (ikuti blueprint ini):\n"
             f"- Target pembaca: {strategy.get('audience', 'umum')}\n"
@@ -2822,7 +2860,8 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
             f"- Transisi bisnis: {strategy.get('commercial_transition', '')}\n"
             f"- CTA: {strategy.get('cta', '')}\n"
             f"- Sub-judul yg sudah direncanakan: {', '.join(strategy.get('sub_headlines', []))}\n"
-            f"Gunakan sub-judul di atas sbg PANDUAN, boleh diedit judulnya tapi POKOK TOPIK harus sama."
+            + (f"- Secondary intent: {secondary} (artikel harus juga menyinggung aspek ini)\n" if secondary else "")
+            + f"Gunakan sub-judul di atas sbg PANDUAN, boleh diedit judulnya tapi POKOK TOPIK harus sama."
         )
         user += strategy_block
 
@@ -3699,6 +3738,100 @@ Array "issues" KOSONG kalau semua klaim spesifik di draft sudah sesuai/didukung 
     except Exception as e:
         print(f"[fact-check] gagal, publish DITUNDA demi keamanan: {type(e).__name__}: {e}")
         return ["fact-check gagal dijalankan (error API/parse) - publish ditunda demi keamanan"], []
+
+
+# ---------------------------------------------------------------------------
+# 7.5 Unified Quality Score (2026-08-20, PRD Intelligence V2 §13)
+# ---------------------------------------------------------------------------
+# Gabung semua quality gate jadi skor 0-10. Berguna utk:
+# - Acceptance test V1 vs V2
+# - Perbandingan artikel
+# - Monitoring kualitas time-series
+def calculate_quality_score(
+    content: str,
+    keyword: str,
+    site: str,
+    intent: str,
+    entity_type: str = ENTITY_TYPE_ACCOMMODATION,
+    fact_issues: Optional[list] = None,
+    editor_issues: Optional[list] = None,
+    faq_issues: Optional[list] = None,
+) -> dict:
+    """Hitung unified quality score 0-10. Return dict dgn score, breakdown, details."""
+    scores = {}
+
+    # 1. Word Count (0-2 pts)
+    wc = len(content.split())
+    if wc >= 1000:
+        scores["word_count"] = 2.0
+    elif wc >= 800:
+        scores["word_count"] = 1.5
+    elif wc >= 600:
+        scores["word_count"] = 1.0
+    elif wc >= 400:
+        scores["word_count"] = 0.5
+    else:
+        scores["word_count"] = 0.0
+
+    # 2. Natural Writing (0-2 pts) - no issues = 2, each issue -0.5
+    slop = _slop_phrases_terdeteksi(content)
+    scores["natural_writing"] = max(0, 2.0 - len(slop) * 0.5)
+
+    # 3. Sentence Variation (0-1 pt)
+    scores["sentence_variety"] = 0.0 if _variasi_kalimat_kurang(content) else 1.0
+
+    # 4. No Template Intro (0-1 pt)
+    scores["original_intro"] = 0.0 if _intro_template_terdeteksi(content) else 1.0
+
+    # 5. No Keyword Stuffing (0-1 pt)
+    scores["keyword_balance"] = 0.0 if _keyword_stuffing_terdeteksi(content, keyword) else 1.0
+
+    # 6. Fact-Check (0-2 pts)
+    if fact_issues is None:
+        scores["fact_accuracy"] = 1.0  # not checked = neutral
+    elif len(fact_issues) == 0:
+        scores["fact_accuracy"] = 2.0
+    elif len(fact_issues) <= 2:
+        scores["fact_accuracy"] = 1.0
+    else:
+        scores["fact_accuracy"] = 0.0
+
+    # 7. FAQ Quality (0-1 pt) - no issues = 1
+    if faq_issues is None:
+        scores["faq_quality"] = 0.5  # not checked = neutral
+    elif len(faq_issues) == 0:
+        scores["faq_quality"] = 1.0
+    else:
+        scores["faq_quality"] = max(0, 1.0 - len(faq_issues) * 0.33)
+
+    total = sum(scores.values())
+    max_possible = 10.0
+
+    return {
+        "score": round(total, 1),
+        "max_score": max_possible,
+        "percentage": round(total / max_possible * 100, 1),
+        "breakdown": scores,
+        "details": {
+            "word_count": wc,
+            "slop_issues": len(slop),
+            "slop_phrases": slop,
+            "fact_issues": len(fact_issues) if fact_issues is not None else None,
+            "editor_issues": len(editor_issues) if editor_issues is not None else None,
+            "faq_issues": len(faq_issues) if faq_issues is not None else None,
+        },
+        "grade": (
+            "A+" if total >= 9.5 else
+            "A" if total >= 9.0 else
+            "B+" if total >= 8.5 else
+            "B" if total >= 8.0 else
+            "B-" if total >= 7.5 else
+            "C+" if total >= 7.0 else
+            "C" if total >= 6.0 else
+            "D" if total >= 4.0 else
+            "F"
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
