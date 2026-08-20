@@ -53,6 +53,7 @@ from scripts import prerender_home as _prerender  # noqa: E402
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "")
 # Ganti dari gpt-5-mini ke gpt-4.1-mini (2026-08-05, investigasi biaya + insiden nyata:
@@ -68,7 +69,8 @@ SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "")
 # tidak lagi dipaksa temperature=1 (lihat _chat() di bawah - restriksi itu cuma utk model
 # gpt-5) - artinya temperature asli tiap call site (0.6 penulisan/0.2 fact-check/0.5 fix)
 # yg sengaja di-tuning dari awal otomatis balik berlaku, bukan diseragamkan paksa ke 1 lagi.
-CHAT_MODEL = "gpt-4.1-mini"
+CHAT_MODEL = "gpt-4.1-mini"  # model utk fact-check, expand, fix, dll
+WRITER_MODEL = "gemini-3.1-flash-lite"  # model utk penulisan artikel (lebih murah & cepat)
 EMBED_MODEL = "text-embedding-3-small"
 
 client = AsyncIOMotorClient(MONGO_URL)
@@ -371,9 +373,7 @@ def slugify(text: str) -> str:
 # tiap pemanggil - kalau logging-nya sendiri gagal, JANGAN sampai gagalkan generate
 # artikel (dibungkus try/except, murni observability tambahan).
 #
-# Harga per 1M token (2026-08-06, USD, dicocokkan dgn angka yg sudah dipakai/dicatat
-# sesi ini di ai-chat-bot & commit history - BUKAN dari API resmi realtime OpenAI, tidak
-# ada endpoint publik utk itu - kalau harga OpenAI berubah, update manual di sini).
+# Harga per 1M token (2026-08-20, USD, termasuk gemini utk perbandingan).
 _MODEL_PRICING_PER_1M = {
     "gpt-4.1-mini": (0.40, 1.60),
     "gpt-4.1": (2.00, 8.00),
@@ -381,13 +381,19 @@ _MODEL_PRICING_PER_1M = {
     "gpt-5-mini": (0.25, 2.00),
     "gpt-5.4-mini": (0.75, 4.50),
     "text-embedding-3-small": (0.02, 0.0),
+    "gemini-3.1-flash-lite": (0.075, 0.30),
+    "gemini-2.0-flash-lite": (0.075, 0.30),
+    "gemini-2.5-flash": (0.15, 0.60),
 }
 
 
-async def _log_usage(model: str, prompt_tokens: int, completion_tokens: int) -> None:
+async def _log_usage(model: str, prompt_tokens: int, completion_tokens: int, cost_override: float = None) -> None:
     try:
-        price_in, price_out = _MODEL_PRICING_PER_1M.get(model, (0.0, 0.0))
-        cost_usd = (prompt_tokens / 1_000_000) * price_in + (completion_tokens / 1_000_000) * price_out
+        if cost_override is not None:
+            cost_usd = cost_override
+        else:
+            price_in, price_out = _MODEL_PRICING_PER_1M.get(model, (0.0, 0.0))
+            cost_usd = (prompt_tokens / 1_000_000) * price_in + (completion_tokens / 1_000_000) * price_out
         await db.llm_usage_log.insert_one({
             "ts": datetime.now(timezone.utc),
             "model": model,
@@ -400,25 +406,28 @@ async def _log_usage(model: str, prompt_tokens: int, completion_tokens: int) -> 
         print(f"[usage_log] gagal catat: {type(e).__name__}: {e}")
 
 
-async def _chat(system: str, user: str, temperature: float = 0.7) -> str:
+async def _chat(system: str, user: str, temperature: float = 0.7, model: str = "") -> str:
+    """Unified chat function - support OpenAI & Gemini.
+    Model bisa di-override per-call (mis. writer pakai gemini, fact-check tetap openai).
+    Default: pakai CHAT_MODEL (gpt-4.1-mini)."""
+    use_model = model or CHAT_MODEL
+
+    # Gemini route
+    if use_model.startswith("gemini"):
+        return await _chat_gemini(system, user, temperature, use_model)
+
+    # OpenAI route (default)
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY belum diisi di backend/.env")
-    # Keluarga GPT-5 (gpt-5, gpt-5-mini, gpt-5.4-mini, dst) CUMA terima temperature=1 -
-    # ditemukan lewat tes live 2026-07-31 (bug yang sama juga ditemukan & diperbaiki di
-    # ai-chat-bot) - API OpenAI menolak keras temperature lain utk model ini. Diklem di
-    # SINI (bukan di tiap pemanggil _chat) supaya seluruh pipeline (Writer Agent 0.6,
-    # fact-check 0.2, expand loop, dst) otomatis aman tanpa perlu ubah tiap call site.
-    if CHAT_MODEL.lower().startswith("gpt-5"):
+    # Keluarga GPT-5 (gpt-5, gpt-5-mini, gpt-5.4-mini, dst) CUMA terima temperature=1
+    if use_model.lower().startswith("gpt-5"):
         temperature = 1
-    # Timeout dinaikkan 90 -> 150 detik (2026-08-05, jaring pengaman tambahan sesudah
-    # ganti model - bukan solusi utama, tapi tetap wajar dikasih margin lebih longgar
-    # utk artikel panjang, bukan hanya berharap gpt-4.1-mini selalu cukup cepat).
     async with httpx.AsyncClient(timeout=150) as http:
         resp = await http.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
             json={
-                "model": CHAT_MODEL,
+                "model": use_model,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
                 "temperature": temperature,
             },
@@ -426,8 +435,63 @@ async def _chat(system: str, user: str, temperature: float = 0.7) -> str:
         resp.raise_for_status()
         data = resp.json()
         usage = data.get("usage") or {}
-        await _log_usage(CHAT_MODEL, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+        pt = usage.get("prompt_tokens", 0)
+        ct = usage.get("completion_tokens", 0)
+        await _log_usage(use_model, pt, ct)
         return data["choices"][0]["message"]["content"]
+
+
+async def _chat_gemini(system: str, user: str, temperature: float = 0.7, model: str = "gemini-3.1-flash-lite") -> str:
+    """Gemini API via Google AI Studio (generativelanguage.googleapis.com)."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY belum diisi di backend/.env")
+
+    # Map model name ke Gemini model ID
+    gemini_model_map = {
+        "gemini-3.1-flash-lite": "gemini-3.5-flash-lite",
+        "gemini-2.0-flash-lite": "gemini-3.5-flash-lite",
+        "gemini-3.5-flash-lite": "gemini-3.5-flash-lite",
+        "gemini-2.5-flash": "gemini-2.5-flash",
+    }
+    gemini_model_id = gemini_model_map.get(model, "gemini-3.5-flash-lite")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model_id}:generateContent?key={GEMINI_API_KEY}"
+
+    # Gemini pakai struktur berbeda dari OpenAI
+    contents = [
+        {"role": "user", "parts": [{"text": f"System: {system}\n\n{user}"}]},
+    ]
+
+    async with httpx.AsyncClient(timeout=150) as http:
+        resp = await http.post(
+            url,
+            json={
+                "contents": contents,
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": 8192,
+                },
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    # Extract text dari response Gemini
+    candidates = data.get("candidates", [])
+    if not candidates:
+        raise RuntimeError(f"Gemini returned no candidates: {data}")
+
+    text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+    if not text:
+        raise RuntimeError(f"Gemini returned empty text: {data}")
+
+    # Token usage dari Gemini
+    usage_metadata = data.get("usageMetadata", {})
+    pt = usage_metadata.get("promptTokenCount", 0)
+    ct = usage_metadata.get("candidatesTokenCount", 0)
+    await _log_usage(model, pt, ct)
+
+    return text
 
 
 async def _embed(texts: list) -> list:
@@ -2311,7 +2375,9 @@ async def _analyze_competitors_live(keyword: str) -> Optional[dict]:
 # 3. Writer Agent
 # ---------------------------------------------------------------------------
 async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[list] = None,
-                         sibling_collision: Optional[dict] = None) -> dict:
+                         sibling_collision: Optional[dict] = None, model: str = "") -> dict:
+    # Default: pakai WRITER_MODEL (Gemini) utk penulisan, lebih murah & cepat drpd CHAT_MODEL
+    use_model = model or WRITER_MODEL
     facts = await _fetch_site_facts(site)
     keyword = keyword_doc["keyword"]
     competitor_result = await analyze_competitors(keyword, site=site)
@@ -2363,6 +2429,19 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "mengarang klaim spesifik soal tempat itu - jam buka, harga tiket, dll kalau tidak yakin). "
         "Kalau ragu suatu fakta, jangan disebutkan sama sekali daripada mengarang. Jangan mengarang "
         "pengalaman pribadi/kunjungan yang tidak pernah terjadi.\n\n"
+        "LARANGAN KERAS MENGARANG DETAIL TEMPAT PIHAK KETIGA (2026-08-20, audit temuan): "
+        "Kalau artikel menyebut tempat/pihak ketiga (bukan Pelangi Homestay/Harmoni Hills sendiri) "
+        "seperti Kebun Raya Bali, Danau Beratan, Handara Gate, dll - BOLEH menyebut nama tempat "
+        "secara UMUM, TAPI DILARANG mengarang detail SPESIFIK berikut kalau TIDAK ada di DATA ASLI:\n"
+        "- Harga tiket masuk / biaya aktivitas (angka Rp/USD)\n"
+        "- Jam operasional / jam buka tutup\n"
+        "- Fasilitas spesifik (shuttle tour, pemandu wisata, peternakan, taman bunga, dll)\n"
+        "- Aktivitas spesifik (trekking, petik buah, interaksi hewan, dll)\n"
+        "- Jarak tempuh / waktu tempuh dalam angka pasti (km/menit)\n"
+        "- Jumlah/spesifikasi (ratusan jenis bunga, 10 wahana, dll)\n"
+        "Sebagai gantinya, tulis secara UMUM: 'Kebun Raya Bali bisa dikunjungi dari area ini' "
+        "atau 'Danau Beratan merupakan danau vulkanik yang populer di Bedugul' - tanpa detail "
+        "yang bisa salah. Kalau DATA ASLI menyebut detail spesifik, BARU boleh ditulis.\n\n"
         "GAYA TULISAN: Tulis natural, variasikan panjang kalimat & struktur paragraf (jangan semua "
         "paragraf polanya sama), gunakan kalimat aktif, bahasa yang mudah dipahami. Sapaan 'Kakak' "
         "MAKSIMAL 5-7 kali di SELURUH artikel (2026-07-29, revisi manual user - sebelumnya muncul "
@@ -2498,6 +2577,28 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
     editorial_rules = await _fetch_editorial_rules()
     if editorial_rules:
         system += "\n\nATURAN EDITORIAL TAMBAHAN (wajib dipatuhi):\n" + "\n".join(f"- {r}" for r in editorial_rules)
+
+    # FAQ Blacklist Injection (2026-08-20) - daftar pola FAQ yg SUDAH TERLALU SERING
+    # dipakai di ratusan artikel. Writer WAJIB menghindari pola-pola ini kecuali memang
+    # SPESIFIK ke topik artikel ini (mis. artikel ttg "paket breakfast" boleh bahas sarapan,
+    # tapi artikel ttg "tips hiking Bedugul" TIDAK BOLEH punya FAQ soal sarapan).
+    # Ditambahkan ke system prompt (bukan user prompt) krn ini aturan KERAS, bukan saran.
+    FAQ_BLACKLIST_PROMPT = (
+        "\n\nFAQ YANG DILARANG (pola pertanyaan ini sudah muncul di 50+ artikel lain, "
+        "WAJIB DIHINDARI kecuali memang SPESIFIK ke topik artikel ini):\n"
+        "- 'Apakah sarapan sudah termasuk?' (atau variasi: 'termasuk di kamar', 'termasuk dalam harga')\n"
+        "- 'Bagaimana cara melakukan pembayaran?' (atau variasi: 'cara bayar', 'metode pembayaran')\n"
+        "- 'Apakah anak-anak diperbolehkan menginap?' (atau variasi: 'untuk keluarga', 'membawa anak')\n"
+        "- 'Kapan waktu terbaik untuk berkunjung?' (atau variasi: 'waktu ideal', 'musim terbaik')\n"
+        "- 'Apakah ada parkir?' (atau variasi: 'area parkir', 'parkir kendaraan')\n"
+        "- 'Bagaimana cara check-in?' (atau variasi: 'jam check-in', 'proses check-in')\n"
+        "- 'Apakah bisa cancel/reschedule?' (atau variasi: 'pembatalan', 'pengubahan jadwal')\n"
+        "- 'Apakah menerima kartu kredit?' (atau variasi: 'transfer bank', 'tunai')\n"
+        "Sebagai gantinya, buat FAQ yang SPESIFIK ke topik artikel ini - misalnya "
+        "pertanyaan tentang detail aktivitas, harga spesifik, rute perjalanan, tips "
+        "praktis, atau perbandingan yang hanya relevan dgn keyword ini."
+    )
+    system += FAQ_BLACKLIST_PROMPT
     competitor_block = (
         f"\n\nANALISIS KOMPETITOR (dari hasil pencarian Google nyata):\n{competitor_result['prompt_text']}"
         if competitor_result else ""
@@ -2513,6 +2614,28 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
             "(bukan wajib, jangan dipaksakan kalau tidak nyambung/tidak bisa dijawab jujur "
             "dari DATA ASLI): " + "; ".join(gap_topics)
         )
+
+    # FAQ Avoidance Injection (2026-08-20) - kirim daftar FAQ yg SUDAH ada di artikel lain
+    # supaya writer TIDAK menulis pertanyaan serupa. Root cause nyata: writer terus menulis
+    # "Apakah sarapan sudah termasuk?" di SETIAP artikel krn tidak punya informasi FAQ apa
+    # saja yg sudah dipakai. Sekarang ambil ~20 FAQ terbaru dari situs ini (cukup utk cover
+    # pola paling umum, tidak perlu SEMUA - 3000+ FAQ terlalu panjang utk dikirim ke prompt).
+    faq_taken_block = ""
+    try:
+        existing_faqs = await db.faq_index.find(
+            {"site": site}, {"text": 1},
+        ).sort("created_at", -1).to_list(20)
+        if existing_faqs:
+            faq_lines = "\n".join(f"- {f['text']}" for f in existing_faqs)
+            faq_taken_block = (
+                "\n\nFAQ YANG SUDAH DIPAKAI di artikel lain (DILARANG menulis pertanyaan "
+                "yang SAMA atau TERLALU MIRIP - ganti dgn pertanyaan SPESIFIK ke fokus "
+                "artikel INI, bukan pertanyaan generik):\n"
+                f"{faq_lines}"
+            )
+    except Exception:
+        pass  # gagal query - skip, bukan fatal
+
     # Internal link SEBAGAI KONTEKS PENULISAN, bukan ditempel di akhir (2026-07-28,
     # perbaikan anchor text natural) - sebelumnya pick_internal_links() dipanggil SETELAH
     # write_article() lalu ditempel mekanis sbg "Baca juga: [Judul Asli] [Judul Asli]."
@@ -2548,6 +2671,7 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
     user = f"""DATA ASLI ({site}):
 {facts}
 {competitor_block}
+{faq_taken_block}
 {links_block}
 {external_block}
 
@@ -2561,7 +2685,9 @@ Format balasan HARUS JSON valid dengan struktur persis ini (tanpa markdown code 
   "tags": ["tag1", "tag2", "tag3"]
 }}"""
 
-    raw = await _chat(system, user, temperature=0.6)
+    # Temperature: Gemini lebih rendah (0.4) utk kurangi hallucination, gpt tetap 0.6
+    writer_temperature = 0.4 if "gemini" in use_model else 0.6
+    raw = await _chat(system, user, temperature=writer_temperature, model=use_model)
     data = _parse_json_response(raw)
 
     # gpt-4.1-mini konsisten menulis lebih pendek dari target (~500-600 kata) apapun
@@ -2595,7 +2721,7 @@ JSON artikel sebelumnya:
 {json.dumps(data, ensure_ascii=False)}
 
 Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content, tags)."""
-        raw2 = await _chat(system, expand_user, temperature=0.6)
+        raw2 = await _chat(system, expand_user, temperature=0.6, model=use_model)
         try:
             data2 = _parse_json_response(raw2)
             new_count = len(data2["content"].split())
@@ -3028,17 +3154,21 @@ def intent_coverage_score(content: str, entity_type: str = ENTITY_TYPE_ACCOMMODA
 SLOP_PHRASES_DILARANG = [
     "di era digital ini", "tidak dapat dipungkiri", "perlu diketahui bahwa", "pada dasarnya",
     "kesimpulannya", "udara sejuk yang menyegarkan", "nyaman dan menyenangkan",
-    "kenyamanan maksimal", "tanpa harus khawatir",
+    "kenyamanan maksimal", "tanpa harus khawatir", "menjadi pilihan tepat",
+    "nikmati pengalaman", "suasana yang nyaman", "pilihan yang tepat",
+    "jangan lewatkan", "pastikan anda", "segera hubungi",
 ]
 # Kata generik/hampa yg BOLEH muncul sesekali (bukan klise terlarang spt di atas), tapi
-# kalau berulang jadi ciri khas "AI slop" - ambang 4x per artikel (sama spt cap "Kakak"
-# maks 5-7x yg sudah ada di prompt, prinsip yg sama: kata netral jadi mencolok kalau
-# dipaksakan berulang-ulang). Dilonggarkan 3->4 (2026-08-07, permintaan Agus - "jangan
-# terlalu ketat", audit log nyata: ini salah satu dari 2 penyebab reject terbesar dlm
-# kategori editor, 128x dlm 1 hari) - sama prinsip dgn pelonggaran fakta-berulang di
-# bawah, kata yg diulang tetap kata yg BENAR, cuma soal rasa "berputar-putar".
-SLOP_WORDS_MAX_3X = ["menghadirkan", "memberikan", "menawarkan", "memanjakan"]
-SLOP_WORD_MAX_OK = 3  # baru dianggap masalah kalau > ini (4x+)
+# kalau berulang jadi ciri khas "AI slop" - ambang 2x per artikel (turun dari 3x,
+# audit 2026-08-20: threshold 3x masih terlalu longgar, "memberikan" muncul 4-10x di
+# banyak artikel yg gagal quality gate). Prinsip sama: kata netral jadi mencolok kalau
+# dipaksakan berulang-ulang.
+SLOP_WORDS_MAX_3X = [
+    "menghadirkan", "memberikan", "menawarkan", "memanjakan",
+    "menyajikan", "memiliki", "tersedia", "dapat dinikmati",
+    "menjadi", "terletak", "berlokasi",
+]
+SLOP_WORD_MAX_OK = 2  # baru dianggap masalah kalau > ini (3x+)
 
 
 def _slop_word_counts(content: str) -> dict:
@@ -3235,24 +3365,56 @@ def _extract_faqs(content: str) -> list:
     return [q.strip() for q in _FAQ_PATTERN.findall(content) if q.strip()]
 
 
+# FAQ Generik Overused (2026-08-20) - pola pertanyaan yg SUDAH terlalu banyak di artikel
+# lain, meskipun secara teknis "beda" dari sisi embedding. Dicek pakai keyword match
+# (lebih cepat & deterministik drpd embedding), menambah lapis DUPIKAT di atas threshold
+# embedding. Pattern diabaikan case-sensitive (FAQ selalu diawali kapital).
+FAQ_GENERIK_OVERUSED = [
+    "apakah sarapan sudah termasuk",
+    "bagaimana cara melakukan pembayaran",
+    "apakah anak-anak diperbolehkan menginap",
+    "kapan waktu terbaik untuk berkunjung",
+    "apakah ada parkir",
+    "bagaimana cara check-in",
+    "apakah bisa cancel",
+    "apakah menerima kartu kredit",
+]
+
+
+def _faq_overused_check(faqs_baru: list) -> list:
+    """Cek apakah FAQ baru mengandung pola generik yg sudah terlalu sering dipakai."""
+    problems = []
+    for faq in faqs_baru:
+        faq_lower = faq.lower()
+        for pattern in FAQ_GENERIK_OVERUSED:
+            if pattern in faq_lower:
+                problems.append(f'FAQ generik overused: "{faq}" (pola "{pattern}")')
+                break
+    return problems
+
+
 async def _faq_duplikat_terdeteksi(site: str, content: str, exclude_slug: str = "") -> list:
     faqs_baru = _extract_faqs(content)
     if not faqs_baru:
         return []
+
+    # Layer 1: FAQ generik overused (deterministik, tanpa API call)
+    problems = _faq_overused_check(faqs_baru)
+
+    # Layer 2: FAQ duplikat via embedding (sama seperti sebelumnya)
     existing = await db.faq_index.find(
         {"site": site, "slug": {"$ne": exclude_slug}}, {"text": 1, "embedding": 1},
     ).to_list(3000)
-    if not existing:
-        return []
-    try:
-        new_embeds = await _embed(faqs_baru)
-    except Exception:
-        return []  # gagal embed (mis. rate limit) - jangan blokir publish krn ini, sama pola dgn _duplicate_section_terdeteksi
-    problems = []
-    for faq, emb in zip(faqs_baru, new_embeds):
-        mirip = next((e["text"] for e in existing if _cosine(emb, e["embedding"]) > FAQ_DEDUP_THRESHOLD), None)
-        if mirip:
-            problems.append(f'FAQ mirip yang sudah ada di artikel lain: "{faq}" ~ "{mirip}"')
+    if existing:
+        try:
+            new_embeds = await _embed(faqs_baru)
+            for faq, emb in zip(faqs_baru, new_embeds):
+                mirip = next((e["text"] for e in existing if _cosine(emb, e["embedding"]) > FAQ_DEDUP_THRESHOLD), None)
+                if mirip:
+                    problems.append(f'FAQ mirip yang sudah ada di artikel lain: "{faq}" ~ "{mirip}"')
+        except Exception:
+            pass  # gagal embed - tetap pakai hasil layer 1
+
     return problems
 
 
@@ -3338,11 +3500,21 @@ async def fact_check(site: str, content: str) -> tuple:
     system = (
         "Kamu fact-checker konten editorial yang teliti & skeptis. Tugasmu HANYA "
         "membandingkan draft artikel dengan DATA ASLI yang diberikan, cari klaim "
-        "SPESIFIK (harga, ukuran kamar, nama fasilitas, kapasitas) yang TIDAK ADA di "
-        "DATA ASLI atau BERTENTANGAN dengannya - ini SELALU ditolak, tanpa kecuali, "
-        "krn salah di sini langsung merugikan tamu (harga/fasilitas properti sendiri). "
-        "Klaim umum yang wajar (mis. 'pemandangan indah', 'suasana tenang', 'udara "
-        "sejuk') BUKAN masalah.\n\n"
+        "SPESIFIK (harga, ukuran kamar, nama fasilitas, kapasitas, detail aktivitas) "
+        "yang TIDAK ADA di DATA ASLI atau BERTENTANGAN dengannya - ini SELALU ditolak, "
+        "tanpa kecuali, krn salah di sini langsung merugikan tamu (harga/fasilitas "
+        "properti sendiri). Klaim umum yang wajar (mis. 'pemandangan indah', 'suasana "
+        "tenang', 'udara sejuk') BUKAN masalah.\n\n"
+        "ATURAN KERAS UTK ENTITAS PIHAK KETIGA (2026-08-20, audit temuan: model sering "
+        "mengarang detail spesifik tempat pihak ketiga): kalau draft menyebut aktivitas/"
+        "fasilitas/layanan dari tempat PIHAK KETIGA (bukan Pelangi Homestay/Harmoni Hills "
+        "sendiri) - mis. 'Bali Farm House menyediakan peminjaman kostum', 'Tempong Indra "
+        "buka jam 10', 'Tiket masuk Rp50.000' - dan detail SPESIFIK itu TIDAK ada di "
+        "DATA ASLI, itu HARUS ditolak. Penyebutan nama tempat secara UMUM saja ('Bali "
+        "Farm House bisa dikunjungi', 'ada Tempong Indra di sekitar') tanpa detail "
+        "spesifik BOLEH (lihat aturan longgar di bawah). TAPI begitu ada angka/jam/harga/"
+        "detail spesifik - itu klaim yang BISA salah, dan kalau tidak ada di DATA ASLI, "
+        "ditolak.\n\n"
         "KHUSUS klaim soal AREA/LOKASI SEKITAR (2026-08-06, permintaan Agus - area "
         "wisata Bedugul luas, wajar artikel sebut nama pasar/desa/jalan/tempat umum "
         "setempat yang belum tentu ada di daftar landmark terverifikasi kami): kalau "
@@ -3383,7 +3555,7 @@ Array "issues" KOSONG kalau semua klaim spesifik di draft sudah sesuai/didukung 
 SITE_DOMAIN = {"pelangi": "pelangihomestay.com", "harmoni": "harmonihillsvillage.com"}
 
 
-async def generate_one(site: str, exclude_ids: Optional[set] = None) -> dict:
+async def generate_one(site: str, exclude_ids: Optional[set] = None, model: str = "") -> dict:
     keyword_doc = await get_next_keyword(site, exclude_ids=exclude_ids)
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "draft", "updated_at": datetime.now(timezone.utc).isoformat()}})
 
@@ -3397,7 +3569,7 @@ async def generate_one(site: str, exclude_ids: Optional[set] = None) -> dict:
         # Writer Agent tahu kalau brand seberang sudah pernah menulis topik mirip & wajib
         # ambil sudut pandang beda sesuai persona masing-masing brand.
         sibling = await _cross_brand_collision(site, keyword_doc["keyword"], keyword_doc["cluster"])
-        article = await write_article(site, keyword_doc, link_candidates=links, sibling_collision=sibling)
+        article = await write_article(site, keyword_doc, link_candidates=links, sibling_collision=sibling, model=model)
         article["content"] = _normalize_faq_format(article["content"])
         content_final = _inject_links(article["content"], links, WA_BY_SITE[site], article.get("_maps_url"))
 
@@ -3729,6 +3901,7 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--site", required=True, choices=["pelangi", "harmoni", "all"])
     ap.add_argument("--count", type=int, default=1)
+    ap.add_argument("--model", default="", help="Model override (mis. 'gemini-3.1-flash-lite'). Kosong = pakai CHAT_MODEL default.")
     args = ap.parse_args()
     sites = ["pelangi", "harmoni"] if args.site == "all" else [args.site]
 
@@ -3787,7 +3960,7 @@ async def main():
             sudah_dicoba_slot_ini: set = set()
             for attempt in range(1, MAX_RETRY_PER_SLOT + 1):
                 try:
-                    result = await generate_one(site, exclude_ids=sudah_dicoba_slot_ini)
+                    result = await generate_one(site, exclude_ids=sudah_dicoba_slot_ini, model=args.model)
                     print(f"[{site}] slot {i+1}/{args.count} percobaan {attempt}: {json.dumps(result, ensure_ascii=False)}")
                     if result.get("ok"):
                         sukses += 1
