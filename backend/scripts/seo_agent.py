@@ -2493,12 +2493,13 @@ async def generate_strategy(site: str, keyword_doc: dict, model: str = "") -> Op
 # ---------------------------------------------------------------------------
 async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[list] = None,
                          sibling_collision: Optional[dict] = None, model: str = "",
-                         strategy: Optional[dict] = None) -> dict:
+                         strategy: Optional[dict] = None, competitor_result: Optional[dict] = None) -> dict:
     # Default: pakai WRITER_MODEL (Gemini) utk penulisan, lebih murah & cepat drpd CHAT_MODEL
     use_model = model or WRITER_MODEL
     facts = await _fetch_site_facts(site, cluster=keyword_doc.get("cluster", ""))
     keyword = keyword_doc["keyword"]
-    competitor_result = await analyze_competitors(keyword, site=site)
+    if competitor_result is None:
+        competitor_result = await analyze_competitors(keyword, site=site)
     maps_url = await _maps_url_for_site(site)
 
     # Entity-aware Knowledge Injection (2026-08-08, Modul 2+6 PRD Agus "prioritas
@@ -3844,6 +3845,10 @@ async def generate_one(site: str, exclude_ids: Optional[set] = None, model: str 
     keyword_doc = await get_next_keyword(site, exclude_ids=exclude_ids)
     await db.seo_keywords.update_one({"id": keyword_doc["id"]}, {"$set": {"status": "draft", "updated_at": datetime.now(timezone.utc).isoformat()}})
 
+    # Adaptive Pipeline Tier Classification (2026-08-20, PRD Intelligence V2 §11)
+    # Rule-based, zero API cost. Simple/Medium/Complex tiers with different pipeline depth.
+    tier = _classify_tier(keyword_doc, site)
+
     try:
         links = await pick_internal_links(
             site, keyword_doc["cluster"], keyword=keyword_doc["keyword"],
@@ -3854,11 +3859,23 @@ async def generate_one(site: str, exclude_ids: Optional[set] = None, model: str 
         # Writer Agent tahu kalau brand seberang sudah pernah menulis topik mirip & wajib
         # ambil sudut pandang beda sesuai persona masing-masing brand.
         sibling = await _cross_brand_collision(site, keyword_doc["keyword"], keyword_doc["cluster"])
-        # Article Strategy (2026-08-20, PRD Intelligence V2 §6) - generate blueprint
-        # SEBELUM menulis. Kalau gagal (None), write_article fallback ke perilaku inline.
-        strategy = await generate_strategy(site, keyword_doc, model=model)
-        article = await write_article(site, keyword_doc, link_candidates=links, sibling_collision=sibling, model=model, strategy=strategy)
+
+        # Tier-based pipeline:
+        # - Simple: skip competitor analysis, skip strategy (use basic facts only)
+        # - Medium: generate strategy, skip competitor analysis
+        # - Complex: full pipeline (strategy + competitor analysis)
+        competitor_result = None
+        strategy = None
+
+        if tier in ("medium", "complex"):
+            strategy = await generate_strategy(site, keyword_doc, model=model)
+
+        if tier == "complex":
+            competitor_result = await analyze_competitors(keyword_doc["keyword"], site=site)
+
+        article = await write_article(site, keyword_doc, link_candidates=links, sibling_collision=sibling, model=model, strategy=strategy, competitor_result=competitor_result)
         article["content"] = _normalize_faq_format(article["content"])
+        maps_url = await _maps_url_for_site(site)
         content_final = _inject_links(article["content"], links, WA_BY_SITE[site], article.get("_maps_url"))
 
         entity_type = _klasifikasi_entity_type(keyword_doc["keyword"])
@@ -4131,6 +4148,49 @@ Balas HARUS JSON valid struktur sama seperti sebelumnya (title, excerpt, content
         print(f"[prerender] gagal utk artikel baru {slug}: {type(e).__name__}: {e}")
 
     return {"ok": True, "keyword": keyword_doc["keyword"], "slug": slug, "word_count": len(content_final.split())}
+
+
+# Ambang pensiun keyword (2026-08-06) - lihat catatan lengkap di generate_one() bagian
+# `if problems`. 3 dipilih supaya keyword yg genuinely cuma sial 1x (mis. kena AI-slop
+# count kebetulan) masih dapat kesempatan wajar coba ulang, tapi keyword yg SECARA
+# STRUKTURAL tidak cocok dgn data asli (fact-check-nya tidak akan pernah berubah ditulis
+# ulang berapa kali pun) dibatasi maks 3 percobaan penuh seumur hidup, bukan tanpa batas.
+MAX_QUALITY_FAILURES_BEFORE_RETIRE = 3
+
+# Adaptive Pipeline Tier Classification (2026-08-20, PRD Intelligence V2 §11)
+# Rule-based, zero API cost. Tiga tier:
+# - Simple: Intent → Context → Writer (skip competitor, skip strategy)
+# - Medium: Intent → Context → Strategy → Writer (skip competitor)
+# - Complex: Intent → Context → Strategy → Competitor → Writer (full pipeline)
+def _classify_tier(keyword_doc: dict, site: str) -> str:
+    """Klasifikasi tier berdasarkan keyword characteristics. Rule-based, zero API cost."""
+    keyword = keyword_doc.get("keyword", "")
+    cluster = keyword_doc.get("cluster", "")
+    intent = keyword_doc.get("intent", "Informational")
+    entity_type = _klasifikasi_entity_type(keyword)
+    fail_count = keyword_doc.get("quality_fail_count", 0)
+
+    # Always Complex: Accommodation keywords (butuh data harga/fasilitas akurat)
+    if entity_type == ENTITY_TYPE_ACCOMMODATION:
+        return "complex"
+
+    # Simple: Informational keywords tanpa properti, tanpa transaksional
+    # mis. "cuaca bedugul", "aktivitas di kebun raya", "tips liburan"
+    if intent == "Informational" and entity_type != ENTITY_TYPE_ACCOMMODATION:
+        # Check for transactional modifiers
+        if not _TRANSACTION_MODIFIERS.search(keyword):
+            return "simple"
+
+    # Complex: Keyword dengan fail count tinggi (butuh perhatian lebih)
+    if fail_count >= 2:
+        return "complex"
+
+    # Complex: Keyword prioritas tinggi
+    if keyword_doc.get("priority") == "High":
+        return "complex"
+
+    # Default: Medium
+    return "medium"
 
 
 MAX_RETRY_PER_SLOT = 4  # lihat catatan retry-until-sukses di main() di bawah
