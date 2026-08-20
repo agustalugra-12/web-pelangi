@@ -2393,10 +2393,70 @@ async def _analyze_competitors_live(keyword: str) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
+# 2.5 Article Strategy (2026-08-20, PRD Intelligence V2 §6)
+# ---------------------------------------------------------------------------
+# Generate structured blueprint SEBELUM menulis. Writer menggunakan strategy ini
+# sbg panduan, bukan nebak sendiri. 1 LLM call murah (keyword + facts → strategy JSON).
+# Return None on failure → write_article fallback ke perilaku inline (backward compatible).
+STRATEGY_SYSTEM = (
+    "Kamu content strategist untuk blog hotel di Bedugul, Bali. "
+    "Tugasmu: buat blueprint/strategi artikel berdasarkan keyword & data bisnis.\n\n"
+    "OUTPUT: JSON dengan struktur ini (tanpa markdown code fence):\n"
+    "{\n"
+    '  "intent": "primary intent (Informational/Commercial/Transactional)",\n'
+    '  "secondary_intent": "secondary intent jika ada, atau null",\n'
+    '  "audience": "siapa target pembaca (mis. backpacker, keluarga, honeymoon)",\n'
+    '  "main_question": "pertanyaan utama yg ingin dijawab pembaca",\n'
+    '  "article_promise": "janji artikel ini ke pembaca (mis. memberikan tips budget hemat)",\n'
+    '  "key_topics": ["topik 1", "topik 2", "topik 3"],\n'
+    '  "important_entities": ["entity 1", "entity 2"],\n'
+    '  "business_relevance": "bagaimana properti relevan dgn topik ini",\n'
+    '  "commercial_transition": "pola transisi dari info ke bisnis (mis. pembaca butuh akomodasi → Pelangi)",\n'
+    '  "cta": "ajakan yg sesuai dgn intent",\n'
+    '  "sub_headlines": ["sub-judul 1", "sub-judul 2", "sub-judul 3", "sub-judul 4", "sub-judul 5", "sub-judul 6"]\n'
+    "}\n\n"
+    "ATURAN:\n"
+    "- key_topics: maks 5 topik, urutkan dari paling relevan\n"
+    "- important_entities: tempat/landmark/aktivitas yg relevan\n"
+    "- sub_headlines: 6 sub-judul yg mencakup SEMUA key_topics\n"
+    "- commercial_transition: harus natural, bukan dipaksakan\n"
+    "- JANGAN mengarang fakta - pakai data yg diberikan"
+)
+
+
+async def generate_strategy(site: str, keyword_doc: dict, model: str = "") -> Optional[dict]:
+    """Generate structured article blueprint. Returns None on failure (graceful fallback)."""
+    try:
+        facts = await _fetch_site_facts(site, cluster=keyword_doc.get("cluster", ""))
+        keyword = keyword_doc["keyword"]
+        cluster = keyword_doc.get("cluster", "General")
+        intent = keyword_doc.get("intent", "Informational")
+
+        user = f"Keyword: {keyword}\nCluster: {cluster}\nIntent: {intent}\n\nDATA BISNIS:\n{facts[:2000]}"
+
+        use_model = model or WRITER_MODEL
+        writer_temperature = 0.3 if "gemini" in use_model else 0.5
+        raw = await _chat(STRATEGY_SYSTEM, user, temperature=writer_temperature, model=use_model)
+        strategy = _parse_json_response(raw)
+
+        # Validate minimal fields
+        required = ["intent", "audience", "main_question", "key_topics", "sub_headlines"]
+        if not all(strategy.get(f) for f in required):
+            print(f"[strategy] incomplete fields, fallback ke inline: {[f for f in required if not strategy.get(f)]}")
+            return None
+
+        return strategy
+    except Exception as e:
+        print(f"[strategy] gagal generate, fallback ke inline: {type(e).__name__}: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
 # 3. Writer Agent
 # ---------------------------------------------------------------------------
 async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[list] = None,
-                         sibling_collision: Optional[dict] = None, model: str = "") -> dict:
+                         sibling_collision: Optional[dict] = None, model: str = "",
+                         strategy: Optional[dict] = None) -> dict:
     # Default: pakai WRITER_MODEL (Gemini) utk penulisan, lebih murah & cepat drpd CHAT_MODEL
     use_model = model or WRITER_MODEL
     facts = await _fetch_site_facts(site, cluster=keyword_doc.get("cluster", ""))
@@ -2746,7 +2806,27 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
 {faq_taken_block}
 {links_block}
 {external_block}
+"""
 
+    # Strategy Injection (2026-08-20, PRD Intelligence V2 §6) - kalau strategy tersedia,
+    # suntikkan ke user prompt sbg blueprint. Writer HARUS mengikuti strategy, bukan nebak.
+    # Kalau strategy None (fallback), writer jalan seperti biasa (backward compatible).
+    if strategy:
+        strategy_block = (
+            f"\nARTICLE STRATEGY (ikuti blueprint ini):\n"
+            f"- Target pembaca: {strategy.get('audience', 'umum')}\n"
+            f"- Pertanyaan utama: {strategy.get('main_question', '')}\n"
+            f"- Janji artikel: {strategy.get('article_promise', '')}\n"
+            f"- Topik kunci: {', '.join(strategy.get('key_topics', []))}\n"
+            f"- Entity penting: {', '.join(strategy.get('important_entities', []))}\n"
+            f"- Transisi bisnis: {strategy.get('commercial_transition', '')}\n"
+            f"- CTA: {strategy.get('cta', '')}\n"
+            f"- Sub-judul yg sudah direncanakan: {', '.join(strategy.get('sub_headlines', []))}\n"
+            f"Gunakan sub-judul di atas sbg PANDUAN, boleh diedit judulnya tapi POKOK TOPIK harus sama."
+        )
+        user += strategy_block
+
+    user += f"""
 Tulis artikel SEO untuk target keyword: "{keyword}"
 
 Format balasan HARUS JSON valid dengan struktur persis ini (tanpa markdown code fence):
@@ -3641,7 +3721,10 @@ async def generate_one(site: str, exclude_ids: Optional[set] = None, model: str 
         # Writer Agent tahu kalau brand seberang sudah pernah menulis topik mirip & wajib
         # ambil sudut pandang beda sesuai persona masing-masing brand.
         sibling = await _cross_brand_collision(site, keyword_doc["keyword"], keyword_doc["cluster"])
-        article = await write_article(site, keyword_doc, link_candidates=links, sibling_collision=sibling, model=model)
+        # Article Strategy (2026-08-20, PRD Intelligence V2 §6) - generate blueprint
+        # SEBELUM menulis. Kalau gagal (None), write_article fallback ke perilaku inline.
+        strategy = await generate_strategy(site, keyword_doc, model=model)
+        article = await write_article(site, keyword_doc, link_candidates=links, sibling_collision=sibling, model=model, strategy=strategy)
         article["content"] = _normalize_faq_format(article["content"])
         content_final = _inject_links(article["content"], links, WA_BY_SITE[site], article.get("_maps_url"))
 
