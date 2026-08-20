@@ -2596,9 +2596,49 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         "- 'Apakah menerima kartu kredit?' (atau variasi: 'transfer bank', 'tunai')\n"
         "Sebagai gantinya, buat FAQ yang SPESIFIK ke topik artikel ini - misalnya "
         "pertanyaan tentang detail aktivitas, harga spesifik, rute perjalanan, tips "
-        "praktis, atau perbandingan yang hanya relevan dgn keyword ini."
+        "praktis, atau perbandingan yang hanya relevan dgn keyword ini.\n\n"
+        "CONTOH FAQ YANG BENAR vs SALAH:\n"
+        "Keyword: 'aktivitas camping di Bedugul'\n"
+        "BENAR (spesifik ke topik):\n"
+        "- **Berapa biaya sewa tenda di area camping Bedugul?**\n"
+        "- **Apakah area camping menyediakan akses air bersih?**\n"
+        "- **Apa saja perlengkapan yang wajib dibawa saat camping di Bedugul?**\n"
+        "- **Bagaimana kondisi cuaca malam di area camping Bedugul?**\n"
+        "SALAH (generik, sudah dipakai di 50+ artikel lain):\n"
+        "- **Apakah sarapan sudah termasuk?** ← terlalu umum\n"
+        "- **Bagaimana cara pembayaran?** ← tidak relevan dgn camping\n"
+        "- **Apakah ada parkir?** ← bukan fokus artikel camping\n"
+        "- **Kapan waktu terbaik berkunjung?** ← sudah terlalu sering dipakai"
     )
     system += FAQ_BLACKLIST_PROMPT
+
+    # Few-shot Entity-Type Examples (2026-08-20) - contoh KONKRET sub-judul yg BENAR vs
+    # SALAH utk berbagai entity type. Writer SUDAH dapat instruksi "jangan bikin sub-judul
+    # penginapan utk non-accommodation" tapi TETAP melanggar (tes nyata: 2 draft berturut).
+    # Few-shot terbukti paling efektif utk enforce aturan kompleks pada LLM - kasih contoh
+    # nyata, bukan cuma aturan abstrak.
+    if entity_type != ENTITY_TYPE_ACCOMMODATION:
+        entity_examples = (
+            "\n\nCONTOH SUB-JUDUL YANG BENAR vs SALAH utk artikel non-penginapan:\n"
+            "Keyword: 'Aktivitas seru di Bali Farm House Bedugul' (entity_type=Tourist Attraction)\n"
+            "BENAR (6 sub-judul SELURUHNYA tentang topik):\n"
+            "1. **Daya Tarik Utama Bali Farm House**\n"
+            "2. **Jenis Aktivitas yang Bisa Dilakukan**\n"
+            "3. **Jam Operasional dan Harga Tiket**\n"
+            "4. **Tips Berkunjung dengan Anak**\n"
+            "5. **Rute Perjalanan dari Pelangi Homestay**\n"
+            "6. **Perbandingan dengan Destinasi Lain di Bedugul**\n"
+            "SALAH (ada sub-judul penginapan - DITOLAK OTOMATIS):\n"
+            "1. **Daya Tarik Utama Bali Farm House**\n"
+            "2. **Jenis Aktivitas yang Bisa Dilakukan**\n"
+            "3. **Opsi Penginapan Dekat Bali Farm House** ← SALAH!\n"
+            "4. **Tips Berkunjung dengan Anak**\n"
+            "5. **Rute Perjalanan**\n"
+            "6. **Kesimpulan**\n"
+            "PENYEBAB: Sub-judul #3 membahas penginapan di artikel ttg wisata = DITOLAK.\n"
+            "GANTI dgn sub-judul yg relevan dgn topik wisata, BUKAN penginapan."
+        )
+        system += entity_examples
     competitor_block = (
         f"\n\nANALISIS KOMPETITOR (dari hasil pencarian Google nyata):\n{competitor_result['prompt_text']}"
         if competitor_result else ""
@@ -3168,7 +3208,7 @@ SLOP_WORDS_MAX_3X = [
     "menyajikan", "memiliki", "tersedia", "dapat dinikmati",
     "menjadi", "terletak", "berlokasi",
 ]
-SLOP_WORD_MAX_OK = 2  # baru dianggap masalah kalau > ini (3x+)
+SLOP_WORD_MAX_OK = 3  # baru dianggap masalah kalau > ini (4x+)
 
 
 def _slop_word_counts(content: str) -> dict:
