@@ -1613,24 +1613,34 @@ async def _fetch_site_facts(site: str, cluster: str = "") -> str:
     send_landmarks = not cluster or cluster in ("Aktivitas", "Cuaca", "Destinasi", "Outdoor", "Edukasi")
     send_faqs = not cluster or cluster in ("Booking", "Keluarga", "Pasangan")
     send_testimonials = not cluster or cluster in ("Booking",)
+    send_bedugul_facts = not cluster or cluster in ("Cuaca", "Destinasi", "Aktivitas", "Outdoor", "Edukasi")
 
     lines = [
         f"Nama brand: {site_doc.get('brand', '')}",
         f"Alamat: {site_doc.get('address', '')}",
         f"WhatsApp: {site_doc.get('whatsappDisplay', '')}",
         f"Total kamar tersedia: {SITE_ROOM_COUNT.get(site, '-')} kamar",
-        f"Fakta area Bedugul (boleh dikutip - ini fakta geografis umum area, BUKAN klaim "
-        f"khusus milik properti ini): {BEDUGUL_FACTS}",
-        f"Fakta jarak & waktu kunjungan landmark wisata sekitar (boleh dikutip, fakta publik "
-        f"area, BUKAN milik properti): {LANDMARK_FACTS}",
-        # (2026-08-03, permintaan Agus - bug nyata: artikel terbit yg mengklaim pet-friendly/
-        # ruang meeting yg TIDAK PERNAH ada) - fasilitas/layanan yg SERING diasumsikan hotel
-        # pada umumnya tapi properti INI TIDAK PUNYA, WAJIB ditegaskan eksplisit di sini (bukan
-        # cuma "diam" soal itu) - kalau cuma diam, model/keyword generator bisa menganggap
-        # topik itu netral & tetap menulis artikel yang MENGASUMSIKAN properti punya fasilitas
-        # itu (spt yg sudah terjadi). fact_check() pakai fungsi yg SAMA (satu sumber kebenaran,
-        # lihat komentar di atas), jadi larangan ini otomatis juga jadi jaring pengaman kalau
-        # instruksi prompt Writer Agent (lihat write_article) tetap dilanggar.
+    ]
+    if send_bedugul_facts:
+        lines.append(
+            f"Fakta area Bedugul (boleh dikutip - ini fakta geografis umum area, BUKAN klaim "
+            f"khusus milik properti ini): {BEDUGUL_FACTS}",
+        )
+    if send_landmarks:
+        lines.append(
+            f"Fakta jarak & waktu kunjungan landmark wisata sekitar (boleh dikutip, fakta publik "
+            f"area, BUKAN milik properti): {LANDMARK_FACTS}",
+        )
+    # Fasilitas blacklist & kapasitas rombongan - SELALU dikirim (safety guard)
+    # (2026-08-03, permintaan Agus - bug nyata: artikel terbit yg mengklaim pet-friendly/
+    # ruang meeting yg TIDAK PERNAH ada) - fasilitas/layanan yg SERING diasumsikan hotel
+    # pada umumnya tapi properti INI TIDAK PUNYA, WAJIB ditegaskan eksplisit di sini (bukan
+    # cuma "diam" soal itu) - kalau cuma diam, model/keyword generator bisa menganggap
+    # topik itu netral & tetap menulis artikel yang MENGASUMSIKAN properti punya fasilitas
+    # itu (spt yg sudah terjadi). fact_check() pakai fungsi yg SAMA (satu sumber kebenaran,
+    # lihat komentar di atas), jadi larangan ini otomatis juga jadi jaring pengaman kalau
+    # instruksi prompt Writer Agent (lihat write_article) tetap dilanggar.
+    lines.append(
         "FASILITAS/LAYANAN YANG TIDAK KAMI SEDIAKAN (JANGAN PERNAH tulis artikel yang "
         "mengklaim/mengasumsikan salah satu ini tersedia, walau keyword-nya menyiratkan "
         "begitu - kalau keyword secara eksplisit minta topik ini, jawab jujur TIDAK "
@@ -1642,12 +1652,14 @@ async def _fetch_site_facts(site: str, cluster: str = "") -> str:
         "panen buah, city tour) yang dijual/diselenggarakan properti; TIDAK ada kolam "
         "renang (baik Pelangi Homestay maupun Harmoni Hills, kedua properti SAMA-SAMA "
         "tidak punya kolam renang) - properti hanya "
-        "menyediakan penginapan, tamu atur sendiri aktivitas wisata di luar.",
+        "menyediakan penginapan, tamu atur sendiri aktivitas wisata di luar."
+    )
+    lines.append(
         "KAPASITAS ROMBONGAN (fakta ASLI, boleh dikutip): properti BISA menerima rombongan "
         "dengan kapasitas total sekitar 30-50 orang (gabungan beberapa kamar) - boleh "
         "disebutkan sbg fasilitas nyata, TAPI jangan campur dgn klaim ruang meeting/katering "
-        "di atas (rombongan menginap biasa, bukan fasilitas acara/venue).",
-    ]
+        "di atas (rombongan menginap biasa, bukan fasilitas acara/venue)."
+    )
     # Link Maps ASLI (2026-07-31, bug nyata ditemukan lewat tes gpt-5-mini) - write_article()
     # sudah dikasih link ini via external_block (lihat _maps_url_for_site), tapi fact_check()
     # SEBELUM ini pakai fungsi INI (_fetch_site_facts) sbg DATA ASLI-nya - tanpa link di sini,
