@@ -47,7 +47,7 @@ DOCS = {
             "priceFrom": "IDR 145.000",
             "image": "",
             "gallery": [],
-            "facilities": ["AC", "Wi-Fi gratis", "TV LED", "Kamar mandi dalam", "Air panas", "Handuk & toiletries", "Cottage Style", "Area Outdoor"],
+            "facilities": ["Wi-Fi gratis", "TV LED", "Kamar mandi dalam", "Air panas", "Handuk & toiletries", "Cottage Style", "Area Outdoor"],
             "description": "",
         }
     ],
