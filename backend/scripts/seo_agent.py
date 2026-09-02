@@ -1136,7 +1136,9 @@ async def get_next_keyword(site: str, exclude_ids: Optional[set] = None) -> dict
     return picked
 
 
-async def _generate_new_keywords(site: str, n: int = 10) -> None:
+async def _generate_new_keywords(
+    site: str, n: int = 10, target_cluster: Optional[str] = None, expansion_campaign: Optional[str] = None
+) -> int:
     """Dipanggil kalau 100 keyword awal sudah habis dipakai - AI brainstorm keyword baru
     yang MASIH relevan (penginapan/wisata Bedugul), lalu dicek duplikat semantik terhadap
     keyword & judul artikel yang sudah ada sebelum dimasukkan sbg 'belum_dibuat'.
@@ -1151,9 +1153,20 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
     biaya API), bukan hitung ulang. Dokumen lama yg belum py `embedding` (dibuat sebelum
     fix ini) di-backfill SEKALI lewat scripts/backfill_keyword_embeddings.py, bukan
     ditambal diam-diam di sini tiap request (supaya biaya backfill-nya jelas & terjadi
-    SEKALI, bukan tersembunyi & berulang)."""
+    SEKALI, bukan tersembunyi & berulang).
+
+    `target_cluster` (2026-09-02, PRD "AI Blog Title Expansion, Clustering &
+    Anti-Cannibalization") - EXTEND fungsi ini (bukan generator baru): kalau diisi, SEMUA
+    n kandidat WAJIB masuk 1 cluster itu (bukan disebar ke 17 cluster spt perilaku lama -
+    dipakai scripts/expand_title_pool.py utk isi target per-cluster yang merata). Semua
+    gate/dedup existing (intent validation, angle-entity gate, embedding dedup 0.88) TETAP
+    jalan apa adanya - TIDAK diperlonggar utk cluster manapun. `target_cluster=None`
+    (default) = perilaku LAMA 100% sama persis (dipanggil get_next_keyword() line ~1129).
+    Return jumlah accepted (dulu None) - non-breaking, satu-satunya caller lama
+    mengabaikan return value.
+    """
     existing_kw = await db.seo_keywords.find(
-        {"site": site, "embedding": {"$exists": True, "$ne": None}}, {"keyword": 1, "embedding": 1},
+        {"site": site, "embedding": {"$exists": True, "$ne": None}}, {"keyword": 1, "embedding": 1, "cluster": 1},
     ).to_list(2000)
     existing_titles = await db.blog_posts.find(
         {"site": site, "embedding": {"$exists": True, "$ne": None}}, {"title": 1, "embedding": 1},
@@ -1173,13 +1186,28 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
     # tail generik semua, mendekati semangat "1 topik -> beberapa artikel bersudut beda" tanpa
     # perlu subsistem baru terpisah.
     cluster_list = ", ".join(f'"{c}"' for c in CLUSTER_ANGLE.keys())
+    # Content gap mapping (PRD §9/§10) - kalau target 1 cluster, kasih tahu model keyword
+    # yang SUDAH ada di cluster itu supaya cari opportunity BARU (angle/subtopik belum
+    # tersentuh), bukan variasi dari yang sudah ada - tanpa panggilan API tambahan (existing_kw
+    # sudah di-fetch di atas, cukup filter di Python).
+    cluster_instruction = (
+        f'SEBARKAN ke cluster yang BERBEDA-BEDA (jangan semua ke cluster yang sama) dari daftar '
+        f'ini: {cluster_list}.\n\n'
+        if not target_cluster
+        else (
+            f'SEMUA {n} keyword WAJIB masuk cluster "{target_cluster}" (angle: {CLUSTER_ANGLE.get(target_cluster, "")}) '
+            f'- JANGAN cluster lain. Keyword yang SUDAH ADA di cluster ini (JANGAN diulang/divariasikan sinonimnya, '
+            f'cari SUDUT PANDANG/SUBTOPIK BARU yang genuinely belum dibahas): '
+            + ", ".join(f'"{k["keyword"]}"' for k in existing_kw if k.get("cluster") == target_cluster)[:1500]
+            + "\n\n"
+        )
+    )
     prompt = (
         f"Kamu ahli SEO untuk penginapan di kawasan Bedugul, Bali. Sudah ada {len(existing_kw)} "
         f"keyword yang tercatat. Buat {n} ide keyword BARU (belum ada di daftar), gaya pencarian "
         "orang Indonesia asli (bukan terjemahan kaku), fokus penginapan/wisata Bedugul - variasi "
         "kombinasi tipe akomodasi + lokasi/fasilitas/aktivitas/harga yang BELUM ada polanya. "
-        f"SEBARKAN ke cluster yang BERBEDA-BEDA (jangan semua ke cluster yang sama) dari daftar "
-        f"ini: {cluster_list}.\n\n"
+        f"{cluster_instruction}"
         # (2026-08-03, permintaan Agus - bug nyata: keyword spt "penginapan pet friendly boleh "
         # bawa anjing" & "akomodasi dgn ruang meeting dan katering" sempat lolos jadi keyword,
         # artikelnya PUBLISH mengasumsikan fasilitas yg TIDAK PERNAH ada) - dicegah dari akar
@@ -1230,13 +1258,16 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
         parsed = json.loads(raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
     except json.JSONDecodeError:
         parsed = []
+    # target_cluster (2026-09-02) - PAKSA di level kode, jangan percaya kepatuhan model
+    # thd instruksi prompt "SEMUA WAJIB cluster X" (pola berulang di codebase ini - lihat
+    # ENTITY_TYPE_MARKERS di atas, prompt saja terbukti tidak selalu cukup).
     candidates = [(c.get("keyword", "").strip(),
                    c.get("intent") if c.get("intent") in ("Informational", "Commercial", "Transactional") else "Transactional",
-                   c.get("cluster") if c.get("cluster") in CLUSTER_ANGLE else "Long Tail")
+                   target_cluster if target_cluster else (c.get("cluster") if c.get("cluster") in CLUSTER_ANGLE else "Long Tail"))
                   for c in parsed if isinstance(c, dict) and c.get("keyword", "").strip()]
 
     if not candidates:
-        return
+        return 0
     cand_texts = [c[0] for c in candidates]
     cand_embeds = await _embed(cand_texts)
     # existing_embeds SEKARANG dibaca dari DB (existing_embeds_stored, lihat docstring) -
@@ -1274,6 +1305,12 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
             angle_rejected += 1
             print(f'  [keyword agent] DITOLAK (angle "{cand_cluster}" terlarang utk entity_type="{entity_type_cand}"): "{cand}"')
             continue
+        # within-batch pairwise check (2026-09-02, PRD "AI Blog Title Expansion" §13 Level 1-3
+        # + §17) - existing_embeds tadinya cuma diisi SEKALI di awal (histori sebelum batch
+        # ini mulai), jadi 2 kandidat MIRIP dalam batch YANG SAMA bisa lolos berdua (belum
+        # ada satu pun yang masuk existing_embeds saat keduanya dicek). Di-append begitu
+        # diterima (di bawah) supaya kandidat berikutnya dalam batch yang sama ikut kena cek
+        # thd yang BARU diterima juga, bukan cuma histori lama.
         is_dupe = any(_cosine(cand_emb, e) > 0.88 for e in existing_embeds)
         if is_dupe:
             continue
@@ -1288,11 +1325,17 @@ async def _generate_new_keywords(site: str, n: int = 10) -> None:
                 # drpd reuse cand_emb apa adanya krn urutan candidates/cand_embeds tetap
                 # 1:1 (zip di atas) - aman pakai cand_emb langsung, tidak perlu embed lagi.
                 "embedding": cand_emb,
+                # Idempotency/resume (2026-09-02, PRD §23/§24) - tag kampanye opsional dipakai
+                # scripts/expand_title_pool.py utk hitung progress-per-cluster (count dokumen
+                # ber-tag ini), TIDAK PERNAH None utk keyword lama - field baru murni additive.
+                **({"expansion_campaign": expansion_campaign} if expansion_campaign else {}),
             }},
             upsert=True,
         )
+        existing_embeds.append(cand_emb)
         accepted += 1
     print(f"  [keyword agent] {accepted}/{len(candidates)} keyword baru diterima ({intent_rejected} ditolak intent invalid, {angle_rejected} ditolak angle terlarang, sisanya duplikat semantik)")
+    return accepted
 
 
 async def generate_keyword_cluster(site: str, seed_keyword: str, target_count: int = 15) -> dict:
