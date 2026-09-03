@@ -781,6 +781,65 @@ def _klasifikasi_secondary_intent(keyword: str, primary_intent: str) -> Optional
 
 CANNIBALIZATION_THRESHOLD = 0.65
 
+# Zona ambang-batas (2026-09-03, permintaan Agus - rubric LLM cannibalization vs topic
+# cluster) - cosine similarity SATU angka tidak bisa membedakan "duplikat asli" dari
+# "variasi angle yang disengaja" di niche sempit ini (lihat 3 revisi empiris di
+# _keyword_cannibalizes_existing). Skor DI ATAS batas atas dianggap PASTI cannibalization
+# (terlalu mirip utk diragukan, hemat panggilan LLM) - skor di ZONA ABU-ABU (antara
+# threshold utama & batas atas) baru dikirim ke rubric LLM utk keputusan bernuansa,
+# BUKAN semua kandidat (kalau semua kandidat kena LLM, biaya meledak - lihat histori sesi
+# ini soal audit biaya AI Blog).
+CANNIBALIZATION_LLM_ZONE_UPPER = 0.80
+
+
+async def _cek_cannibalization_llm(keyword_a: str, keyword_b: str) -> dict:
+    """Rubric SEO content strategist (2026-09-03, permintaan Agus persis) - LLM menimbang
+    intent/audiens/pembeda konkret, BUKAN sekadar angka cosine, utk kasus ZONA ABU-ABU
+    (lihat CANNIBALIZATION_LLM_ZONE_UPPER) di mana threshold tunggal terbukti sering
+    salah-tolak (revisi 2 di _keyword_cannibalizes_existing: 88% keyword ke-skip padahal
+    angle beda). Return dict {"status": "CANNIBALIZATION"|"AMAN", "alasan": str,
+    "pembeda": list[str] (kalau AMAN), "saran": str|None (kalau CANNIBALIZATION)}.
+    Fail-open ke "AMAN" kalau LLM/parsing gagal - JANGAN blokir keyword genuinely valid
+    krn masalah teknis kita sendiri (konsisten dgn prinsip fail-open lain di file ini)."""
+    system = (
+        "Kamu adalah SEO content strategist. Tugasmu adalah menganalisis apakah dua "
+        "keyword/topik berikut ini BENAR-BENAR cannibalization (bersaing merebut ranking "
+        "yang sama) atau sebenarnya adalah TOPIC CLUSTER yang sah (angle berbeda dari "
+        "topik payung yang sama).\n\n"
+        "ATURAN ANALISIS:\n"
+        "Dua keyword dianggap CANNIBALIZATION hanya jika SEMUA kondisi ini terpenuhi:\n"
+        "1. Search intent-nya identik (informational vs transactional vs navigational sama persis)\n"
+        "2. Target audiens/kebutuhan spesifiknya sama (bukan cuma kategori besar yang sama)\n"
+        "3. Judul, H1, dan 2 paragraf pembuka akan menjawab pertanyaan yang PERSIS sama\n"
+        "4. Tidak ada elemen pembeda konkret (fasilitas spesifik, use-case, target user, lokasi mikro, dll)\n\n"
+        "Dua keyword TIDAK dianggap cannibalization meski berada di topik payung yang sama "
+        "(contoh: sama-sama \"penginapan Bedugul\") jika:\n"
+        "- Salah satu lebih spesifik/long-tail dari yang lain (mis. \"dekat kebun stroberi\" "
+        "vs \"dekat jalur sepeda gunung\")\n"
+        "- Fasilitas/fitur yang ditonjolkan berbeda (balkon pribadi vs ruang meeting corporate)\n"
+        "- Use-case atau target audiensnya berbeda (leisure/keluarga vs corporate retreat vs "
+        "backpacker budget)\n"
+        "- Salah satunya niche/fasilitas spesifik, satunya lagi kategori umum\n\n"
+        'Balas HARUS JSON valid, format PERSIS: {"status": "CANNIBALIZATION" atau "AMAN", '
+        '"alasan": "...", "pembeda": ["...", "..."] (array sudut pandang pembeda kalau AMAN, '
+        'array kosong kalau CANNIBALIZATION), "saran": "..." (saran gabung/ubah angle kalau '
+        'CANNIBALIZATION, null kalau AMAN)}. TIDAK ADA teks lain di luar JSON.'
+    )
+    user = f"Keyword A: {keyword_a}\nKeyword B: {keyword_b}"
+    try:
+        raw = await _chat(system, user, temperature=0.2)
+        parsed = json.loads(raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
+        status = parsed.get("status") if parsed.get("status") in ("CANNIBALIZATION", "AMAN") else "AMAN"
+        return {
+            "status": status,
+            "alasan": parsed.get("alasan") or "",
+            "pembeda": parsed.get("pembeda") or [],
+            "saran": parsed.get("saran"),
+        }
+    except Exception as e:
+        print(f"  [cannibalization rubric] gagal ({type(e).__name__}: {e}), fail-open ke AMAN utk \"{keyword_b}\"")
+        return {"status": "AMAN", "alasan": "rubric gagal dijalankan (fail-open)", "pembeda": [], "saran": None}
+
 # Threshold TERPISAH utk pairwise-within-batch check di generate_keyword_cluster()
 # (2026-08-06) - ditemukan lewat 2x tes live fungsi ini: pakai CANNIBALIZATION_THRESHOLD
 # yang sama (0.65) salah-tolak kandidat lintas cluster BERBEDA (mis. "cuaca di bedugul
@@ -860,8 +919,18 @@ async def _keyword_cannibalizes_existing(
     # _embed() lagi di sini - hindari panggilan API redundan utk teks yang sama.
     kw_emb = keyword_embedding if keyword_embedding is not None else (await _embed([keyword]))[0]
     for w_kw, emb in zip(written_kws, written_embs):
-        if _cosine(kw_emb, emb) > CANNIBALIZATION_THRESHOLD:
+        score = _cosine(kw_emb, emb)
+        if score > CANNIBALIZATION_LLM_ZONE_UPPER:
+            # Terlalu mirip utk diragukan - PASTI cannibalization, tidak perlu panggilan
+            # LLM (hemat biaya).
             return w_kw
+        if score > CANNIBALIZATION_THRESHOLD:
+            # Zona abu-abu (2026-09-03) - cosine SAJA sering salah-tolak di niche sempit
+            # ini (lihat Revisi 2 di docstring). Rubric LLM menimbang intent/audiens/
+            # pembeda konkret sebelum benar-benar menolak kandidat ini.
+            rubric = await _cek_cannibalization_llm(w_kw, keyword)
+            if rubric["status"] == "CANNIBALIZATION":
+                return w_kw
     return None
 
 
@@ -2560,6 +2629,26 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         competitor_result = await analyze_competitors(keyword, site=site)
     maps_url = await _maps_url_for_site(site)
 
+    # Sibling anti-overlap dalam-cluster (2026-09-03, permintaan Agus - penajaman prompt
+    # writer topic cluster). BEDA dari sibling_collision di atas (itu LINTAS BRAND) - ini
+    # WITHIN-SITE, cluster yang SAMA. Sebelum ini writer cuma dapat instruksi GENERIK
+    # "beda angle" (CLUSTER_ANGLE di bawah) tanpa tahu PERSIS judul apa yang sudah ada -
+    # sekarang disebutkan eksplisit (pola sama persis dgn TABRAKAN KEYWORD LINTAS BRAND
+    # yang sudah terbukti efektif) supaya model tahu KONKRET apa yang harus dihindari,
+    # bukan menebak dari instruksi abstrak. Maks 3 judul terbaru (hemat token, cukup utk
+    # kasih gambaran pola yang sudah ditulis).
+    cluster_sibling_kws = await db.seo_keywords.find(
+        {"site": site, "cluster": keyword_doc.get("cluster", ""), "status": "sudah_dibuat", "artikel_slug": {"$ne": None}},
+        {"artikel_slug": 1},
+    ).sort("created_at", -1).to_list(3)
+    cluster_sibling_titles = []
+    if cluster_sibling_kws:
+        sibling_slugs = [k["artikel_slug"] for k in cluster_sibling_kws if k.get("artikel_slug")]
+        sibling_docs = await db.blog_posts.find(
+            {"site": site, "slug": {"$in": sibling_slugs}}, {"title": 1},
+        ).to_list(len(sibling_slugs))
+        cluster_sibling_titles = [d["title"] for d in sibling_docs]
+
     # Entity-aware Knowledge Injection (2026-08-08, Modul 2+6 PRD Agus "prioritas
     # perbaikan kualitas artikel") - SEBELUM ini SEMUA artikel (apa pun topiknya) pakai
     # instruksi SAMA "properti WAJIB disebut di 1-2 sub-judul" tanpa pandang bulu - utk
@@ -2696,6 +2785,17 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
             "pembaca dgn kebutuhan berbeda, bukan 2 versi dari artikel yang sama.\n\n"
             if sibling_collision else ""
         ) +
+        (
+            "ARTIKEL LAIN DI CLUSTER YANG SAMA (WAJIB DIHINDARI OVERLAP-NYA):\n"
+            + "\n".join(f"- {t}" for t in cluster_sibling_titles) +
+            "\n\nArtikel ini WAJIB angle/sudut pandang BERBEDA KONKRET dari semua judul di atas "
+            "(bukan cuma beda kalimat, tapi beda fasilitas spesifik/use-case/target "
+            "audiens/lokasi mikro yang ditonjolkan). Paragraf pembuka (100 kata pertama) "
+            "HARUS langsung fokus menjawab keyword SPESIFIK artikel ini - pembaca yang "
+            "sebenarnya mencari salah satu topik di atas TIDAK BOLEH merasa artikel ini "
+            "cukup menjawab kebutuhan mereka.\n\n"
+            if cluster_sibling_titles else ""
+        ) +
         f"FOKUS ARTIKEL INI (WAJIB diikuti, cluster \"{keyword_doc['cluster']}\"): "
         f"{CLUSTER_ANGLE.get(keyword_doc['cluster'], '')}\n\n"
         + ("" if keyword_doc["cluster"] in ("Booking", "Keluarga") else (
@@ -2712,7 +2812,11 @@ async def write_article(site: str, keyword_doc: dict, link_candidates: Optional[
         )) +
         "CTA: tutup artikel dengan ajakan SPESIFIK & natural (mis. \"Tanya langsung ketersediaan "
         "kamar untuk tanggal liburan Kakak\"), BUKAN kalimat generik seperti \"Chat sekarang lewat "
-        "WhatsApp\" saja. Muncul SATU KALI saja di penutup, jangan diulang di tengah artikel.\n\n"
+        "WhatsApp\" saja. Muncul SATU KALI saja di penutup, jangan diulang di tengah artikel. "
+        "SEBELUM kalimat CTA itu, tegaskan dulu SECARA EKSPLISIT siapa target pembaca ideal "
+        "artikel ini (mis. \"Cocok untuk kamu yang traveling bersama keluarga dan ingin healing "
+        "sekaligus menikmati [fokus artikel ini]\") - bukan cuma ajakan booking generik, supaya "
+        "pembaca dgn kebutuhan lain langsung sadar artikel ini bukan utk mereka.\n\n"
         "COMMERCIAL TRANSITION (2026-08-20, PRD Intelligence V2): Jangan masukkan bisnis secara "
         "tiba-tiba. Gunakan pola 5-step funnel:\n"
         "1. Reader Need → identifikasi kebutuhan pembaca (mis. 'Butuh tempat menginap setelah "
