@@ -1278,6 +1278,7 @@ async def _generate_new_keywords(
     accepted = 0
     intent_rejected = 0
     angle_rejected = 0
+    tipe_rejected = 0
     for (cand, cand_intent, cand_cluster), cand_emb in zip(candidates, cand_embeds):
         # Intent Validation Engine (2026-08-08) - dicek DULUAN (murni regex+dict lookup,
         # tanpa biaya) sebelum dupe-check yang butuh embedding - lihat _validasi_intent_
@@ -1304,6 +1305,20 @@ async def _generate_new_keywords(
         if cand_cluster in angle_terlarang_cand:
             angle_rejected += 1
             print(f'  [keyword agent] DITOLAK (angle "{cand_cluster}" terlarang utk entity_type="{entity_type_cand}"): "{cand}"')
+            continue
+        # Gate 6 - Property Type Truthfulness (2026-09-02, bug NYATA ditemukan lewat audit
+        # Agus "cek judulnya masuk akal" pasca campaign Title Expansion - 38 keyword baru
+        # Pelangi lolos menyebut "villa" [Pelangi Homestay Cottage/Standard, BUKAN villa].
+        # Gate 6 SUDAH ADA sejak 2026-08-06 (dipakai get_next_keyword() line ~1063 &
+        # generate_keyword_cluster() line ~1442) TAPI TIDAK PERNAH dipanggil di jalur INI
+        # (_generate_new_keywords, pool-refill utama) - celah yang sama persis kelasnya
+        # dgn Angle-Entity Gate di atas (gate ada, tapi tidak dipasang di SEMUA jalur
+        # generation). Ditutup di sini, bukan cuma dipatch utk campaign - berlaku jg utk
+        # cron auto-refill harian ke depannya.
+        tipe_salah_match = _keyword_properti_salah_tipe(site, cand)
+        if tipe_salah_match:
+            tipe_rejected += 1
+            print(f'  [keyword agent] DITOLAK (Gate 6: sebut "{tipe_salah_match}", {site} bukan villa): "{cand}"')
             continue
         # within-batch pairwise check (2026-09-02, PRD "AI Blog Title Expansion" §13 Level 1-3
         # + §17) - existing_embeds tadinya cuma diisi SEKALI di awal (histori sebelum batch
@@ -1334,7 +1349,7 @@ async def _generate_new_keywords(
         )
         existing_embeds.append(cand_emb)
         accepted += 1
-    print(f"  [keyword agent] {accepted}/{len(candidates)} keyword baru diterima ({intent_rejected} ditolak intent invalid, {angle_rejected} ditolak angle terlarang, sisanya duplikat semantik)")
+    print(f"  [keyword agent] {accepted}/{len(candidates)} keyword baru diterima ({intent_rejected} ditolak intent invalid, {angle_rejected} ditolak angle terlarang, {tipe_rejected} ditolak Gate 6 tipe properti salah, sisanya duplikat semantik)")
     return accepted
 
 

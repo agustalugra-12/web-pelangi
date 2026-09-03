@@ -3,10 +3,13 @@
 PRD §26/§27. Dijalankan `venv/bin/python -m scripts.expand_title_pool --site
 <situs> --target 300`, tag kampanye `title_expansion_2026-09_<situs>`.
 
-## Situs: Pelangi — 2026-09-02
+## Situs: Pelangi — 2026-09-02 (angka awal run pertama, LIHAT KOREKSI di bawah)
 
-**TOTAL: 333/300 NEW valid titles — TARGET TERCAPAI di SEMUA 17 cluster**
-(tidak ada exhaustion, tidak perlu memaksakan judul buruk).
+**TOTAL run pertama: 333/300 NEW valid titles — TARGET TERCAPAI di SEMUA 17
+cluster** (tidak ada exhaustion). **Angka final SETELAH koreksi bug "villa"
+(lihat bagian "Bug ditemukan pasca-run" di bawah): 330/300**, tetap tercapai
+di semua cluster, tabel per-cluster di bawah adalah angka run pertama
+(sebelum 41 keyword salah dihapus + top-up ulang).
 
 | Cluster | Target | Tercapai |
 |---|---|---|
@@ -76,6 +79,30 @@ crash selama proses, existing data (artikel terbit + keyword lama) tidak
 tersentuh sama sekali (murni INSERT baru).
 
 ---
+
+## Bug ditemukan pasca-run + diperbaiki (2026-09-03, permintaan Agus "cek apakah judulnya masuk akal")
+
+Audit manual Agus menemukan **38 keyword baru Pelangi salah sebut "villa"**
+(Pelangi Homestay = Cottage/Standard, BUKAN villa — Harmoni yang villa).
+Root cause: Gate 6 (`_keyword_properti_salah_tipe`, sudah ada sejak
+2026-08-06) TIDAK PERNAH dipanggil di `_generate_new_keywords()` — cuma
+dipasang di `get_next_keyword()` dan `generate_keyword_cluster()`, celah
+yang sama kelasnya dgn Angle-Entity Gate (gate ada, tidak dipasang di
+SEMUA jalur generation). Karena campaign ini pakai `_generate_new_keywords`
+sbg mesin utamanya, celah ini akhirnya kena skala penuh.
+
+**Diperbaiki**: Gate 6 dipasang di `_generate_new_keywords()` (permanen,
+bukan cuma utk campaign ini — berlaku jg utk cron auto-refill harian ke
+depannya). 41 keyword salah (38 "villa" + 3 "vila", regex awal cuma
+tangkap 1 varian ejaan) dihapus (masih `status="belum_dibuat"`, belum
+pernah jadi artikel — aman, bukan protected inventory). 10 cluster
+terdampak di-top-up ulang pakai gate yang sudah diperbaiki — **terbukti
+langsung memblokir 7 percobaan "villa"/"vila" baru** selama top-up.
+
+**Verifikasi akhir**: 0 "villa"/"vila" tersisa di 330 keyword campaign
+Pelangi, 0 entitas non-akomodasi salah konteks (kantor polisi/puskesmas/
+rumah sakit/dst) di 662 keyword gabungan kedua situs — dicek manual
+seluruh daftar, bukan sampling.
 
 ## Verifikasi teknis
 
